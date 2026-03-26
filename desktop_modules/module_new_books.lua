@@ -107,7 +107,24 @@ function M.build(w, ctx)
     -- Cache the scan result for the lifetime of this render cycle.
     local new_fps = ctx._new_books_fps
     if not new_fps then
-        new_fps = scanNewBooks(5)
+        -- Fetch one extra to compensate for excluding the current book.
+        new_fps = scanNewBooks(6)
+        -- Exclude the currently open book, matching the behaviour of the
+        -- Recent Books module which also skips it.
+        if ctx.current_fp then
+            local filtered = {}
+            for _, fp in ipairs(new_fps) do
+                if fp ~= ctx.current_fp then
+                    filtered[#filtered + 1] = fp
+                end
+            end
+            new_fps = filtered
+        end
+        if #new_fps > 5 then
+            local trimmed = {}
+            for i = 1, 5 do trimmed[i] = new_fps[i] end
+            new_fps = trimmed
+        end
         ctx._new_books_fps = new_fps
     end
     if #new_fps == 0 then return nil end
