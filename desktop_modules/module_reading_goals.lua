@@ -198,28 +198,24 @@ end
 -- Builds a single inline row: Label [bar] XX%  detail
 -- Used by the Compact layout. All elements are horizontally laid out and vertically centred.
 -- lbl_w is pre-computed by _measureLblW so both rows share the same column width.
-local function buildCompactGoalRow(inner_w, lbl_w, pct_w, label_str, pct, pct_str, detail_str, on_tap)
+local function buildCompactGoalRow(inner_w, lbl_w, label_str, pct, pct_str, detail_str, on_tap)
     local LeftContainer  = require("ui/widget/container/leftcontainer")
     local RightContainer = require("ui/widget/container/rightcontainer")
 
     local ROW_H       = _COMPACT_ROW_H
     local LBL_BAR_GAP = _COMPACT_COL_GAP
+    local right_w        = math.floor(inner_w * 0.28)
     local BAR_PCT_GAP    = _COMPACT_COL_GAP
-    local PCT_DETAIL_GAP = _COMPACT_COL_GAP
-    -- right_w must be at least pct_w + gap + a minimum detail column.
-    local MIN_DETAIL_W = Screen:scaleBySize(32)
-    local right_w = math.max(
-        math.floor(inner_w * 0.28),
-        pct_w + PCT_DETAIL_GAP + MIN_DETAIL_W)
-    local available = inner_w - lbl_w - LBL_BAR_GAP - BAR_PCT_GAP - right_w
+    local available      = inner_w - lbl_w - LBL_BAR_GAP - BAR_PCT_GAP - right_w
     if available < Screen:scaleBySize(40) then
         -- lbl_w grew — shrink right_w before the bar goes below minimum
         available = Screen:scaleBySize(40)
         right_w = math.max(0, inner_w - lbl_w - LBL_BAR_GAP - BAR_PCT_GAP - available)
     end
-    local bar_w    = available
-    local PCT_W    = pct_w
-    local DETAIL_W = math.max(0, right_w - PCT_W - PCT_DETAIL_GAP)
+    local bar_w          = available
+    local PCT_W          = math.floor(right_w * 0.30)
+    local PCT_DETAIL_GAP = math.floor(right_w * 0.15)
+    local DETAIL_W       = right_w - PCT_W - PCT_DETAIL_GAP
 
     local function vcenter_left(child, col_w)
         return LeftContainer:new{ dimen = Geom:new{ w = col_w, h = ROW_H }, child }
@@ -470,6 +466,7 @@ function M.reset() invalidateStatsCache() end
 
 -- Builds the widget. Branches on layout mode: compact (single inline row) or default (two lines).
 function M.build(w, ctx)
+    Config.applyLabelToggle(M, _("Reading Goals"))
     local show_ann = showAnnual()
     local show_day = showDaily()
     if not show_ann and not show_day then return nil end
@@ -480,30 +477,21 @@ function M.build(w, ctx)
 
     if isCompact() then
         local face = Font:getFace("smallinfofont", _COMPACT_ROW_FS)
-        -- Pre-compute data for both rows so we can measure pct_w across both
-        -- and use the same column width, preventing overlap when pct >= 100%.
-        local ann_pct, ann_pct_str, ann_detail
-        local day_pct, day_pct_str, day_detail
-        if show_ann then ann_pct, ann_pct_str, ann_detail = _annualData(books_read) end
-        if show_day then day_pct, day_pct_str, day_detail = _dailyData(today_secs) end
-        -- Measure pct column width from both rows so they share the same width.
-        local pct_strs = {}
-        if show_ann and ann_pct_str ~= "" then pct_strs[#pct_strs+1] = ann_pct_str end
-        if show_day and day_pct_str ~= "" then pct_strs[#pct_strs+1] = day_pct_str end
-        local pct_w = _measureLblW(pct_strs, face, Screen:scaleBySize(28))
         if show_ann then
+            local pct, pct_str, detail = _annualData(books_read)
             local lbl_w = _measureLblW({ _getYearStr() }, face, _COMPACT_LBL_W)
             rows[#rows+1] = buildCompactGoalRow(
-                inner_w, lbl_w, pct_w, _getYearStr(), ann_pct, ann_pct_str, ann_detail,
+                inner_w, lbl_w, _getYearStr(), pct, pct_str, detail,
                 function() showAnnualGoalDialog() end)
         end
         if show_ann and show_day then
             rows[#rows+1] = VerticalSpan:new{ width = _COMPACT_ROW_GAP }
         end
         if show_day then
+            local pct, pct_str, detail = _dailyData(today_secs)
             local lbl_w = _measureLblW({ _("Today") }, face, _COMPACT_LBL_W)
             rows[#rows+1] = buildCompactGoalRow(
-                inner_w, lbl_w, pct_w, _("Today"), day_pct, day_pct_str, day_detail,
+                inner_w, lbl_w, _("Today"), pct, pct_str, detail,
                 function() showDailySettingsDialog() end)
         end
     else
@@ -573,6 +561,7 @@ function M.getMenuItems(ctx_menu)
     local scale_item = _makeScaleItem(ctx_menu)
     scale_item.separator = true
     return {
+        Config.makeLabelToggleItem("reading_goals", _("Reading Goals"), refresh, _lc),
         { text = _lc("Type"),
           sub_item_table = {
               { text         = _lc("Default"),

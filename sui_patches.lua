@@ -75,47 +75,6 @@ function M.patchFileManagerClass(plugin)
     -- Navbar touch zones must run before FileChooser/scroll children (sui_core).
     UI.applyGesturePriorityHandleEvent(FileManager)
 
-    -- The KOReader filemanager_swipe touch zone handler calls onSwipeFM but
-    -- does not return true, so InputContainer.onGesture considers the event
-    -- unconsumed and the event propagates a second time through
-    -- WidgetContainer children (FileManagerMenu, etc.), causing every
-    -- horizontal swipe in the library to advance two pages instead of one.
-    -- Patch initGesListener to re-register the zone with a handler that
-    -- returns true, consuming the event after the page turn.
-    local orig_initGesListener        = FileManager.initGesListener
-    plugin._orig_initGesListener      = orig_initGesListener
-    FileManager._simpleui_ges_patched = false
-    FileManager.initGesListener = function(fm_self)
-        orig_initGesListener(fm_self)
-        -- Override the zone registered above so its handler returns true,
-        -- consuming the event after a page-turn swipe to prevent it from
-        -- propagating a second time through WidgetContainer children.
-        -- Exception: swipes going "south" (downward) must NOT be consumed
-        -- here so that FileManagerMenu's zones can catch them and open the
-        -- top menu.  The same applies to "north" swipes in case the user has
-        -- configured the menu to open on an upward swipe.
-        fm_self:registerTouchZones({
-            {
-                id          = "filemanager_swipe",
-                ges         = "swipe",
-                screen_zone = {
-                    ratio_x = 0, ratio_y = 0,
-                    ratio_w = 1, ratio_h = 1,
-                },
-                handler = function(ges)
-                    -- Do not consume menu-direction swipes: let them fall
-                    -- through to FileManagerMenu's touch zones (filemanager_swipe
-                    -- and filemanager_ext_swipe registered on the FM child menu).
-                    if ges.direction == "south" or ges.direction == "north" then
-                        return false
-                    end
-                    fm_self:onSwipeFM(ges)
-                    return true
-                end,
-            },
-        })
-    end
-
     FileManager.setupLayout = function(fm_self)
         local topbar_on = G_reader_settings:nilOrTrue("navbar_topbar_enabled")
         fm_self._navbar_height = Bottombar.TOTAL_H() + (topbar_on and require("sui_topbar").TOTAL_TOP_H() or 0)
@@ -1079,29 +1038,6 @@ function M.patchMenuInitForPagination(plugin)
 
     Menu.init = function(menu_self, ...)
         orig_menu_init(menu_self, ...)
-
-        -- Fix: Menu:onSwipe does not return true, so horizontal swipe events
-        -- propagate down to the FM's filemanager_swipe touch zone and advance
-        -- two pages instead of one.  Install an instance-level onSwipe that
-        -- calls the original and then returns true to consume the event.
-        -- Applied to all named target menus (history, collections, coll_list)
-        -- and any fullscreen borderless menu that gets navbar-injected.
-        local is_target = TARGET_NAMES[menu_self.name]
-            or (menu_self.covers_fullscreen
-                and menu_self.is_borderless
-                and menu_self.title_bar_fm_style)
-        if is_target then
-            local orig_onSwipe = menu_self.onSwipe  -- may be nil (inherits from Menu)
-            menu_self.onSwipe = function(self_m, arg, ges_ev)
-                if orig_onSwipe then
-                    orig_onSwipe(self_m, arg, ges_ev)
-                else
-                    Menu.onSwipe(self_m, arg, ges_ev)
-                end
-                return true  -- consume: prevent propagation to FM's filemanager_swipe
-            end
-        end
-
         if G_reader_settings:nilOrTrue("navbar_pagination_visible") then return end
         if not TARGET_NAMES[menu_self.name]
            and not (menu_self.covers_fullscreen
@@ -1524,11 +1460,6 @@ function M.teardownAll(plugin)
     local FileManager = package.loaded["apps/filemanager/filemanager"]
     if FileManager and FileManager._simpleui_gesture_priority_applied then
         UI.unapplyGesturePriorityHandleEvent(FileManager)
-    end
-    if FileManager and plugin._orig_initGesListener then
-        FileManager.initGesListener        = plugin._orig_initGesListener
-        plugin._orig_initGesListener       = nil
-        FileManager._simpleui_ges_patched  = nil
     end
     if FileManager and plugin._orig_fm_setup then
         FileManager.setupLayout = plugin._orig_fm_setup; plugin._orig_fm_setup = nil

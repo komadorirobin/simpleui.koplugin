@@ -42,34 +42,15 @@ if _ok_ds and _ds and type(_ds.getDataDir) == "function" then
     -- Walk up from data dir to find the KOReader install root (contains "resources").
     -- On most platforms data dir IS the install root; on Android it may differ.
     local lfs_ok, lfs_m = pcall(require, "libs/libkoreader-lfs")
-    if lfs_ok and lfs_m then
-        local function _is_root(dir)
-            return lfs_m.attributes(dir .. "/resources/icons/mdlight", "mode") == "directory"
-        end
-        if _is_root(_d) then
-            _ko_root = _d .. "/"
-        else
-            local parent = _d:match("^(.+)/[^/]+$")
-            if parent and _is_root(parent) then
-                _ko_root = parent .. "/"
-            end
-        end
+    if lfs_ok and lfs_m and lfs_m.attributes(_d .. "/resources/icons/mdlight", "mode") == "directory" then
+        _ko_root = _d .. "/"
     end
 end
 if _ko_root == "" then
-    local lfs_ok, lfs_m = pcall(require, "libs/libkoreader-lfs")
-    if lfs_ok and lfs_m then
-        local p = (_plugin_dir:gsub("/$", ""))
-        for _i = 1, 8 do
-            if lfs_m.attributes(p .. "/resources/icons/mdlight", "mode") == "directory" then
-                _ko_root = p .. "/"
-                break
-            end
-            local parent = p:match("^(.+)/[^/]+$")
-            if not parent or parent == p then break end
-            p = parent
-        end
-    end
+    -- Fallback: derive from plugin file location (works on Kobo/Kindle/desktop).
+    -- Plugin lives at <root>/plugins/simpleui.koplugin/sui_config.lua
+    -- so root is two directories up.
+    _ko_root = _plugin_dir:match("^(.*/)plugins/[^/]+/$") or ""
 end
 local _KO = _ko_root .. "resources/icons/mdlight/"
 
@@ -500,14 +481,6 @@ end
 -- Optimistic Wi-Fi state, updated immediately on toggle.
 M.wifi_optimistic = nil
 
--- Hide the Wi-Fi icon when Wi-Fi is off (instead of showing the off icon).
-function M.getWifiHideWhenOff()
-    return G_reader_settings:isTrue("navbar_topbar_wifi_hide_when_off")
-end
-function M.setWifiHideWhenOff(v)
-    G_reader_settings:saveSetting("navbar_topbar_wifi_hide_when_off", v)
-end
-
 function M.homeLabel()
     return _("Library")
 end
@@ -781,8 +754,6 @@ function M.reset()
     _navbar_mode_cache           = nil
     M.wifi_optimistic            = nil
     M.cover_extraction_pending   = false
-    M._cover_extract_next_ok     = 0
-    M._cover_extract_pending     = {}
     _Device                      = nil
     _NetworkMgr                  = nil
     _has_wifi_toggle             = nil
@@ -808,8 +779,6 @@ end
 -- Previously each module kept its own flag, causing up to 2 parallel poll
 -- timers (60 × 0.5 s each). One centralised flag prevents duplicates.
 M.cover_extraction_pending = false
-M._cover_extract_next_ok   = 0
-M._cover_extract_pending   = {}
 
 local _BookInfoManager = nil
 
@@ -928,9 +897,6 @@ function M.getCoverBB(filepath, w, h)
         if not (bookinfo.cover_fetched and bookinfo.has_cover and bookinfo.cover_bb) then
             return cached.bb
         end
-        if M._cover_extract_pending then
-            M._cover_extract_pending[filepath] = nil
-        end
         local src_w = bookinfo.cover_bb:getWidth()
         local src_h = bookinfo.cover_bb:getHeight()
         if src_w >= w and src_h >= h then
@@ -950,28 +916,21 @@ function M.getCoverBB(filepath, w, h)
     local ok, bookinfo = pcall(function() return bim:getBookInfo(filepath, true) end)
     if not ok then return nil end
 
-    local function scheduleExtract()
-        if not M._cover_extract_pending then M._cover_extract_pending = {} end
-        if M._cover_extract_pending[filepath] then return end
-        local now = os.time()
-        if (M._cover_extract_next_ok or 0) > now then return end
-        M._cover_extract_next_ok = now + 1
-        M._cover_extract_pending[filepath] = now
-        pcall(function()
-            bim:extractInBackground({{
-                filepath    = filepath,
-                cover_specs = { max_cover_w = w, max_cover_h = h },
-            }})
-        end)
-    end
-
     -- CORREÇÃO: Verificar se a tentativa de extração já foi feita
     if bookinfo and bookinfo.cover_fetched then
         if bookinfo.has_cover and bookinfo.cover_bb then
             local src_w = bookinfo.cover_bb:getWidth()
             local src_h = bookinfo.cover_bb:getHeight()
             local lowres = (src_w < w or src_h < h)
-            if lowres then scheduleExtract() end
+            if lowres and not M.cover_extraction_pending then
+                M.cover_extraction_pending = true
+                pcall(function()
+                    bim:extractInBackground({{
+                        filepath    = filepath,
+                        cover_specs = { max_cover_w = w, max_cover_h = h },
+                    }})
+                end)
+            end
             local bb = _scaleBBToSlot(bookinfo.cover_bb, w, h)
             if _bim_cover_count >= BIM_MAX_COVERS then _evictOldestCover() end
             _bim_cover_cache[key] = { bb = bb, t = os.time(), lowres = lowres or nil, chk = os.time(), src_w = src_w, src_h = src_h }
@@ -984,7 +943,15 @@ function M.getCoverBB(filepath, w, h)
         end
     end
 
-    scheduleExtract()
+    if not M.cover_extraction_pending then
+        M.cover_extraction_pending = true
+        pcall(function()
+            bim:extractInBackground({{
+                filepath    = filepath,
+                cover_specs = { max_cover_w = w, max_cover_h = h },
+            }})
+        end)
+    end
     return nil
 end
 
@@ -1707,6 +1674,46 @@ function M.makeGapItem(opts)
                     opts.refresh()
                 end,
             })
+        end,
+    }
+end
+
+-- ---------------------------------------------------------------------------
+-- Per-module label (section title) visibility toggle.
+-- Setting key: "simpleui_hide_label_" .. mod_id  (true = hidden, nil = shown)
+-- Never stored as false — KOReader LuaSettings removes keys set to false.
+-- ---------------------------------------------------------------------------
+local function _labelHideKey(mod_id)
+    return "simpleui_hide_label_" .. (mod_id or "")
+end
+
+-- Returns true when the section label should be hidden.
+function M.isLabelHidden(mod_id)
+    return G_reader_settings:readSetting(_labelHideKey(mod_id)) == true
+end
+
+-- Call at the start of build() to keep mod.label in sync with the setting.
+function M.applyLabelToggle(mod, default_label)
+    if M.isLabelHidden(mod.id) then
+        mod.label = nil
+    else
+        mod.label = default_label
+    end
+end
+
+-- Returns a checkbox menu item for toggling the section label.
+-- _lc is the menu-local gettext wrapper (ctx_menu._).
+function M.makeLabelToggleItem(mod_id, default_label, refresh, _lc)
+    return {
+        text           = _lc("Show label"),
+        checked_func   = function() return not M.isLabelHidden(mod_id) end,
+        keep_menu_open = true,
+        callback       = function()
+            -- Store true to hide, nil (remove key) to show — never store false.
+            -- not isHidden and true or nil: when showing→true, when hidden→nil
+            G_reader_settings:saveSetting(_labelHideKey(mod_id),
+                not M.isLabelHidden(mod_id) and true or nil)
+            refresh()
         end,
     }
 end

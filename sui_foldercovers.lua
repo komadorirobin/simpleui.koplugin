@@ -492,26 +492,9 @@ local function _installItemCache()
         if not M.getItemCache() then
             return _orig_getListItem(fc, dirpath, f, fullpath, attributes, collate)
         end
-        local filter_raw = fc.show_filter and fc.show_filter.status or ""
-        local filter
-        if type(filter_raw) == "table" then
-            -- Newer KOReader stores active status filters as a set table.
-            -- Sort keys so equivalent filter states produce the same cache key.
-            local parts = {}
-            for k, v in pairs(filter_raw) do
-                if v then
-                    parts[#parts + 1] = tostring(k)
-                end
-            end
-            table.sort(parts)
-            filter = table.concat(parts, "\1")
-        else
-            filter = tostring(filter_raw)
-        end
-        local collate_id = (collate and (collate.id or collate.text)) or ""
+        local filter = fc.show_filter and fc.show_filter.status or ""
         local key = tostring(dirpath) .. "\0" .. tostring(f) .. "\0"
-                 .. tostring(fullpath) .. "\0" .. filter .. "\0"
-                 .. tostring(collate_id)
+                 .. tostring(fullpath) .. "\0" .. filter
         if not _cache[key] then
             if _cache_count >= _CACHE_MAX then
                 _cache = {}
@@ -536,6 +519,43 @@ end
 function M.invalidateCache()
     _cache = {}
     _cache_count = 0
+end
+
+-- ---------------------------------------------------------------------------
+-- Recursive subtree cover search
+-- Scans subdirectories (depth-limited) to find a cached cover when the
+-- direct folder contains no books with cached covers.
+-- ---------------------------------------------------------------------------
+local _BOOK_EXTS = { epub=true, pdf=true, mobi=true, cbz=true, cbr=true,
+                     fb2=true, djvu=true, azw=true, azw3=true, kfx=true, zip=true }
+local function _isBookFile(name)
+    local ext = name:match("%.([^%.]+)$")
+    return ext and _BOOK_EXTS[ext:lower()]
+end
+
+local function _findCachedBookInSubtree(dir_path, BookInfoManager, depth)
+    if (depth or 0) > 4 then return nil end
+    local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
+    if not ok_lfs then return nil end
+    local found = nil
+    pcall(function()
+        for entry in lfs.dir(dir_path) do
+            if found then return end
+            if entry ~= "." and entry ~= ".." then
+                local fp = dir_path .. "/" .. entry
+                local mode = lfs.attributes(fp, "mode")
+                if mode == "file" and _isBookFile(entry) then
+                    local bi = BookInfoManager:getBookInfo(fp, true)
+                    if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched and not bi.ignore_cover then
+                        found = { fp = fp, w = bi.cover_w, h = bi.cover_h, data = bi.cover_bb }
+                    end
+                elseif mode == "directory" then
+                    found = _findCachedBookInSubtree(fp, BookInfoManager, (depth or 0) + 1)
+                end
+            end
+        end
+    end)
+    return found
 end
 
 -- ---------------------------------------------------------------------------
@@ -632,12 +652,7 @@ function M.install()
         local dir_path = self.entry and self.entry.path
         if not dir_path then return end
 
-        -- NOTE: _foldercover_processed is intentionally NOT set here.
-        -- It is only set inside _setFolderCover, after a cover is successfully
-        -- applied. This allows BookInfoManager's async fetch to complete and
-        -- trigger updateItems again — at which point the cover will be available
-        -- and _setFolderCover will be called. If we set the flag here, the folder
-        -- would be permanently skipped on the first open before covers are cached.
+        self._foldercover_processed = true
 
         -- Check for a user-chosen cover override.
         local overrides = _getCoverOverrides()
@@ -657,7 +672,6 @@ function M.install()
         end
 
         -- Check for a .cover.* image file placed manually in the folder.
-        -- Static files are always available — mark as processed immediately.
         local cover_file = findCover(dir_path)
         if cover_file then
             local ok, w, h = pcall(function()
@@ -694,13 +708,15 @@ function M.install()
                 end
             end
         end
+
+        -- Fallback: no cached cover found directly — search subdirectories.
+        local sub = _findCachedBookInSubtree(dir_path, BookInfoManager)
+        if sub then
+            self:_setFolderCover{ data = sub.data, w = sub.w, h = sub.h }
+        end
     end
 
     function MosaicMenuItem:_setFolderCover(img)
-        -- Mark as processed here — only reached when a cover is actually available.
-        -- This lets updateItems retry (after async BookInfoManager fetch) without
-        -- being blocked by an early flag set before the cover data was ready.
-        self._foldercover_processed = true
         local border    = Size.border.thin
         local max_img_w = self.width  - _SPINE_W - border * 2
         local max_img_h = self.height - border * 2
@@ -886,31 +902,7 @@ function M.install()
                         ptw,
                     },
                 }
-                -- Replicate the native bar geometry to anchor badge position.
-                -- mosaicmenu bar pos_y = y + self.height - ceil((self.height-target.height)/2)
-                --                        - corner_sz + bar_margin
-                -- In paintTo context fy = y + ceil((self.height - fh)/2), so:
-                --   bar_top = fy + fh - corner_sz + bar_margin
-                local bar_height = Screen:scaleBySize(8)
-                local corner_sz  = math.floor(math.min(self.width, self.height) / 8)
-                local bar_margin = math.floor((corner_sz - bar_height) / 2)
-
-                -- X: badge left edge matches bar left edge
-                local badge_x = fx + math.max(bar_margin, inset)
-
-                -- Y: when bar hidden, centre badge on bar's Y; when bar shown, place badge above it.
-                local bar_top    = fy + fh - corner_sz + bar_margin
-                local bar_centre = bar_top + math.floor(bar_height / 2)
-                local badge_y
-                if self.show_progress_bar then
-                    local bar_gap = Screen:scaleBySize(4)
-                    badge_y = bar_top - bar_gap - rect_h
-                else
-                    -- shift badge up by the same amount used as left padding
-                    local bottom_pad = math.max(bar_margin, inset)
-                    badge_y = bar_centre - math.floor(rect_h / 2) - bottom_pad
-                end
-                badge_widget:paintTo(bb, badge_x, badge_y)
+                badge_widget:paintTo(bb, fx + inset, fy + fh - rect_h - inset)
                 badge_widget:free()
             end
         end

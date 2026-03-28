@@ -35,7 +35,7 @@ local _dim = {}
 
 M.PAD           = Screen:scaleBySize(14)
 M.PAD2          = Screen:scaleBySize(8)
-M.MOD_GAP       = Screen:scaleBySize(23)   -- includes former LABEL_PAD_TOP (8px)
+M.MOD_GAP       = Screen:scaleBySize(32)   -- includes former LABEL_PAD_TOP (8px)
 M.SIDE_PAD      = Screen:scaleBySize(14)
 M.LABEL_PAD_TOP = 0                         -- absorbed into MOD_GAP
 M.LABEL_PAD_BOT = M.PAD2                    -- padding_bottom of sectionLabel (was 4px, now 8px)

@@ -49,13 +49,13 @@ local function parsePO(path)
             if line == "" then flush() end
         elseif line:match('^msgid%s+"') then
             flush()
-            msgid  = unescape(line:match('^msgid%s+"(.*)"') or "")
+            msgid  = unescape(line:match('^msgid%s+"(.*)"'))
             in_id  = true; in_str = false
         elseif line:match('^msgstr%s+"') then
-            msgstr = unescape(line:match('^msgstr%s+"(.*)"') or "")
+            msgstr = unescape(line:match('^msgstr%s+"(.*)"'))
             in_str = true; in_id  = false
         elseif line:match('^"') then
-            local cont = unescape(line:match('^"(.*)"') or "")
+            local cont = unescape(line:match('^"(.*)"'))
             if in_id  and msgid  then msgid  = msgid  .. cont end
             if in_str and msgstr then msgstr = msgstr .. cont end
         end

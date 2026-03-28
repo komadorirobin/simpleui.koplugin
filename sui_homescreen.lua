@@ -131,7 +131,7 @@ local function buildEmptyState(w, h)
     }
 end
 
-local function openBook(filepath, pos0, page)
+local function openBook(filepath)
     -- Do NOT close the Homescreen before opening the reader.
     -- ReaderUI:showReader() broadcasts a "ShowingReader" event that closes all
     -- widgets atomically (FileManager, Homescreen, etc.) before the first reader
@@ -143,21 +143,6 @@ local function openBook(filepath, pos0, page)
     local ReaderUI = package.loaded["apps/reader/readerui"]
         or require("apps/reader/readerui")
     ReaderUI:showReader(filepath)
-    -- Jump to the highlight position once the reader has initialised.
-    -- showReader() is async — schedule the jump so ReaderUI.instance is ready.
-    if pos0 or page then
-        UIManager:scheduleIn(0.5, function()
-            local rui = package.loaded["apps/reader/readerui"]
-            if not (rui and rui.instance) then return end
-            if pos0 then
-                rui.instance:handleEvent(
-                    require("ui/event"):new("GotoXPointer", pos0, pos0))
-            elseif page then
-                rui.instance:handleEvent(
-                    require("ui/event"):new("GotoPage", page))
-            end
-        end)
-    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -494,71 +479,6 @@ function HomescreenWidget:init()
         dimen      = Geom:new{ w = sw, h = sh },
         VerticalSpan:new{ width = sh },
     }
-
-    -- ---------------------------------------------------------------------------
-    -- Register top-of-screen tap/swipe zones to open the KOReader main menu on
-    -- the Homescreen, mirroring what patches.lua does for other injected widgets
-    -- and what FileManagerMenu:initGesListener does for the library.
-    --
-    -- When the topbar is enabled the zone is shrunk to the visible topbar strip
-    -- (TOTAL_TOP_H + MOD_GAP) so the touch target matches the visual element.
-    -- Without this, swiping down from the top of the homescreen does nothing
-    -- because HSSwipe forwards to _fmGestureAction which only handles gestures
-    -- that are mapped in the FM gestures plugin — a plain south-swipe from the
-    -- body of the screen is not one of those unless the user explicitly mapped it.
-    -- ---------------------------------------------------------------------------
-    local DTAP_ZONE_MENU     = G_defaults:readSetting("DTAP_ZONE_MENU")
-    local DTAP_ZONE_MENU_EXT = G_defaults:readSetting("DTAP_ZONE_MENU_EXT")
-    if DTAP_ZONE_MENU and DTAP_ZONE_MENU_EXT then
-        -- Helper: resolve the live FileManagerMenu at call time, never caching.
-        local function _hsMenu()
-            local FM = package.loaded["apps/filemanager/filemanager"]
-            local inst = FM and FM.instance
-            if inst and inst.menu then return inst.menu end
-            return nil
-        end
-
-        local topbar_on  = G_reader_settings:nilOrTrue("navbar_topbar_enabled")
-        local zone_ratio_h
-        if topbar_on then
-            local ok_tb, Topbar   = pcall(require, "sui_topbar")
-            local ok_ui, UI_core  = pcall(require, "sui_core")
-            if ok_tb and ok_ui then
-                zone_ratio_h = (Topbar.TOTAL_TOP_H() + UI_core.MOD_GAP) / sh
-            else
-                zone_ratio_h = DTAP_ZONE_MENU.h
-            end
-        else
-            zone_ratio_h = DTAP_ZONE_MENU.h
-        end
-
-        self:registerTouchZones({
-            {
-                id          = "simpleui_hs_menu_tap",
-                ges         = "tap",
-                screen_zone = {
-                    ratio_x = 0, ratio_y = 0,
-                    ratio_w = 1, ratio_h = zone_ratio_h,
-                },
-                handler = function(ges)
-                    local m = _hsMenu()
-                    if m then return m:onTapShowMenu(ges) end
-                end,
-            },
-            {
-                id          = "simpleui_hs_menu_swipe",
-                ges         = "swipe",
-                screen_zone = {
-                    ratio_x = 0, ratio_y = 0,
-                    ratio_w = 1, ratio_h = zone_ratio_h,
-                },
-                handler = function(ges)
-                    local m = _hsMenu()
-                    if m then return m:onSwipeShowMenu(ges) end
-                end,
-            },
-        })
-    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -630,7 +550,7 @@ function HomescreenWidget:_buildContent()
         pfx          = PFX,
         pfx_qa       = PFX_QA,
         close_fn     = function() self_ref:onClose() end,
-        open_fn      = function(fp, pos0, page) openBook(fp, pos0, page) end,
+        open_fn      = function(fp) openBook(fp) end,
         on_qa_tap    = function(aid) if self_ref._on_qa_tap then self_ref._on_qa_tap(aid) end end,
         on_goal_tap  = function() if self_ref._on_goal_tap then self_ref._on_goal_tap() end end,
         db_conn      = db_conn,

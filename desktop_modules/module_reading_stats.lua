@@ -32,8 +32,10 @@ local _CLR_CARD_BDR  = Blitbuffer.gray(0.72)
 
 local _BASE_RS_CORNER_R = Screen:scaleBySize(12)
 local _BASE_RS_GAP      = Screen:scaleBySize(12)
-local _BASE_RS_CARD_H   = Screen:scaleBySize(96)
-local _BASE_RS_VAL_FS   = Screen:scaleBySize(14)
+local _BASE_RS_CARD_H   = Screen:scaleBySize(120)
+local _BASE_RS_VAL_FS   = Screen:scaleBySize(22)
+local _BASE_RS_ROW_H    = Screen:scaleBySize(28)  -- compact single-row height
+local _BASE_RS_ROW_FS   = Screen:scaleBySize(11)  -- font size for row mode
 local _BASE_RS_LBL_FS   = Screen:scaleBySize(8)
 local _BASE_RS_SEP_W    = Screen:scaleBySize(1)
 local _BASE_RS_PH_FS    = Screen:scaleBySize(11)  -- placeholder "No stats" text
@@ -67,9 +69,24 @@ local STAT_MAP = {
     total_books = { display_label = _("All time — Books"),  value = function(s) return tostring(s.total_books) end, label = _("books finished") },
     streak      = { display_label = _("Streak"),            value = function(s) return tostring(s.streak) end,
                     label_fn = function(s) return s.streak == 1 and _("day streak") or _("days streak") end },
+    hardcover_goal = {
+        display_label = _("Hardcover — Goal"),
+        value = function(s)
+            if not s._hc_goal then return "—" end
+            local g = s._hc_goal
+            local progress = g.progress or 0
+            local target   = g.goal or 0
+            return string.format("%d%%", math.floor(math.min(1, (target > 0 and progress/target or 0)) * 100))
+        end,
+        label_fn = function(s)
+            if not s._hc_goal then return _("no goal synced") end
+            local g = s._hc_goal
+            return string.format("%d / %d böcker", g.progress or 0, g.goal or 0)
+        end,
+    },
 }
 
-local STAT_POOL = { "today_time","today_pages","avg_time","avg_pages","total_time","total_books","streak" }
+local STAT_POOL = { "today_time","today_pages","avg_time","avg_pages","total_time","total_books","streak","hardcover_goal" }
 
 -- Pre-sort the pool alphabetically by display label — done once at module load,
 -- not on every menu open.
@@ -165,6 +182,14 @@ local function fetchAllStats(shared_conn)
     local SH = require("desktop_modules/module_books_shared")
     r.total_books = SH.countMarkedRead()
 
+    -- Attach cached Hardcover goal if available, and trigger a background
+    -- refresh if stale — works even when the Hardcover module is not on screen.
+    local ok_hc, hc_mod = pcall(require, "desktop_modules/module_hardcover")
+    if ok_hc and hc_mod then
+        if hc_mod._getCached  then r._hc_goal = hc_mod._getCached() end
+        if hc_mod.ensureFresh then hc_mod.ensureFresh() end
+    end
+
     return r
 end
 
@@ -234,7 +259,7 @@ local function buildStatFlatWidget(card_w, stat_id, stats, d)
         radius     = d.corner_r,
         padding    = 0,
         CenterContainer:new{
-            dimen = Geom:new{ w = card_w, h = d.card_h },
+            dimen = Geom:new{ w = card_w, h = d.card_h - 14 },
             VerticalGroup:new{ align = "center",
                 TextWidget:new{
                     text    = val_str,
@@ -377,7 +402,35 @@ function M.build(w, ctx)
     local mode   = getType(ctx.pfx)
     local row    = HorizontalGroup:new{ align = "center" }
 
-    if mode == "list" then
+    -- migrate old "compact" setting to "flat"
+    if mode == "compact" then mode = "flat" end
+
+    if mode == "row" then
+        local row_h  = math.max(16, math.floor(_BASE_RS_ROW_H * scale))
+        local row_fs = math.max(8,  math.floor(_BASE_RS_ROW_FS * scale))
+        local parts = {}
+        for i = 1, n do
+            local entry = STAT_MAP[stat_ids[i]]
+            if entry then
+                parts[#parts+1] = entry.value(stats) .. " " .. (entry.label_fn and entry.label_fn(stats) or entry.label)
+            end
+        end
+        local content = TextWidget:new{
+            text    = table.concat(parts, "  ·  "),
+            face    = Font:getFace("cfont", row_fs),
+            fgcolor = _CLR_TEXT_BLK,
+            width   = w - PAD * 4,
+        }
+        local tappable = InputContainer:new{
+            dimen = Geom:new{ w = w, h = row_h },
+            CenterContainer:new{ dimen = Geom:new{ w = w, h = row_h }, content },
+        }
+        tappable.ges_events = { TapStatsRow = { GestureRange:new{ ges = "tap", range = function() return tappable.dimen end } } }
+        function tappable:onTapStatsRow() openReaderProgress(); return true end
+        return FrameContainer:new{
+            dimen = Geom:new{ w = w, h = row_h }, bordersize = 0, padding = 0, tappable,
+        }
+    elseif mode == "list" then
         local cell_w = math.floor(w / n)
         for i = 1, n do
             local cell = buildStatListCell(cell_w, stat_ids[i], stats, i < n, d)
@@ -439,9 +492,15 @@ function M.build(w, ctx)
     end
 end
 
-function M.getHeight(_ctx)
-    local card_h = math.floor(_BASE_RS_CARD_H * Config.getModuleScale("reading_stats", _ctx and _ctx.pfx))
-    return card_h
+function M.getHeight(ctx)
+    local pfx   = ctx and ctx.pfx
+    local mode  = getType(pfx)
+    if mode == "compact" then mode = "flat" end
+    local scale = Config.getModuleScale("reading_stats", pfx)
+    if mode == "row" then
+        return math.max(16, math.floor(_BASE_RS_ROW_H * scale))
+    end
+    return math.floor(_BASE_RS_CARD_H * scale)
 end
 
 
@@ -504,7 +563,7 @@ function M.getMenuItems(ctx_menu)
                     text           = _lc("Flat"),
                     radio          = true,
                     keep_menu_open = true,
-                    checked_func   = function() return getType(pfx) == "flat" end,
+                    checked_func   = function() return getType(pfx) == "flat" or getType(pfx) == "compact" end,
                     callback       = function()
                         G_reader_settings:saveSetting(pfx .. SETTING_TYPE, "flat")
                         refresh()
@@ -517,6 +576,16 @@ function M.getMenuItems(ctx_menu)
                     checked_func   = function() return getType(pfx) == "list" end,
                     callback       = function()
                         G_reader_settings:saveSetting(pfx .. SETTING_TYPE, "list")
+                        refresh()
+                    end,
+                },
+                {
+                    text           = _lc("Row"),
+                    radio          = true,
+                    keep_menu_open = true,
+                    checked_func   = function() return getType(pfx) == "row" end,
+                    callback       = function()
+                        G_reader_settings:saveSetting(pfx .. SETTING_TYPE, "row")
                         refresh()
                     end,
                 },

@@ -268,8 +268,6 @@ function SimpleUIPlugin:onCloseDocument()
     if currently_active then
         if HS._instance then HS._instance._cached_books_state = nil end
         HS._cached_books_state = nil
-        local ok_mc, MC = pcall(require, "desktop_modules/module_currently")
-        if ok_mc and MC and MC.invalidateCache then MC.invalidateCache() end
         needs_refresh = true
     end
     if not needs_refresh then return end

@@ -175,35 +175,27 @@ local function fetchBookStats(md5, shared_conn, force_fresh)
 
     local result = nil
     local ok, err = pcall(function()
-        -- Single query returns days, total time, and capped avg_time.
-        -- Capped avg mirrors KOReader's STATISTICS_SQL_BOOK_CAPPED_TOTALS_QUERY:
-        -- each page's total duration is capped at _MAX_SEC before averaging.
-        --
-        -- Previous JOIN approach was wrong: joining page_stat with the capped
-        -- subquery on page number multiplied each page's capped duration by the
-        -- number of page_stat rows for that page, inflating avg_time.
-        -- Fix: sum capped durations directly from the per-page subquery (one row
-        -- per page), using scalar subqueries for days and total_secs.
+        -- FIX 1: single query returns days, total time, and capped avg_time.
+        -- The capped-average subquery (min per-page sum, max _MAX_SEC) mirrors
+        -- STATISTICS_SQL_BOOK_CAPPED_TOTALS_QUERY from ReaderStatistics so the
+        -- "time remaining" estimate is consistent with the Statistics plugin.
         local row = conn:exec(string.format([[
             SELECT
-                (SELECT count(DISTINCT date(ps2.start_time, 'unixepoch', 'localtime'))
-                 FROM page_stat ps2
-                 JOIN book b2 ON b2.id = ps2.id_book
-                 WHERE b2.md5 = %q),
-                (SELECT sum(ps3.duration)
-                 FROM page_stat ps3
-                 JOIN book b3 ON b3.id = ps3.id_book
-                 WHERE b3.md5 = %q),
-                count(*),
-                sum(min_dur)
-            FROM (
-                SELECT min(sum(ps.duration), %d) AS min_dur
-                FROM page_stat ps
-                JOIN book ON book.id = ps.id_book
-                WHERE book.md5 = %q
-                GROUP BY ps.page
-            );
-        ]], md5, md5, _MAX_SEC, md5))
+                count(DISTINCT date(ps.start_time, 'unixepoch', 'localtime')),
+                sum(ps.duration),
+                count(DISTINCT capped.page),
+                sum(capped.min_dur)
+            FROM page_stat ps
+            JOIN book ON book.id = ps.id_book
+            JOIN (
+                SELECT ps2.page, min(sum(ps2.duration), %d) AS min_dur
+                FROM page_stat ps2
+                JOIN book b2 ON b2.id = ps2.id_book
+                WHERE b2.md5 = %q
+                GROUP BY ps2.page
+            ) capped ON capped.page = ps.page
+            WHERE book.md5 = %q;
+        ]], _MAX_SEC, md5, md5))
 
         if row and row[1] and row[1][1] then
             local days   = tonumber(row[1][1]) or 0
@@ -327,11 +319,8 @@ function M.onBookClosed(ctx, fp)
     _bstats_cache = {}
 end
 
-function M.invalidateCache()
-    _bstats_cache = {}
-end
-
 function M.build(w, ctx)
+    Config.applyLabelToggle(M, _("Currently Reading"))
     if not ctx.current_fp then return nil end
 
     local SH = getSH()
@@ -481,14 +470,10 @@ function M.build(w, ctx)
             meta_has_content = true
 
         elseif elem == "book_remaining" and show.remain then
-            -- Prefer the capped avg from fetchBookStats (mirrors KOReader's
-            -- STATISTICS_SQL_BOOK_CAPPED_TOTALS_QUERY, max 120 s/page).
-            -- bd.avg_time from Source 2 is uncapped and will over-estimate
-            -- remaining time when any page had a long idle pause.
-            -- bd.avg_time from Source 1 (live session) is already capped by
-            -- KOReader Statistics, so using bstats is safe in all cases.
-            local avg_t = (bstats and bstats.avg_time and bstats.avg_time > 0)
-                          and bstats.avg_time or bd.avg_time
+            local avg_t = bd.avg_time
+            if (not avg_t or avg_t <= 0) and bstats and bstats.avg_time then
+                avg_t = bstats.avg_time
+            end
             if avg_t and avg_t > 0 and bd.pages and bd.pages > 0 then
                 local pages_left = bd.pages * (1 - (bd.percent or 0))
                 local secs_left  = math.floor(avg_t * pages_left)
@@ -755,6 +740,7 @@ function M.getMenuItems(ctx_menu)
     }
 
     return {
+        Config.makeLabelToggleItem("currently", _("Currently Reading"), refresh, _lc),
         _makeScaleItem(ctx_menu),
         _makeTextScaleItem(ctx_menu),
         thumb,

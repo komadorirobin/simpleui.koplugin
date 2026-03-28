@@ -275,15 +275,11 @@ function M.getTopbarInfo()
             info.disk = _topbar_disk_text; return
         end
         local ok_util, util = pcall(require, "util")
-        if not ok_util or not util or type(util.diskUsage) ~= "function" then return end
-        -- Device.home_dir is set per-device: /mnt/onboard (Kobo), /mnt/us (Kindle),
-        -- /mnt/public (Cervantes), /mnt/ext1 (PocketBook), /home/root (Remarkable),
-        -- android.getExternalStoragePath() (Android), $HOME (SDL/desktop).
-        -- Falls back to "/" if home_dir is nil (e.g. Sony PRSTUX).
-        local drive = Device.home_dir or "/"
-        local ok_df, usage = pcall(util.diskUsage, drive)
-        if ok_df and usage and type(usage.available) == "number" and usage.available > 0 then
-            local text = string.format("%.1fG", usage.available / 1024 / 1024 / 1024)
+        if not ok_util or not util or type(util.df) ~= "function" then return end
+        local drive = Device:isKobo() and "/mnt/onboard" or "/"
+        local ok_df, free_kb = pcall(util.df, drive)
+        if ok_df and free_kb and free_kb > 0 then
+            local text = string.format("%.1fG", free_kb / 1024 / 1024)
             _topbar_disk_text = text
             _topbar_disk_time = now
             info.disk         = text
@@ -310,15 +306,17 @@ function M.buildTopbarWidget()
 
     local item_builders = {
         clock = function()
-            return nil, info.time, false
+            local t      = os.date("*t")
+            local days   = { "sön", "mån", "tis", "ons", "tors", "fre", "lör" }
+            local months = { "jan", "feb", "mar", "apr", "maj", "jun",
+                             "jul", "aug", "sep", "okt", "nov", "dec" }
+            local date_str = string.format("  %s %d %s", days[t.wday], t.day, months[t.month])
+            return nil, info.time .. date_str, false
         end,
         wifi = function()
             if info.wifi then
                 return "\u{ECA8}", nil, true   -- ícone wifi ligado
             elseif hwHasWifi() then
-                if Config.getWifiHideWhenOff() then
-                    return nil, nil             -- esconde quando desligado
-                end
                 return "\u{ECA9}", nil, true   -- ícone wifi desligado
             end
             return nil, nil
