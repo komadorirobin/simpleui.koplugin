@@ -958,3 +958,18 @@ msgstr "Kort"
 msgid "Row"
 msgstr "Rad"
 
+msgid "Stats layout"
+msgstr "Statistiklayout"
+
+msgid "%s left"
+msgstr "%s kvar"
+
+msgid "1 day of reading"
+msgstr "1 dag med läsning"
+
+msgid "%d days of reading"
+msgstr "%d dagar med läsning"
+
+msgid "~%d:%02d"
+msgstr "~%d:%02d"
+
