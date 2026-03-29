@@ -241,8 +241,11 @@ function M.patchFileManagerClass(plugin)
             local new_active = M._resolveTabForPath(new_path, t) or "home"
             plugin.active_action = new_active
             if this._navbar_container then
+                logger.info("simpleui onPathChanged: replaceBar START path=" .. tostring(new_path))
                 Bottombar.replaceBar(this, Bottombar.buildBarWidget(new_active, t), t)
+                logger.info("simpleui onPathChanged: replaceBar DONE")
                 UIManager:setDirty(this, "ui")
+                logger.info("simpleui onPathChanged: setDirty DONE")
             end
             plugin:_updateFMHomeIcon()
         end
@@ -1200,10 +1203,13 @@ function M.patchMenuForNavpager(plugin)
                 local mode    = Config.getNavbarMode()
                 local new_bar = Bottombar.buildBarWidgetWithArrows(
                     plugin.active_action, tabs, mode, has_prev, has_next)
-                logger.dbg("simpleui tz: updatePageInfo replaceBar target=", tostring(target.name))
+                logger.info("simpleui navpager: updatePageInfo replaceBar START target=" .. tostring(target.name))
                 Bottombar.replaceBar(target, new_bar, tabs)
+                logger.info("simpleui navpager: updatePageInfo replaceBar DONE")
             end
+            logger.info("simpleui navpager: updatePageInfo setDirty START")
             UIManager:setDirty(target, "ui")
+            logger.info("simpleui navpager: updatePageInfo setDirty DONE")
         end)
     end
 
@@ -1286,7 +1292,10 @@ function M.patchMenuForNavpager(plugin)
             -- In a subfolder: let the original write the path.
             -- Guard against nil in case KOReader renamed/removed this method.
             if orig_updateTitleBarPath then
+                local logger_tb = require("logger")
+                logger_tb.info("simpleui updateTitleBarPath: calling orig path=" .. tostring(path))
                 orig_updateTitleBarPath(fm_self, path)
+                logger_tb.info("simpleui updateTitleBarPath: orig returned")
             elseif tb and tb.subtitle_widget and path then
                 tb:setSubTitle(path)
             end
