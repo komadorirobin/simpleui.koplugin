@@ -67,8 +67,6 @@ end
 
 function M.invalidateDimCache()
     _dim = {}
-    _vspan_icon_top = nil
-    _vspan_icon_txt = nil
     _old_touch_zones = nil
 end
 
@@ -157,11 +155,6 @@ function M.getTabWidths(num_tabs, usable_w)
     return _tab_widths_cache
 end
 
--- VerticalSpan singletons — created once per layout, reused across all tab cell renders.
--- Cleared by invalidateDimCache() on screen resize.
-local _vspan_icon_top = nil
-local _vspan_icon_txt = nil
-
 -- Builds one tab cell: separator, active indicator, icon and/or label.
 function M.buildTabCell(action_id, active, tab_w, mode)
     local action          = Config.getActionById(action_id)
@@ -176,8 +169,7 @@ function M.buildTabCell(action_id, active, tab_w, mode)
         dimen      = Geom:new{ w = tab_w, h = M.INDIC_H() },
         background = indicator_color,
     }
-    if not _vspan_icon_top then _vspan_icon_top = VerticalSpan:new{ width = M.ICON_TOP_SP() } end
-    vg[#vg + 1] = _vspan_icon_top
+    vg[#vg + 1] = VerticalSpan:new{ width = M.ICON_TOP_SP() }
 
     if mode == "icons" or mode == "both" then
         local nerd_char = Config.nerdIconChar(action.icon)
@@ -208,8 +200,7 @@ function M.buildTabCell(action_id, active, tab_w, mode)
 
     if mode == "text" or mode == "both" then
         if mode == "both" then
-            if not _vspan_icon_txt then _vspan_icon_txt = VerticalSpan:new{ width = M.ICON_TXT_SP() } end
-            vg[#vg + 1] = _vspan_icon_txt
+            vg[#vg + 1] = VerticalSpan:new{ width = M.ICON_TXT_SP() }
         end
         vg[#vg + 1] = TextWidget:new{
             text    = action.label,
@@ -258,8 +249,7 @@ function M.buildNavpagerArrowCell(is_prev, enabled, tab_w, mode)
         dimen      = Geom:new{ w = tab_w, h = M.INDIC_H() },
         background = Blitbuffer.COLOR_WHITE,
     }
-    if not _vspan_icon_top then _vspan_icon_top = VerticalSpan:new{ width = M.ICON_TOP_SP() } end
-    vg[#vg + 1] = _vspan_icon_top
+    vg[#vg + 1] = VerticalSpan:new{ width = M.ICON_TOP_SP() }
 
     -- References to mutable widgets stored on the CenterContainer so
     -- updateNavpagerArrows can mutate them in-place without tree traversal.
@@ -280,8 +270,7 @@ function M.buildNavpagerArrowCell(is_prev, enabled, tab_w, mode)
 
     if mode == "text" or mode == "both" then
         if mode == "both" then
-            if not _vspan_icon_txt then _vspan_icon_txt = VerticalSpan:new{ width = M.ICON_TXT_SP() } end
-            vg[#vg + 1] = _vspan_icon_txt
+            vg[#vg + 1] = VerticalSpan:new{ width = M.ICON_TXT_SP() }
         end
         tw = TextWidget:new{
             text    = label,
