@@ -744,14 +744,20 @@ function M.patchUIManagerShow(plugin)
         -- where touch zones have no arrow but the visual still shows one.
         local widget_is_pageable = (type(widget.page_num) == "number")
                 or (widget.file_chooser and type(widget.file_chooser.page_num) == "number")
+        logger.info("simpleui: inject wrapWithNavbar START name=" .. tostring(widget.name))
         local navbar_container, wrapped, bar, topbar, bar_idx, topbar_on, topbar_idx =
             UI.wrapWithNavbar(widget._navbar_inner, display_action, tabs,
                 not widget_is_pageable)
+        logger.info("simpleui: inject wrapWithNavbar DONE — applyNavbarState next")
         UI.applyNavbarState(widget, navbar_container, bar, topbar, bar_idx, topbar_on, topbar_idx, tabs)
+        logger.info("simpleui: inject applyNavbarState DONE")
         widget._navbar_prev_action = action_before
         widget[1]                  = wrapped
+        logger.info("simpleui: inject widget[1] set")
         plugin:_registerTouchZones(widget)
+        logger.info("simpleui: inject touchZones registered")
         UI.applyGesturePriorityHandleEvent(widget)
+        logger.info("simpleui: inject gesturePriority applied")
 
         -- Register top-of-screen tap/swipe zones to open the KOReader main menu,
         -- mirroring FileManagerMenu:initGesListener for all injected pages.
@@ -805,12 +811,14 @@ function M.patchUIManagerShow(plugin)
         if rb and rb[1] then rb[1].width = UI.SIDE_M() end
 
         Bottombar.resizePaginationButtons(widget, Bottombar.getPaginationIconSize())
+        logger.info("simpleui: inject resizePagination DONE — orig_show next")
 
         if n_extra > 0 then
             orig_show(um_self, widget, table.unpack(extra_args))
         else
             orig_show(um_self, widget)
         end
+        logger.info("simpleui: inject orig_show DONE")
         UIManager:setDirty(widget[1], "ui")
 
         -- Navpager: schedule an arrow update for the next event-loop cycle.

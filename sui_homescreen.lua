@@ -922,14 +922,17 @@ function HomescreenWidget:onShow()
     if self._navbar_container then
         local old = self._navbar_container[1]
         local new = self:_buildContent()
+        logger.info("simpleui: HS onShow _buildContent DONE")
         -- Preserve the overlap_offset set by wrapWithNavbar so the content
         -- is correctly positioned below the topbar (offset = {0, topbar_h}).
         if old and old.overlap_offset then
             new.overlap_offset = old.overlap_offset
         end
         self._navbar_container[1] = new
+        logger.info("simpleui: HS onShow container[1] replaced")
     end
     UIManager:setDirty(self, "ui")
+    logger.info("simpleui: HS onShow setDirty DONE")
     self:_scheduleClockRefresh()
     -- Start the module_clock timer if the clock module is active.
     local ClockMod = Registry.get("clock")

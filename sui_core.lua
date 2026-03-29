@@ -184,10 +184,12 @@ function M.wrapWithNavbar(inner_widget, active_action_id, tabs, force_no_arrows)
     local bar
     if navbar_on then
         bar = Bottombar.buildBarWidget(active_action_id, tabs)
+        logger.info("simpleui: wrapWithNavbar bar built")
     end
     -- Build topbar only once — wrapWithNavbar is the single point of construction.
     -- Callers must NOT call buildTopbarWidget() again after wrapWithNavbar returns.
     local topbar = topbar_on and Topbar.buildTopbarWidget() or nil
+    logger.info("simpleui: wrapWithNavbar topbar built (topbar_on=" .. tostring(topbar_on) .. ")")
 
     inner_widget.overlap_offset = { 0, topbar_top }
     if inner_widget.dimen then
@@ -231,6 +233,7 @@ function M.wrapWithNavbar(inner_widget, active_action_id, tabs, force_no_arrows)
 
     local topbar_idx       = topbar_on and #overlap_items or nil
     local navbar_container = OverlapGroup:new(overlap_items)
+    logger.info("simpleui: wrapWithNavbar OverlapGroup built")
 
     return navbar_container,
            FrameContainer:new{
