@@ -195,6 +195,7 @@ function M.buildTabCell(action_id, active, tab_w, mode)
                 },
             }
         else
+            logger.info("simpleui: tab icon render: " .. tostring(action.icon))
             vg[#vg + 1] = ImageWidget:new{
                 file    = action.icon,
                 width   = M.ICON_SZ(),

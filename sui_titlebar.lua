@@ -346,7 +346,7 @@ function M.apply(fm_self)
                 if tb_self.right_button and tb_self.right_button.image then
                     tb_self.right_button.image.file = Config.ICON.ko_menu
                     pcall(tb_self.right_button.image.free, tb_self.right_button.image)
-                    pcall(tb_self.right_button.image.init, tb_self.right_button.image)
+                    tb_self.right_button.image._bb = nil  -- force lazy re-render at next paint
                 end
                 UIManager:setDirty(tb_self.show_parent, "ui", tb_self.dimen)
             end
@@ -355,9 +355,11 @@ function M.apply(fm_self)
 
         if show_menu then
             if rb.image then
+                local logger = require("logger")
+                logger.info("simpleui: titlebar menu icon: " .. tostring(Config.ICON.ko_menu))
                 rb.image.file = Config.ICON.ko_menu
                 pcall(rb.image.free, rb.image)
-                pcall(rb.image.init, rb.image)
+                rb.image._bb = nil  -- force lazy re-render at next paint
             end
             placeBtn("menu_button", rb)
         else
