@@ -1048,13 +1048,6 @@ function HomescreenWidget:onCloseWidget()
     -- down before onCloseWidget fires. On the next open, getCoverBB will
     -- re-scale from the BIM's fresh bitmaps.
     Config.clearCoverCache()
-    -- Free quotes if header is not in quote mode.
-    pcall(function()
-        local ok, MH = pcall(require, "desktop_modules/module_header")
-        if ok and MH and type(MH.freeQuotesIfUnused) == "function" then
-            MH.freeQuotesIfUnused()
-        end
-    end)
 
     -- Always clear the singleton — the widget is always destroyed on close.
     -- Homescreen.show() creates a fresh widget each time, passing in the
