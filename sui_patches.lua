@@ -239,7 +239,19 @@ function M.patchFileManagerClass(plugin)
         -- Screen rotation constants: 0 = portrait, 1 = landscape-left,
         -- 2 = portrait-inverted, 3 = landscape-right.
         fm_self.onSetRotationMode = function(_self, mode)
-            if mode ~= 0 then return true end  -- block; portrait passes through
+            local ok, err = pcall(function()
+                if mode ~= 0 then
+                    -- Hardware forçou rotação — invalidar cache antes de bloquear
+                    -- para evitar que onScreenResize use dimensões stale.
+                    local BB = require("sui_bottombar")
+                    BB.invalidateDimCache()
+                    return
+                end
+            end)
+            if not ok then
+                require("logger").warn("simpleui: onSetRotationMode blocked with error:", tostring(err))
+            end
+            return true  -- bloqueia sempre em caso de erro; portrait regressa normalmente
         end
 
         -- onPathChanged: update the active tab when the user navigates directories.

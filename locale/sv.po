@@ -189,6 +189,9 @@ msgstr "avslutade böcker"
 msgid "daily avg (7 days)"
 msgstr "dagligt snitt (7 dagar)"
 
+msgid "1 day of reading"
+msgstr "1 dag med läsning"
+
 msgid "day streak"
 msgstr "dag i rad"
 
@@ -266,6 +269,9 @@ msgstr "december"
 
 msgid "My Highlights"
 msgstr "Mina markeringar"
+
+msgid "Your highlights"
+msgstr "Dina markeringar"
 
 msgid "Quotes + My Highlights"
 msgstr "Citat + mina markeringar"
@@ -368,6 +374,39 @@ msgstr "Moduler"
 
 msgid "Scale"
 msgstr "Skala"
+
+msgid "Scale for all text elements (title, author, progress, time).\n100% is the default size."
+msgstr "Skala för alla textelement (titel, författare, förlopp, tid).\n100% är standardstorleken."
+
+msgid "Scale for the button label text.\n100% is the default size."
+msgstr "Skala för knappetikettstext.\n100% är standardstorleken."
+
+msgid "Scale for the collection name text.\n100% is the default size."
+msgstr "Skala för samlingsnamntext.\n100% är standardstorleken."
+
+msgid "Scale for the collection thumbnails only.\nThe label text follows the module scale.\n100% is the default size."
+msgstr "Skala för samlingarnas miniatyrbilder.\nEtiketttexten följer modulskalan.\n100% är standardstorleken."
+
+msgid "Scale for the cover thumbnail only.\n100% is the default size."
+msgstr "Skala för omslagsminiatyrbilden.\n100% är standardstorleken."
+
+msgid "Scale for the cover thumbnails only.\nText and progress bar follow the module scale.\n100% is the default size."
+msgstr "Skala för omslagsminiatyrer.\nText och förloppsindikator följer modulskalan.\n100% är standardstorleken."
+
+msgid "Scale for the label text.\n100% is the default size."
+msgstr "Skala för etikettstext.\n100% är standardstorleken."
+
+msgid "Scale for the percentage read text.\n100% is the default size."
+msgstr "Skala för procenttext.\n100% är standardstorleken."
+
+msgid "Scale for this module.\n100% is the default size."
+msgstr "Skala för denna modul.\n100% är standardstorleken."
+
+msgid "Scales all modules and labels together.\n100% is the default size."
+msgstr "Skalar alla moduler och etiketter tillsammans.\n100% är standardstorleken."
+
+msgid "Scales the section label text above each module.\n100% is the default size."
+msgstr "Skalar sektionsetiketttexten ovanför varje modul.\n100% är standardstorleken."
 
 msgid "Show label"
 msgstr "Visa etiketten"
@@ -666,6 +705,21 @@ msgstr "Moduler  (%d/%d — vid gränsen)"
 msgid "Name"
 msgstr "Namn"
 
+msgid "disabled"
+msgstr "inaktiverad"
+
+msgid "enabled"
+msgstr "aktiverad"
+
+msgid "hidden"
+msgstr "dold"
+
+msgid "not configured"
+msgstr "ej konfigurerad"
+
+msgid "visible"
+msgstr "synlig"
+
 msgid "Navpager will be %s after restart.\n\nRestart now?"
 msgstr "Navpager kommer vara %s efter omstart.\n\nOmstarta nu?"
 
@@ -774,6 +828,9 @@ msgstr "Välj minst 2 samlingar för att arrangera."
 msgid "Show Date"
 msgstr "Visa datum"
 
+msgid "Space below the bottom navigation bar.\n100% is the default spacing."
+msgstr "Utrymme under navigationsraden.\n100% är standardavståndet."
+
 msgid "Simple UI was updated (%s \xe2\x86\x92 %s).\n\nA restart is recommended to apply all changes cleanly."
 msgstr "Simple UI uppdaterades (%s → %s).\n\nEn omstart rekommenderas för att alla ändringar ska tillämpas korrekt."
 
@@ -803,6 +860,12 @@ msgstr "Statistik"
 
 msgid "Status Bar"
 msgstr "Statusfält"
+
+msgid "Visible"
+msgstr "Synlig"
+
+msgid "visible"
+msgstr "synlig"
 
 msgid "Sub-pages Buttons"
 msgstr "Undersidesknappar"
@@ -964,12 +1027,8 @@ msgstr "Statistiklayout"
 msgid "%s left"
 msgstr "%s kvar"
 
-msgid "1 day of reading"
-msgstr "1 dag med läsning"
-
 msgid "%d days of reading"
 msgstr "%d dagar med läsning"
 
 msgid "~%d:%02d"
 msgstr "~%d:%02d"
-

@@ -174,7 +174,11 @@ local function fetchAllStats(shared_conn)
                 ELSE 0 END;]], start_today))
         r.streak = tonumber(streak_val) or 0
     end)
-    if not ok then logger.warn("simpleui: reading_stats: fetchAllStats failed: " .. tostring(err)) end
+    if not ok then logger.warn("simpleui: reading_stats: fetchAllStats failed: " .. tostring(err))
+        if shared_conn and Config.isFatalDbError(err) then
+            r._db_conn_fatal = true
+        end
+    end
     if own_conn then pcall(function() conn:close() end) end
 
     -- Count finished books via sidecar status — uses the shared DocSettings
@@ -231,13 +235,13 @@ local function buildStatCardWidget(card_w, stat_id, stats, d)
             VerticalGroup:new{ align = "center",
                 TextWidget:new{
                     text    = val_str,
-                    face    = Font:getFace("smallinfofont", d.val_fs),
+                    face    = d.face_val,
                     bold    = true,
                     fgcolor = _CLR_TEXT_BLK,
                 },
                 TextWidget:new{
                     text    = lbl_str,
-                    face    = Font:getFace("cfont", d.lbl_fs),
+                    face    = d.face_lbl,
                     fgcolor = CLR_TEXT_SUB,
                 },
             },
@@ -263,13 +267,13 @@ local function buildStatFlatWidget(card_w, stat_id, stats, d)
             VerticalGroup:new{ align = "center",
                 TextWidget:new{
                     text    = val_str,
-                    face    = Font:getFace("smallinfofont", d.val_fs),
+                    face    = d.face_val,
                     bold    = true,
                     fgcolor = _CLR_TEXT_BLK,
                 },
                 TextWidget:new{
                     text    = lbl_str,
-                    face    = Font:getFace("cfont", d.lbl_fs),
+                    face    = d.face_lbl,
                     fgcolor = CLR_TEXT_SUB,
                 },
             },
@@ -292,13 +296,13 @@ local function buildStatListCell(cell_w, stat_id, stats, show_sep, d)
             VerticalGroup:new{ align = "left",
                 TextWidget:new{
                     text    = val_str,
-                    face    = Font:getFace("smallinfofont", d.val_fs),
+                    face    = d.face_val,
                     bold    = true,
                     fgcolor = _CLR_TEXT_BLK,
                 },
                 TextWidget:new{
                     text    = lbl_str,
-                    face    = Font:getFace("cfont", d.lbl_fs),
+                    face    = d.face_lbl,
                     fgcolor = CLR_TEXT_SUB,
                 },
             },
@@ -374,14 +378,22 @@ function M.build(w, ctx)
     -- Compute all scaled dims once for this render pass.
     local scale     = Config.getModuleScale("reading_stats", ctx and ctx.pfx)
     local text_scale = scale * (Config.getRSTextScalePct() / 100)
+    local _val_fs = math.max(8, math.floor(_BASE_RS_VAL_FS * text_scale))
+    local _lbl_fs = math.max(6, math.floor(_BASE_RS_LBL_FS * text_scale))
+    local _ph_fs  = math.max(8, math.floor(_BASE_RS_PH_FS  * scale))
     local d = {
         card_h   = math.floor(_BASE_RS_CARD_H   * scale),
         gap      = math.max(2, math.floor(_BASE_RS_GAP      * scale)),
         corner_r = math.floor(_BASE_RS_CORNER_R  * scale),
-        val_fs   = math.max(8, math.floor(_BASE_RS_VAL_FS   * text_scale)),
-        lbl_fs   = math.max(6, math.floor(_BASE_RS_LBL_FS   * text_scale)),
+        val_fs   = _val_fs,
+        lbl_fs   = _lbl_fs,
         sep_w    = math.max(1, math.floor(_BASE_RS_SEP_W    * scale)),
-        ph_fs    = math.max(8, math.floor(_BASE_RS_PH_FS    * scale)),
+        ph_fs    = _ph_fs,
+        -- Pre-resolved font faces — shared by all card builders, avoids
+        -- repeated Font:getFace calls inside the per-card build loop.
+        face_val = Font:getFace("smallinfofont", _val_fs),
+        face_lbl = Font:getFace("cfont",         _lbl_fs),
+        face_ph  = Font:getFace("smallinfofont", _ph_fs),
     }
 
     -- Show a placeholder when enabled but no stats have been selected yet.
@@ -390,7 +402,7 @@ function M.build(w, ctx)
             dimen = Geom:new{ w = w, h = d.card_h },
             TextWidget:new{
                 text    = _("No stats selected"),
-                face    = Font:getFace("smallinfofont", d.ph_fs),
+                face    = d.face_ph,
                 fgcolor = CLR_TEXT_SUB,
                 width   = w - PAD * 2,
             },
@@ -399,6 +411,7 @@ function M.build(w, ctx)
 
     local n      = math.min(#stat_ids, RS_N_COLS)
     local stats  = getStats(ctx.db_conn)
+    if stats._db_conn_fatal and ctx then ctx.db_conn_fatal = true end
     local mode   = getType(ctx.pfx)
     local row    = HorizontalGroup:new{ align = "center" }
 

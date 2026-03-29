@@ -214,25 +214,18 @@ function SimpleUIPlugin:onResume()
     -- causing the homescreen to open on wakeup instead of returning to the reader.
     local reader_active = self._simpleui_reader_was_active
     self._simpleui_reader_was_active = nil  -- consume; next suspend will repopulate
-    -- Outside the reader: invalidate stat caches and restore the Homescreen.
+    -- Outside the reader: restore the Homescreen.
+    -- RS and RG have a built-in date-key guard (_stats_cache_day): they re-query
+    -- automatically on a new calendar day and serve the in-memory cache otherwise.
+    -- Explicit invalidation here would force full SQL queries on every wakeup
+    -- even when nothing changed. Data changes from reading are handled by
+    -- onCloseDocument, which invalidates those caches before the next render.
     if not reader_active then
-        local ok_rg, RG = pcall(require, "desktop_modules/module_reading_goals")
-        if ok_rg and RG and RG.invalidateCache then RG.invalidateCache() end
-        local ok_rs, RS = pcall(require, "desktop_modules/module_reading_stats")
-        if ok_rs and RS and RS.invalidateCache then RS.invalidateCache() end
-        -- If the Homescreen is already visible, force a rebuild so the freshly
-        -- invalidated stats are reflected immediately (e.g. after marking a book
-        -- as read inside the reader and returning here).
-        -- Use keep_cache=true: book metadata has not changed during suspend, so
-        -- we preserve _cached_books_state and skip the expensive prefetchBooks()
-        -- IO (5-6 DocSettings.open calls).
-        -- If it's not visible, showHSAfterResume will open it and onShow will
-        -- run _buildContent from scratch anyway.
         local HS = package.loaded["sui_homescreen"]
         if HS and HS._instance then
             HS.refresh(true)
         end
-        -- Re-open the Homescreen on wakeup when "Start with Homescreen" is set.
+        -- Re-open the Homescreen on wakeup when \"Start with Homescreen\" is set.
         if G_reader_settings:nilOrTrue("simpleui_enabled") then
             Patches.showHSAfterResume(self)
         end
@@ -271,6 +264,15 @@ function SimpleUIPlugin:onCloseDocument()
         needs_refresh = true
     end
     if not needs_refresh then return end
+    -- Invalidate the sidecar cache entry for the book that just closed so the
+    -- next prefetchBooks() re-reads its updated sidecar (percent_finished, stats).
+    -- All other entries remain valid — they haven't changed.
+    local ok_sh, SH = pcall(require, "desktop_modules/module_books_shared")
+    if ok_sh and SH and SH.invalidateSidecarCache then
+        local rh = package.loaded["readhistory"]
+        local closed_fp = rh and rh.hist and rh.hist[1] and rh.hist[1].file
+        SH.invalidateSidecarCache(closed_fp)  -- nil flushes all; fp invalidates only that entry
+    end
     if HS._instance then
         -- If Currently Reading is active we must do a full refresh so
         -- prefetchBooks() re-reads the updated progress from the sidecar.

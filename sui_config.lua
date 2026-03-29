@@ -985,8 +985,9 @@ function M.invalidateTopbarConfigCache()
 end
 -- ---------------------------------------------------------------------------
 
-local _SQ3     = nil  -- cached ljsqlite3 module
-local _lfs_mod = nil  -- cached lfs module
+local _SQ3            = nil    -- cached ljsqlite3 module
+local _lfs_mod        = nil    -- cached lfs module
+local _indexes_created = false -- true once CREATE INDEX has run this session
 
 function M.getStatsDbPath()
     return require("datastorage"):getSettingsDir() .. "/statistics.sqlite3"
@@ -1008,7 +1009,33 @@ function M.openStatsDB()
     local db_path = M.getStatsDbPath()
     if not _lfs_mod.attributes(db_path, "mode") then return nil end
     local ok, conn = pcall(function() return _SQ3.open(db_path) end)
-    return ok and conn or nil
+    if not (ok and conn) then return nil end
+    -- Create indexes once per process lifetime. CREATE INDEX IF NOT EXISTS still
+    -- costs a schema lookup on every call, so we gate it with a module-level flag.
+    -- Only set the flag when the pcall succeeds — a corrupt DB will make it fail,
+    -- and we want to retry on the next successful open.
+    if not _indexes_created then
+        local idx_ok = pcall(function()
+            conn:exec("CREATE INDEX IF NOT EXISTS idx_simpleui_book_md5 ON book(md5);")
+            conn:exec("CREATE INDEX IF NOT EXISTS idx_simpleui_pagestat_book ON page_stat(id_book);")
+        end)
+        if idx_ok then _indexes_created = true end
+    end
+    return conn
+end
+
+-- Returns true when a ljsqlite3 error string indicates unrecoverable DB state.
+-- Used by modules to signal that the shared connection should be discarded.
+-- "corrupt"  -> SQLITE_CORRUPT  (11): on-disk structure invalid
+-- "notadb"   -> SQLITE_NOTADB   (26): file is not a database
+-- "ioerr"    -> SQLITE_IOERR    (10): I/O error reading/writing
+-- "full"     -> SQLITE_FULL     (13): disk full (writes fail, reads still work)
+-- We only flag errors where retrying queries on the same connection is pointless.
+function M.isFatalDbError(err)
+    if type(err) ~= "string" then return false end
+    return err:find("ljsqlite3%[corrupt%]", 1, false)
+        or err:find("ljsqlite3%[notadb%]",  1, false)
+        or err:find("ljsqlite3%[ioerr%]",   1, false)
 end
 
 -- ---------------------------------------------------------------------------

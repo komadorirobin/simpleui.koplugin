@@ -49,8 +49,9 @@ local _CLR_BAR_FG = Blitbuffer.gray(0.75)
 -- Vertical gaps between elements (base values at 100% scale; scaled in build()).
 local _BASE_COVER_GAP  = Screen:scaleBySize(12)  -- between cover and text column
 local _BASE_TITLE_GAP  = Screen:scaleBySize(4)   -- before title
-local _BASE_AUTHOR_GAP = Screen:scaleBySize(8)   -- before author
-local _BASE_BAR_GAP    = Screen:scaleBySize(6)   -- before progress bar
+local _BASE_AUTHOR_GAP = Screen:scaleBySize(3)   -- before author
+local _BASE_BAR_GAP_BEFORE = Screen:scaleBySize(6)   -- gap above the progress bar
+local _BASE_BAR_GAP_AFTER  = Screen:scaleBySize(10)  -- gap below the progress bar
 local _BASE_PCT_GAP    = Screen:scaleBySize(3)   -- before percent / stats rows
 
 -- Progress bar dimensions
@@ -88,19 +89,21 @@ local TITLE_MAX_LEN = 60
 local _MAX_SEC = 120
 
 -- Per-book stats cache (md5 → { days, total_secs, avg_time }).
--- Cleared by onBookClosed() when the reading session ends.
+-- Cleared by invalidateCache(), called from main.lua:onCloseDocument.
 local _bstats_cache = {}
 
 
 -- Builds a progress bar with an inline percentage label: [▓▓▓░░░░] XX%
--- bar_gap_w is applied as padding_bottom so the caller controls the gap below.
-local function buildProgressBarWithPct(w, pct, bar_h, bar_gap_w, scale, lbl_scale)
-    local fs      = math.max(7, math.floor(_BASE_INLINEPCT_FS * scale * lbl_scale))
+-- Spacing below the bar is handled by gap_before() on the next element,
+-- consistent with how every other element in the layout works.
+local function buildProgressBarWithPct(w, pct, bar_h, scale, lbl_scale, face_inline)
     local PCT_W   = math.max(16, math.floor(_BASE_PCT_W       * scale * lbl_scale))
     local GAP     = math.max(2,  math.floor(_BASE_BAR_PCT_GAP * scale))
     local bar_w   = math.max(10, w - GAP - PCT_W)
     local fw      = math.max(0, math.floor(bar_w * math.min(pct, 1.0)))
     local pct_str = string.format("%d%%", math.floor((pct or 0) * 100))
+    -- face_inline is pre-resolved by build(); fallback for direct calls.
+    local _face   = face_inline or Font:getFace("smallinfofont", math.max(7, math.floor(_BASE_INLINEPCT_FS * scale * lbl_scale)))
 
     local bar
     if fw <= 0 then
@@ -113,24 +116,17 @@ local function buildProgressBarWithPct(w, pct, bar_h, bar_gap_w, scale, lbl_scal
         }
     end
 
-    local row = HorizontalGroup:new{
+    return HorizontalGroup:new{
         align = "center",
         bar,
         HorizontalSpan:new{ width = GAP },
         TextWidget:new{
             text    = pct_str,
-            face    = Font:getFace("smallinfofont", fs),
+            face    = _face,
             bold    = true,
             fgcolor = _CLR_DARK,
             width   = PCT_W,
         },
-    }
-
-    return FrameContainer:new{
-        bordersize     = 0,
-        padding        = 0,
-        padding_bottom = bar_gap_w,
-        row,
     }
 end
 
@@ -165,12 +161,16 @@ end
 
 
 -- Fetches reading stats for a book from SQLite (days read, total time, avg time per page).
--- Results are cached by md5; pass force_fresh=true to bypass the cache after a session ends.
+-- Results are cached by md5 for the duration of the homescreen session.
+-- Cache is cleared by invalidateCache() (called from onCloseDocument) before
+-- each post-reading rebuild, so data is always fresh when it matters.
 -- Uses shared_conn when available to avoid opening a second DB connection.
-local function fetchBookStats(md5, shared_conn, force_fresh)
+-- ctx is optional: when provided and a fatal DB error occurs on the shared_conn,
+-- ctx.db_conn_fatal is set to true so the homescreen can discard the connection.
+local function fetchBookStats(md5, shared_conn, ctx)
     if not md5 then return nil end
 
-    if not force_fresh and _bstats_cache[md5] then
+    if _bstats_cache[md5] then
         return _bstats_cache[md5]
     end
 
@@ -180,26 +180,30 @@ local function fetchBookStats(md5, shared_conn, force_fresh)
 
     local result = nil
     local ok, err = pcall(function()
+        -- ps_agg accumulates per-page totals; the outer SELECT aggregates them.
+        -- sum(page_dur) replaces a correlated subquery that caused a second
+        -- full scan of page_stat on every call.
+        -- Relies on idx_simpleui_book_md5 / idx_simpleui_pagestat_book indexes
+        -- created by openStatsDB() for O(log n) lookup instead of full-table scan.
         local row = conn:exec(string.format([[
-            SELECT
-                (SELECT count(DISTINCT date(ps2.start_time, 'unixepoch', 'localtime'))
-                 FROM page_stat ps2
-                 JOIN book b2 ON b2.id = ps2.id_book
-                 WHERE b2.md5 = %q),
-                (SELECT sum(ps3.duration)
-                 FROM page_stat ps3
-                 JOIN book b3 ON b3.id = ps3.id_book
-                 WHERE b3.md5 = %q),
-                count(*),
-                sum(min_dur)
-            FROM (
-                SELECT min(sum(ps.duration), %d) AS min_dur
+            WITH b AS (
+                SELECT id FROM book WHERE md5 = %q LIMIT 1
+            ),
+            ps_agg AS (
+                SELECT ps.page,
+                       sum(ps.duration)   AS page_dur,
+                       min(ps.start_time) AS first_start
                 FROM page_stat ps
-                JOIN book ON book.id = ps.id_book
-                WHERE book.md5 = %q
+                WHERE ps.id_book = (SELECT id FROM b)
                 GROUP BY ps.page
-            );
-        ]], md5, md5, _MAX_SEC, md5))
+            )
+            SELECT
+                count(DISTINCT date(first_start, 'unixepoch', 'localtime')),
+                sum(page_dur),
+                count(*),
+                sum(min(page_dur, %d))
+            FROM ps_agg;
+        ]], md5, _MAX_SEC))
 
         if row and row[1] and row[1][1] then
             local days   = tonumber(row[1][1]) or 0
@@ -215,6 +219,11 @@ local function fetchBookStats(md5, shared_conn, force_fresh)
     end)
     if not ok then
         logger.warn("simpleui: module_currently: fetchBookStats failed: " .. tostring(err))
+        -- Signal to the homescreen that the shared connection is unusable so it
+        -- can be discarded and reopened on the next render.
+        if shared_conn and ctx and Config.isFatalDbError(err) then
+            ctx.db_conn_fatal = true
+        end
     end
     if own_conn then pcall(function() conn:close() end) end
     if result then _bstats_cache[md5] = result end
@@ -280,15 +289,7 @@ M.enabled_key = "currently"
 M.default_on  = true
 
 
--- Clears the prefetch entry and stats cache for the closed book.
-function M.onBookClosed(ctx, fp)
-    if ctx and ctx.prefetched and fp then
-        ctx.prefetched[fp] = nil
-    end
-    _bstats_cache = {}
-end
-
--- Clears the stats cache (e.g. on plugin reset).
+-- Clears the stats cache (called from main.lua:onCloseDocument before rebuild).
 function M.invalidateCache()
     _bstats_cache = {}
 end
@@ -310,12 +311,13 @@ function M.build(w, ctx)
     local D           = SH.getDims(scale, thumb_scale)
 
     -- Scale gaps (layout scale only).
-    local cover_gap  = math.max(1, math.floor(_BASE_COVER_GAP  * scale))
-    local title_gap  = math.max(1, math.floor(_BASE_TITLE_GAP  * scale))
-    local author_gap = math.max(1, math.floor(_BASE_AUTHOR_GAP * scale))
-    local bar_gap    = math.max(1, math.floor(_BASE_BAR_GAP    * scale))
-    local pct_gap    = math.max(1, math.floor(_BASE_PCT_GAP    * scale))
-    local bar_h      = math.max(1, math.floor(_BASE_BAR_H      * scale))
+    local cover_gap      = math.max(1, math.floor(_BASE_COVER_GAP      * scale))
+    local title_gap      = math.max(1, math.floor(_BASE_TITLE_GAP      * scale))
+    local author_gap     = math.max(1, math.floor(_BASE_AUTHOR_GAP     * scale))
+    local bar_gap_before = math.max(1, math.floor(_BASE_BAR_GAP_BEFORE * scale))
+    local bar_gap_after  = math.max(1, math.floor(_BASE_BAR_GAP_AFTER  * scale))
+    local pct_gap        = math.max(1, math.floor(_BASE_PCT_GAP        * scale))
+    local bar_h          = math.max(1, math.floor(_BASE_BAR_H          * scale))
 
     -- Scale font sizes (layout scale × text scale).
     local title_fs   = math.max(8, math.floor(_BASE_TITLE_FS   * scale * lbl_scale))
@@ -341,11 +343,10 @@ function M.build(w, ctx)
         remain   = _showElem(pfx, "book_remaining"),
     }
 
-    -- Skip the prefetch cache when returning from a reading session (ctx.fresh).
-    local prefetched_entry = (not ctx.fresh)
-        and ctx.prefetched
-        and ctx.prefetched[ctx.current_fp]
-    local bd    = SH.getBookData(ctx.current_fp, prefetched_entry, ctx.db_conn)
+    -- Use prefetched book data. After onCloseDocument, _cached_books_state is
+    -- cleared and prefetchBooks() re-reads the sidecar, so this is always fresh.
+    local prefetched_entry = ctx.prefetched and ctx.prefetched[ctx.current_fp]
+    local bd    = SH.getBookData(ctx.current_fp, prefetched_entry)
     local cover = SH.getBookCover(ctx.current_fp, D.COVER_W, D.COVER_H)
                   or SH.coverPlaceholder(bd.title, D.COVER_W, D.COVER_H)
 
@@ -358,25 +359,37 @@ function M.build(w, ctx)
     local bstats
     if show.days or show.time or show.remain then
         local book_md5 = prefetched_entry and prefetched_entry.partial_md5_checksum
-        bstats = fetchBookStats(book_md5, ctx.db_conn, ctx.fresh)
+        bstats = fetchBookStats(book_md5, ctx.db_conn, ctx)
     end
 
-    local bar_style = getBarStyle(pfx)
+    local bar_style   = getBarStyle(pfx)
+    local stats_style = getStatsStyle(pfx)
+
+    -- Pre-resolve the inline-pct font face once for buildProgressBarWithPct.
+    local face_inlinepct = Font:getFace("smallinfofont",
+        math.max(7, math.floor(_BASE_INLINEPCT_FS * scale * lbl_scale)))
+
+    -- Capture element order once; reused by both the main loop and compact inner loop.
+    local elem_order = _getElemOrder(pfx)
 
     -- Flag to ensure the compact stats row is rendered only once,
     -- at the position of the first visible stats element in the Arrange order.
     local _compact_stats_rendered = false
 
     -- Adds a vertical gap before the next element, but not before the first one.
+    -- _next_gap overrides the default size for exactly one call (used after the
+    -- progress bar, where bar_gap_after compensates for font metric asymmetry).
     local meta_has_content = false
+    local _next_gap        = nil
     local function gap_before(size)
         if meta_has_content then
-            meta[#meta+1] = VerticalSpan:new{ width = size }
+            meta[#meta+1] = VerticalSpan:new{ width = _next_gap or size }
         end
+        _next_gap = nil
     end
 
     -- Append each visible element to meta in user-configured order.
-    for _i, elem in ipairs(_getElemOrder(pfx)) do
+    for _i, elem in ipairs(elem_order) do
         if elem == "title" and show.title then
             gap_before(title_gap)
             meta[#meta+1] = TextBoxWidget:new{
@@ -399,13 +412,14 @@ function M.build(w, ctx)
             meta_has_content = true
 
         elseif elem == "progress" and show.progress then
-            gap_before(bar_gap)
+            gap_before(bar_gap_before)
             if bar_style == "with_pct" then
-                meta[#meta+1] = buildProgressBarWithPct(tw, bd.percent, bar_h, bar_gap, scale, lbl_scale)
+                meta[#meta+1] = buildProgressBarWithPct(tw, bd.percent, bar_h, scale, lbl_scale, face_inlinepct)
             else
                 meta[#meta+1] = SH.progressBar(tw, bd.percent, bar_h)
             end
             meta_has_content = true
+            _next_gap = bar_gap_after  -- next element uses the larger post-bar gap
 
         elseif elem == "percent" and show.percent and bar_style ~= "with_pct" then
             gap_before(pct_gap)
@@ -419,7 +433,7 @@ function M.build(w, ctx)
             meta_has_content = true
 
         elseif elem == "book_days" and show.days and bstats and bstats.days > 0
-               and getStatsStyle(pfx) == "default" then
+               and stats_style == "default" then
             gap_before(pct_gap)
             local days_label = bstats.days == 1
                 and _("1 day of reading")
@@ -433,7 +447,7 @@ function M.build(w, ctx)
             meta_has_content = true
 
         elseif elem == "book_time" and show.time and bstats and bstats.total_secs > 0
-               and getStatsStyle(pfx) == "default" then
+               and stats_style == "default" then
             gap_before(pct_gap)
             meta[#meta+1] = TextWidget:new{
                 text    = string.format(_("%s read"), fmtTime(bstats.total_secs)),
@@ -444,7 +458,7 @@ function M.build(w, ctx)
             meta_has_content = true
 
         elseif elem == "book_remaining" and show.remain
-               and getStatsStyle(pfx) == "default" then
+               and stats_style == "default" then
             -- Prefer the capped avg_time from fetchBookStats to avoid over-estimating
             -- remaining time when pages had long idle pauses.
             local avg_t = (bstats and bstats.avg_time and bstats.avg_time > 0)
@@ -465,7 +479,7 @@ function M.build(w, ctx)
             end
 
         elseif (elem == "book_days" or elem == "book_time" or elem == "book_remaining")
-               and getStatsStyle(pfx) == "compact" then
+               and stats_style == "compact" then
             -- Compact mode: single row following the Arrange Items order.
             -- Fires on the first visible stats element encountered; the others are
             -- consumed here so they don't produce a second row when the loop reaches them.
@@ -484,7 +498,7 @@ function M.build(w, ctx)
 
                 -- Build parts in Arrange Items order, walking the full element order.
                 local parts = {}
-                for _i, e in ipairs(_getElemOrder(pfx)) do
+                for _i, e in ipairs(elem_order) do
                     if e == "book_time" and show.time and bstats and bstats.total_secs > 0 then
                         parts[#parts+1] = string.format(_("%s read"), fmtTime(bstats.total_secs))
                     elseif e == "book_remaining" and show.remain and secs_left then
@@ -586,7 +600,8 @@ function M.getHeight(_ctx)
     if active_stats > 0 then
         local stats_line_h = math.max(7, math.floor(_BASE_STATS_FS * scale * lbl_scale))
         local gap          = math.max(1, math.floor(_BASE_PCT_GAP  * scale))
-        local lines = getStatsStyle(pfx) == "compact" and 1 or active_stats
+        local _stats_style = getStatsStyle(pfx)
+    local lines = _stats_style == "compact" and 1 or active_stats
         h = h + gap + stats_line_h * lines
     end
 
