@@ -351,6 +351,8 @@ end
 -- Assembles the full bottom bar FrameContainer from all tab cells.
 -- In navpager mode, calls getNavpagerState() internally.
 function M.buildBarWidget(active_action_id, tab_config, num_tabs, mode)
+    local _caller = debug.getinfo(2, "Sl")
+    logger.info("simpleui: buildBarWidget from " .. ((_caller and _caller.short_src .. ":" .. tostring(_caller.currentline)) or "?"))
     num_tabs    = num_tabs or Config.getNumTabs()
     mode        = mode     or Config.getNavbarMode()
     local screen_w = Screen:getWidth()

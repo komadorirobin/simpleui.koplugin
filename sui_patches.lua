@@ -99,20 +99,37 @@ function M.patchFileManagerClass(plugin)
             end
         end
 
+        logger.info("simpleui: setupLayout ENTRY (folder nav check)")
         orig_setupLayout(fm_self)
 
         -- Delegate all FM title-bar customisation to titlebar.lua.
         -- apply() is a no-op when the "Custom Title Bar" setting is off.
         Titlebar.apply(fm_self)
 
-        -- Keep the original inner widget reference so re-wrapping on subsequent
-        -- setupLayout calls wraps the same widget instead of the wrapper.
+        -- Determine the inner widget to wrap.
+        --
+        -- Some KOReader versions call setupLayout on every folder navigation,
+        -- not only on first FM init. Two cases arise after orig_setupLayout:
+        --
+        --   A) orig_setupLayout preserved fm_self[1] = our FrameContainer wrapper
+        --      (it only resized/updated it) → use _navbar_inner to avoid double-
+        --      wrapping the already-wrapped OverlapGroup.
+        --
+        --   B) orig_setupLayout replaced fm_self[1] with a fresh widget tree
+        --      → _navbar_inner is now stale; use the fresh fm_self[1] directly.
+        --
+        -- We tag our wrapper with _is_simpleui_wrapper=true at the end of each
+        -- setupLayout call so we can reliably distinguish the two cases here.
         local inner_widget
-        if fm_self._navbar_inner then
+        if fm_self._navbar_inner and fm_self[1] and fm_self[1]._is_simpleui_wrapper then
+            -- Case A: our wrapper is still in place, reuse stored inner widget.
             inner_widget = fm_self._navbar_inner
+            logger.info("simpleui: setupLayout Case A — wrapper preserved, reusing inner")
         else
+            -- Case B (or first call): use whatever orig_setupLayout put in fm_self[1].
             inner_widget          = fm_self[1]
             fm_self._navbar_inner = inner_widget
+            logger.info("simpleui: setupLayout Case B — using fresh fm_self[1]")
         end
 
         local tabs = Config.loadTabConfig()
@@ -121,6 +138,7 @@ function M.patchFileManagerClass(plugin)
             UI.wrapWithNavbar(inner_widget, plugin.active_action, tabs)
         UI.applyNavbarState(fm_self, navbar_container, bar, topbar, bar_idx, topbar_on2, topbar_idx, tabs)
         fm_self[1] = wrapped
+        wrapped._is_simpleui_wrapper = true   -- allows Case A detection on next setupLayout call
         fm_self._simpleui_plugin = plugin
 
         plugin:_updateFMHomeIcon()
