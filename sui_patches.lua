@@ -1284,7 +1284,12 @@ function M.patchMenuForNavpager(plugin)
             if tb and tb.subtitle_widget then tb:setSubTitle("") end
         else
             -- In a subfolder: let the original write the path.
-            orig_updateTitleBarPath(fm_self, path)
+            -- Guard against nil in case KOReader renamed/removed this method.
+            if orig_updateTitleBarPath then
+                orig_updateTitleBarPath(fm_self, path)
+            elseif tb and tb.subtitle_widget and path then
+                tb:setSubTitle(path)
+            end
         end
 
         -- Append page pagination if enabled.
