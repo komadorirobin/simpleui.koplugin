@@ -73,7 +73,6 @@ M.ICON = {
     nav_next       = _KO .. "chevron.right.svg",
 
     -- KOReader built-in icons
-    ko_folder      = _KO .. "appbar.folder.svg",
     ko_home        = _KO .. "home.svg",
     ko_star        = _KO .. "star.empty.svg",
     ko_wifi_on     = _KO .. "wifi.open.100.svg",
