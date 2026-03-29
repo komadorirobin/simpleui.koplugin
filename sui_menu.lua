@@ -1722,6 +1722,26 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                         keep_menu_open = true,
                                         callback       = function() FC.setHideUnderline(not FC.getHideUnderline()); _refreshFC() end,
                                     },
+                                    {
+                                        text           = _("Placeholder cover for empty folders"),
+                                        checked_func   = function() return FC.getSubfolderCover() end,
+                                        enabled_func   = function() return FC.isEnabled() end,
+                                        keep_menu_open = true,
+                                        hold_callback  = function()
+                                            UIManager:show(InfoMessage():new{ text = _("Show a plain placeholder cover for folders that contain no direct ebook files (subfolder-only or empty folders). Off by default.") })
+                                        end,
+                                        callback       = function() FC.setSubfolderCover(not FC.getSubfolderCover()); FC.invalidateCache(); _refreshFC() end,
+                                    },
+                                    {
+                                        text           = _("Use cover from subfolders"),
+                                        checked_func   = function() return FC.getRecursiveCover() end,
+                                        enabled_func   = function() return FC.isEnabled() and FC.getSubfolderCover() end,
+                                        keep_menu_open = true,
+                                        hold_callback  = function()
+                                            UIManager:show(InfoMessage():new{ text = _("When showing placeholder covers, search subfolders (up to 3 levels deep) for the first cached ebook cover and use it instead of the plain folder icon. Requires 'Placeholder cover for empty folders' to be on.") })
+                                        end,
+                                        callback       = function() FC.setRecursiveCover(not FC.getRecursiveCover()); FC.invalidateCache(); _refreshFC() end,
+                                    },
                                 }
                             end,
                         },

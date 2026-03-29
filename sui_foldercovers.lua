@@ -68,6 +68,9 @@ local SK = {
     overlay_pages    = "simpleui_fc_overlay_pages",
     -- Item cache
     item_cache       = "simpleui_fc_item_cache",
+    -- Subfolder cover
+    subfolder_cover  = "simpleui_fc_subfolder_cover",
+    recursive_cover  = "simpleui_fc_recursive_cover",
 }
 
 local M = {}
@@ -132,6 +135,13 @@ function M.setOverlayPages(v) _setFlag(SK.overlay_pages, v) end
 -- Item cache (default on)
 function M.getItemCache() return G_reader_settings:readSetting(SK.item_cache) ~= false end
 function M.setItemCache(v) _setFlag(SK.item_cache, v) end
+
+-- Placeholder cover for subfolder-only / empty folders (default off)
+function M.getSubfolderCover() return G_reader_settings:isTrue(SK.subfolder_cover) end
+function M.setSubfolderCover(v) _setFlag(SK.subfolder_cover, v) end
+-- Recursive cover scan (default off; requires subfolder_cover)
+function M.getRecursiveCover() return G_reader_settings:isTrue(SK.recursive_cover) end
+function M.setRecursiveCover(v) _setFlag(SK.recursive_cover, v) end
 
 -- ---------------------------------------------------------------------------
 -- Cover file discovery — identical to original patch
@@ -279,10 +289,18 @@ end
 -- Returns nil when there is no count to display or the badge is hidden.
 local function _buildBadge(mandatory, cover_dimen, cv_scale)
     if M.getBadgeHidden() then return nil end
-    local nb_text = mandatory and mandatory:match("(%d+) \u{F016}") or ""
-    if nb_text == "" or nb_text == "0" then return nil end
+    local nb_text  = mandatory and mandatory:match("(%d+) \u{F016}") or ""
+    local nb_count = tonumber(nb_text) or 0
 
-    local nb_count       = tonumber(nb_text)
+    -- No files: fall back to subfolder count
+    if nb_count == 0 then
+        local folder_text  = mandatory and mandatory:match("(%d+) \u{F114}") or ""
+        local folder_count = tonumber(folder_text) or 0
+        if folder_count == 0 then return nil end
+        nb_count = folder_count
+    end
+
+    if nb_count == 0 then return nil end
     local nb_size        = math.floor(_BASE_NB_SIZE * cv_scale)
     local nb_font_size   = math.floor(nb_size * (_BASE_NB_FS / _BASE_NB_SIZE))
     local badge_margin   = math.max(1, math.floor(_BADGE_MARGIN_BASE   * cv_scale))
@@ -533,34 +551,16 @@ local function _isBookFile(name)
     return ext and _BOOK_EXTS[ext:lower()]
 end
 
-local function _findCachedBookInSubtree(dir_path, BookInfoManager, depth)
-    if (depth or 0) > 4 then return nil end
-    local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
-    if not ok_lfs then return nil end
-    local found = nil
-    pcall(function()
-        for entry in lfs.dir(dir_path) do
-            if found then return end
-            if entry ~= "." and entry ~= ".." then
-                local fp = dir_path .. "/" .. entry
-                local mode = lfs.attributes(fp, "mode")
-                if mode == "file" and _isBookFile(entry) then
-                    local bi = BookInfoManager:getBookInfo(fp, true)
-                    if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched and not bi.ignore_cover then
-                        found = { fp = fp, w = bi.cover_w, h = bi.cover_h, data = bi.cover_bb }
-                    end
-                elseif mode == "directory" then
-                    found = _findCachedBookInSubtree(fp, BookInfoManager, (depth or 0) + 1)
-                end
-            end
-        end
-    end)
-    return found
-end
-
 -- ---------------------------------------------------------------------------
 -- Public API
 -- ---------------------------------------------------------------------------
+
+-- Scans dir_path recursively (up to max_depth levels) for the first cached
+-- book cover.  Uses genItemTableFromPath so only properly recognised book
+-- files are considered — mirrors the same guard used in the direct-scan loop.
+-- Defined inside M.install() closure so max_img_w/h and BookInfoManager are
+-- in scope; the module-level wrapper below calls the inner function.
+local _findCoverRecursive  -- forward decl
 
 function M.install()
     local MosaicMenuItem, userpatch = _getMosaicMenuItemAndPatch()
@@ -569,6 +569,35 @@ function M.install()
 
     local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
     if not ok_bim or not BookInfoManager then return end
+
+    -- Recursive cover search: scans subdirectories up to max_depth levels.
+    -- Uses menu:genItemTableFromPath so filtering / sorting matches the normal view.
+    _findCoverRecursive = function(menu, dir_path, depth, max_depth)
+        if depth > max_depth then return nil end
+        menu._dummy = true
+        local entries = menu:genItemTableFromPath(dir_path)
+        menu._dummy = false
+        if not entries then return nil end
+        -- First pass: files at this level
+        for _, entry in ipairs(entries) do
+            if entry.is_file or entry.file then
+                local bi = BookInfoManager:getBookInfo(entry.path, true)
+                if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                        and not bi.ignore_cover
+                        and not BookInfoManager.isCachedCoverInvalid(bi, menu.cover_specs) then
+                    return { data = bi.cover_bb, w = bi.cover_w, h = bi.cover_h }
+                end
+            end
+        end
+        -- Second pass: recurse into subdirectories
+        for _, entry in ipairs(entries) do
+            if not entry.is_file and not entry.file then
+                local found = _findCoverRecursive(menu, entry.path, depth + 1, max_depth)
+                if found then return found end
+            end
+        end
+        return nil
+    end
 
     -- max_img_w/max_img_h are captured in MosaicMenuItem.init before each
     -- render and used by StretchingImageWidget to enforce the 2:3 ratio on
@@ -693,8 +722,12 @@ function M.install()
         self.menu._dummy = false
         if not entries then return end
 
+        local has_files      = false
+        local has_subfolders = false
+
         for _, entry in ipairs(entries) do
             if entry.is_file or entry.file then
+                has_files = true
                 local bookinfo = BookInfoManager:getBookInfo(entry.path, true)
                 if bookinfo
                     and bookinfo.cover_bb
@@ -704,15 +737,26 @@ function M.install()
                     and not BookInfoManager.isCachedCoverInvalid(bookinfo, self.menu.cover_specs)
                 then
                     self:_setFolderCover{ data = bookinfo.cover_bb, w = bookinfo.cover_w, h = bookinfo.cover_h }
-                    break
+                    return
                 end
+            else
+                has_subfolders = true
             end
         end
 
-        -- Fallback: no cached cover found directly — search subdirectories.
-        local sub = _findCachedBookInSubtree(dir_path, BookInfoManager)
-        if sub then
-            self:_setFolderCover{ data = sub.data, w = sub.w, h = sub.h }
+        -- No direct ebook cover found.  Only proceed when the folder has no
+        -- direct ebooks (a subfolder-only or empty folder) so we don't waste
+        -- work on folders whose covers simply weren't cached yet.
+        if not has_files then
+            local cover = nil
+            if has_subfolders and M.getRecursiveCover() then
+                cover = _findCoverRecursive(self.menu, dir_path, 1, 3)
+            end
+            if cover then
+                self:_setFolderCover(cover)
+            elseif M.getSubfolderCover() then
+                self:_setEmptyFolderCover()
+            end
         end
     end
 
@@ -764,6 +808,87 @@ function M.install()
         -- width so the visible image edge aligns with regular book covers.
         local x_center = math.floor((self.width  - cover_w) / 2)
         local y_center = math.floor((self.height - cover_h) / 2)
+        local spine_offset = -math.floor(_SPINE_W / 2)
+        overlap.overlap_offset = { x_center + spine_offset, y_center }
+        local widget = OverlapGroup:new{ dimen = cell_dimen, overlap }
+
+        if self._underline_container[1] then
+            self._underline_container[1]:free()
+        end
+        self._underline_container[1] = widget
+    end
+
+    -- Placeholder cover for folders that have no direct ebook children
+    -- (subfolder-only or empty).  Renders a white rectangle with a centred
+    -- folder SVG icon, plus spine, name label and badge — consistent with
+    -- regular folder covers.
+    function MosaicMenuItem:_setEmptyFolderCover()
+        self._foldercover_processed = true
+        local border    = Size.border.thin
+        local max_img_w = self.width  - _SPINE_W - border * 2
+        local max_img_h = self.height - border * 2
+
+        local img_w, img_h
+        if M.getCoverMode() == "2_3" then
+            local ratio = 2 / 3
+            if max_img_w / max_img_h > ratio then
+                img_h = max_img_h
+                img_w = math.floor(max_img_h * ratio)
+            else
+                img_w = max_img_w
+                img_h = math.floor(max_img_w / ratio)
+            end
+        else
+            img_w = max_img_w
+            img_h = max_img_h
+        end
+
+        -- Try to load a folder icon; fall back gracefully if missing.
+        local icon_size   = math.floor(math.min(img_w, img_h) * 0.5)
+        local icon_path   = Config.ICON.ko_folder or ""
+        local icon_widget
+        if icon_path ~= "" and lfs.attributes(icon_path, "mode") == "file" then
+            icon_widget = CenterContainer:new{
+                dimen = Geom:new{ w = img_w, h = img_h },
+                ImageWidget:new{
+                    file   = icon_path,
+                    width  = icon_size,
+                    height = icon_size,
+                    alpha  = true,
+                    is_icon = true,
+                },
+            }
+        end
+
+        local image = FrameContainer:new{
+            padding    = 0,
+            bordersize = 0,
+            background = Blitbuffer.COLOR_WHITE,
+            dimen      = Geom:new{ w = img_w, h = img_h },
+            icon_widget,
+        }
+        local size         = Geom:new{ w = img_w, h = img_h }
+        local image_widget = FrameContainer:new{ padding = 0, bordersize = border, image }
+
+        local spine       = _buildSpine(size.h)
+        local cover_group = HorizontalGroup:new{ align = "center", spine, image_widget }
+
+        local cover_w     = _SPINE_W + size.w + border * 2
+        local cover_h     = size.h  + border * 2
+        local cover_dimen = Geom:new{ w = cover_w, h = cover_h }
+        local cell_dimen  = Geom:new{ w = self.width, h = self.height }
+        local cv_scale    = cover_h / _BASE_COVER_H
+
+        local label_w            = size.w - _LATERAL_PAD * 2
+        local folder_name_widget = _buildLabel(self, label_w, size, border, cv_scale)
+        local nbitems_widget     = _buildBadge(self.mandatory, cover_dimen, cv_scale)
+
+        local overlap = OverlapGroup:new{ dimen = cover_dimen, cover_group }
+        if folder_name_widget then overlap[#overlap + 1] = folder_name_widget end
+        if nbitems_widget     then overlap[#overlap + 1] = nbitems_widget     end
+
+        local x_center     = math.floor((self.width  - cover_w) / 2)
+        local y_center     = math.floor((self.height - cover_h) / 2)
         local spine_offset = -math.floor(_SPINE_W / 2)
         overlap.overlap_offset = { x_center + spine_offset, y_center }
         local widget = OverlapGroup:new{ dimen = cell_dimen, overlap }
@@ -953,6 +1078,7 @@ function M.uninstall()
         MosaicMenuItem._simpleui_fc_stretched_iw = nil
     end
     MosaicMenuItem._setFolderCover      = nil
+    MosaicMenuItem._setEmptyFolderCover = nil
     MosaicMenuItem._getFolderNameWidget = nil
     MosaicMenuItem._simpleui_fc_patched = nil
     _uninstallItemCache()
