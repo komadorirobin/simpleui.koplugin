@@ -1270,16 +1270,19 @@ function M.rebuildAllNavbars(plugin)
     local topbar_on = G_reader_settings:nilOrTrue("navbar_topbar_enabled")
     local stack     = UI.getWindowStack()  -- read once for the entire operation
 
-    -- Build topbar once and reuse across all widgets — it is identical for all.
-    local new_topbar = topbar_on and Topbar.buildTopbarWidget() or nil
+    -- Each widget gets its own fresh topbar instance.  Sharing a single object
+    -- across multiple _navbar_containers is unsafe: replaceTopbar mutates
+    -- overlap_offset in-place, so the first paint would corrupt the offset
+    -- (and potentially widget state) seen by subsequent containers holding the
+    -- same reference.  This mirrors the safe pattern used in Topbar.refresh().
     local seen      = {}
 
     local function rebuildWidget(w)
         if not w or not w._navbar_container or seen[w] then return end
         seen[w] = true
         M.replaceBar(w, M.buildBarWidget(plugin.active_action, tabs, num_tabs, mode), tabs)
-        if new_topbar then
-            UI.replaceTopbar(w, new_topbar)
+        if topbar_on then
+            UI.replaceTopbar(w, Topbar.buildTopbarWidget())
         end
         plugin:_registerTouchZones(w)
         UIManager:setDirty(w, "ui")  -- single setDirty — container is a child of w
