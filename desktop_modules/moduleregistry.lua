@@ -45,7 +45,6 @@ local MODULES = {
     { require_mod = "desktop_modules/module_collections"   },
     { require_mod = "desktop_modules/module_reading_goals" },
     { require_mod = "desktop_modules/module_reading_stats" },
-    { require_mod = "desktop_modules/module_hardcover"     },
     { require_mod = "desktop_modules/module_quick_actions" },
 }
 
