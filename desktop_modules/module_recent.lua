@@ -276,7 +276,6 @@ function M.getMenuItems(ctx_menu)
         refresh   = refresh,
     })
     return {
-        Config.makeLabelToggleItem("recent", _("Recent Books"), refresh, _lc),
         _makeScaleItem(ctx_menu),
         label_item,
         Config.makeLabelToggleItem("recent", _("Recent Books"), refresh, _lc),

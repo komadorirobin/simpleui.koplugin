@@ -312,8 +312,6 @@ function M.build(w, ctx)
     local SH = getSH()
     if not SH then return nil end
 
-    Config.applyLabelToggle(M, _("Currently Reading"))
-
     local scale       = Config.getModuleScale("currently", ctx.pfx)
     local thumb_scale = Config.getThumbScale("currently", ctx.pfx)
     local lbl_scale   = Config.getItemLabelScale("currently", ctx.pfx)
@@ -804,7 +802,6 @@ function M.getMenuItems(ctx_menu)
         toggle_item("Time read",      "book_time"),
         toggle_item("Time remaining", "book_remaining"),
         toggle_item("Title",          "title"),
-        Config.makeLabelToggleItem("currently", _("Currently Reading"), refresh, _lc),
         {
             text = _lc("Stats layout"),
             sub_item_table = {

@@ -1021,14 +1021,3 @@ msgstr "Kort"
 msgid "Row"
 msgstr "Rad"
 
-msgid "Stats layout"
-msgstr "Statistiklayout"
-
-msgid "%s left"
-msgstr "%s kvar"
-
-msgid "%d days of reading"
-msgstr "%d dagar med läsning"
-
-msgid "~%d:%02d"
-msgstr "~%d:%02d"

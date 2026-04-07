@@ -68,11 +68,11 @@ end
 local _BASE_CLOCK_W       = Screen:scaleBySize(50)
 local _BASE_CLOCK_FS      = Screen:scaleBySize(44)
 local _BASE_DATE_H        = Screen:scaleBySize(17)
-local _BASE_DATE_GAP      = Screen:scaleBySize(36)
+local _BASE_DATE_GAP      = Screen:scaleBySize(19)
 local _BASE_DATE_FS       = Screen:scaleBySize(11)
 local _BASE_BATT_FS       = Screen:scaleBySize(10)
 local _BASE_BATT_H        = Screen:scaleBySize(15)
-local _BASE_BATT_GAP      = Screen:scaleBySize(18)
+local _BASE_BATT_GAP      = Screen:scaleBySize(6)
 local _BASE_BOT_PAD_EXTRA = Screen:scaleBySize(4)
 
 -- ---------------------------------------------------------------------------
