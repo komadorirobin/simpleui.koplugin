@@ -3,9 +3,14 @@
 --
 -- INSTALLATION
 --   Copy this file to koreader/patches/
---   The Hardcover module file (desktop_modules/module_hardcover.lua) must exist
---   inside the simpleui.koplugin directory. It is part of the plugin delivery and
---   does not need to be moved.
+--
+--   module_hardcover.lua must be reachable in ONE of two ways (first match wins):
+--     A) It ships inside simpleui.koplugin/desktop_modules/ — no extra step needed
+--        when using the komadorirobin fork which bundles the file.
+--     B) Copy desktop_modules/module_hardcover.lua from this repo into the same
+--        koreader/patches/ directory as this patch file.  Use this option when
+--        running a fork that does not bundle module_hardcover.lua (e.g.
+--        doctorhetfield-cmd).
 --
 -- HOW IT WORKS
 --   SimpleUI's moduleregistry caches the list of desktop modules at first access.
@@ -20,6 +25,17 @@ logger.dbg("simpleui-patch: loading hardcover registry patch")
 local _REGISTRY_KEY  = "desktop_modules/moduleregistry"
 local _HARDCOVER_KEY = "desktop_modules/module_hardcover"
 
+-- Capture the directory that contains this patch file so we can look for
+-- module_hardcover.lua next to it as a fallback (option B above).
+local _patch_dir = (function()
+    local info = debug.getinfo(1, "S")
+    if info and type(info.source) == "string" and info.source:sub(1, 1) == "@" then
+        -- source is "@/absolute/path/to/2-simpleui-hardcover.lua"
+        return info.source:sub(2):match("^(.+[/\\])[^/\\]+$") or ""
+    end
+    return ""
+end)()
+
 -- ---------------------------------------------------------------------------
 -- Core patch: wraps Registry.list() and Registry.get() on a live Registry
 -- object so the Hardcover module is always included.
@@ -32,14 +48,40 @@ local function _patchRegistry(Registry)
     local function getHC()
         if _hc_load_tried then return _hc_mod end
         _hc_load_tried = true
+
+        -- ── Option A: standard require (works when the file lives inside the
+        --             plugin's desktop_modules/ directory on package.path).
         local ok, HC = pcall(require, _HARDCOVER_KEY)
         if ok and HC and type(HC.id) == "string" then
             _hc_mod = HC
-            logger.dbg("simpleui-patch: hardcover module loaded, id=" .. tostring(HC.id))
-        else
-            logger.warn("simpleui-patch: failed to load hardcover module: " .. tostring(HC))
+            logger.dbg("simpleui-patch: hardcover module loaded via require, id=" .. tostring(HC.id))
+            return _hc_mod
         end
-        return _hc_mod
+
+        -- ── Option B: load from the patches directory (fallback for forks that
+        --             don't ship module_hardcover.lua in the plugin directory).
+        if _patch_dir ~= "" then
+            local alt_file = _patch_dir .. "module_hardcover.lua"
+            local fh = io.open(alt_file, "r")
+            if fh then
+                fh:close()
+                local ok2, HC2 = pcall(dofile, alt_file)
+                if ok2 and HC2 and type(HC2.id) == "string" then
+                    -- Register in package.loaded so subsequent require() calls
+                    -- return this same instance without re-executing the file.
+                    package.loaded[_HARDCOVER_KEY] = HC2
+                    _hc_mod = HC2
+                    logger.dbg("simpleui-patch: hardcover module loaded from patches dir, id=" .. tostring(HC2.id))
+                    return _hc_mod
+                else
+                    logger.warn("simpleui-patch: dofile(" .. alt_file .. ") failed: " .. tostring(HC2))
+                end
+            end
+        end
+
+        logger.warn("simpleui-patch: failed to load hardcover module — "
+            .. "copy module_hardcover.lua to koreader/patches/ (see patch header)")
+        return nil
     end
 
     local orig_list = Registry.list
