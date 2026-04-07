@@ -76,12 +76,22 @@ end
 local _orig_preload = package.preload[_RS_KEY]
 
 local function _myLoader(...)
-    -- Temporarily restore the original preload to avoid infinite recursion.
+    -- Restore original preload so the inner require below doesn't recurse
+    -- back into us.
     package.preload[_RS_KEY] = _orig_preload
+    -- Lua's require() sets package.loaded[name] = true (a sentinel) BEFORE
+    -- calling the preload function to detect require loops.  If we don't
+    -- clear that sentinel the inner require() below sees it and throws
+    -- "loop or previous error loading module".
+    package.loaded[_RS_KEY] = nil
     -- Load the original module.
     local RS = require(_RS_KEY)
-    -- Apply our patch.
-    _patchRS(RS)
+    -- Apply our patch (wrapped in pcall so a patching failure never prevents
+    -- the module from being returned and registered by the caller).
+    local ok, err = pcall(_patchRS, RS)
+    if not ok then
+        logger.warn("simpleui-patch: stats gray: patching failed: " .. tostring(err))
+    end
     -- Re-install our wrapper for future hot-reload cycles.
     package.preload[_RS_KEY] = _myLoader
     return RS
