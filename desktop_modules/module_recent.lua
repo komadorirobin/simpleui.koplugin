@@ -12,6 +12,7 @@ local UIManager       = require("ui/uimanager")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan  = require("ui/widget/horizontalspan")
 local InputContainer  = require("ui/widget/container/inputcontainer")
+local LineWidget      = require("ui/widget/linewidget")
 local OverlapGroup    = require("ui/widget/overlapgroup")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local TextWidget      = require("ui/widget/textwidget")
@@ -183,10 +184,25 @@ function M.build(w, ctx)
             return true
         end
 
+        -- Keyboard focus: overlay a black rectangular border on this book cell
+        -- when it is the currently selected keyboard-navigation item.
+        local cell_widget = tappable
+        if ctx.kb_recent_focus_idx == i then
+            local bw = Screen:scaleBySize(3)
+            cell_widget = OverlapGroup:new{
+                dimen = Geom:new{ w = cw, h = cell_h },
+                tappable,
+                LineWidget:new{ dimen = Geom:new{ w = cw, h = bw },    background = Blitbuffer.COLOR_BLACK },
+                LineWidget:new{ dimen = Geom:new{ w = cw, h = bw },    background = Blitbuffer.COLOR_BLACK, overlap_offset = {0, cell_h - bw} },
+                LineWidget:new{ dimen = Geom:new{ w = bw, h = cell_h }, background = Blitbuffer.COLOR_BLACK },
+                LineWidget:new{ dimen = Geom:new{ w = bw, h = cell_h }, background = Blitbuffer.COLOR_BLACK, overlap_offset = {cw - bw, 0} },
+            }
+        end
+
         -- Use HorizontalSpan for inter-cell spacing instead of a zero-border
         -- FrameContainer — avoids 4 unnecessary widget allocations per render.
         if i > 1 then row[#row + 1] = HorizontalSpan:new{ width = gap } end
-        row[#row + 1] = tappable
+        row[#row + 1] = cell_widget
     end
 
     return FrameContainer:new{
@@ -263,6 +279,7 @@ function M.getMenuItems(ctx_menu)
         Config.makeLabelToggleItem("recent", _("Recent Books"), refresh, _lc),
         _makeScaleItem(ctx_menu),
         label_item,
+        Config.makeLabelToggleItem("recent", _("Recent Books"), refresh, _lc),
         _makeThumbScaleItem(ctx_menu),
         {
             text           = _lc("Progress bar"),

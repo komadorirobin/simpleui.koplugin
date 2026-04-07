@@ -1,0 +1,261 @@
+# Simple UI — KOReader plugin
+# Translation template
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: simpleui\n"
+"POT-Creation-Date: 2026-03-27 12:00+0000\n"
+"PO-Revision-Date: 2026-03-31\n"
+"Last-Translator: Linh Vo\n"
+"Language-Team: VI\n"
+"Language: vi\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 3.8\n"
+
+#: sui_menu.lua:320
+msgid "    Size"
+msgstr "    Kích thước"
+
+#: desktop_modules/module_reading_goals.lua:602
+msgid "  Physical Books  (%d in %s)"
+msgstr "  Sách giấy (%d trong %s)"
+
+#: desktop_modules/module_reading_goals.lua:595
+msgid "  Set Goal  (%d books in %s)"
+msgstr "  Đặt mục tiêu (%d sách trong %s)"
+
+#: desktop_modules/module_reading_goals.lua:617
+msgid "  Set Goal  (%d min/day)"
+msgstr "  Đặt mục tiêu (%d phút/ngày)"
+
+#: desktop_modules/module_reading_goals.lua:596
+msgid "  Set Goal  (%s)"
+msgstr "  Đặt mục tiêu (%s)"
+
+#: desktop_modules/module_reading_goals.lua:616
+msgid "  Set Goal  (disabled)"
+msgstr "  Đặt mục tiêu (đã tắt)"
+
+#: desktop_modules/module_reading_goals.lua:429
+msgid "%d books"
+msgstr "%d sách"
+
+#: desktop_modules/module_currently.lua:336
+msgid "%d days of reading"
+msgstr "%d ngày đọc"
+
+#: desktop_modules/module_recent.lua:123
+msgid "%d%%"
+msgstr "%d%%"
+
+#: desktop_modules/module_currently.lua:309
+#: desktop_modules/module_new_books.lua:141
+#: desktop_modules/module_recent.lua:157
+msgid "%d%% Read"
+msgstr "Đã đọc %d%%"
+
+#: desktop_modules/module_reading_goals.lua:428
+msgid "%d/%d books"
+msgstr "%d/%d sách"
+
+#: desktop_modules/module_currently.lua:347
+#: desktop_modules/module_reading_goals.lua:445
+msgid "%s read"
+msgstr "Đã đọc %s"
+
+#: desktop_modules/module_currently.lua:370
+msgid "%s remaining"
+msgstr "Còn lại %s"
+
+#: desktop_modules/module_currently.lua:335
+msgid "1 day of reading"
+msgstr "1 ngày đọc"
+
+#: sui_menu.lua:1122
+msgid "Add at least 2 actions to arrange."
+msgstr "Thêm ít nhất 2 hành động để sắp xếp."
+
+#: desktop_modules/module_reading_stats.lua:546
+msgid "Add at least 2 stats to arrange."
+msgstr "Thêm ít nhất 2 thống kê để sắp xếp."
+
+#: desktop_modules/module_reading_stats.lua:67
+msgid "All time — Books"
+msgstr "Tổng cộng — Sách"
+
+#: desktop_modules/module_reading_stats.lua:66
+msgid "All time — Time"
+msgstr "Tổng cộng — Thời gian"
+
+#: desktop_modules/module_reading_goals.lua:585
+msgid "Annual Goal"
+msgstr "Mục tiêu năm"
+
+#: sui_menu.lua:1024 desktop_modules/module_reading_goals.lua:362
+msgid "Annual Reading Goal"
+msgstr "Mục tiêu đọc năm"
+
+#: sui_config.lua:1562 sui_config.lua:1643 sui_menu.lua:593 sui_menu.lua:651
+#: sui_menu.lua:1364 sui_menu.lua:1399
+msgid "Apply"
+msgstr "Áp dụng"
+
+#: desktop_modules/module_clock.lua:49
+msgid "April"
+msgstr "Tháng Tư"
+
+#: sui_menu.lua:1120 desktop_modules/module_reading_stats.lua:543
+msgid "Arrange"
+msgstr "Sắp xếp"
+
+#: sui_menu.lua:1126
+msgid "Arrange %s"
+msgstr "Sắp xếp %s"
+
+#: sui_menu.lua:840 sui_menu.lua:891 sui_menu.lua:906
+msgid "Arrange Buttons"
+msgstr "Sắp xếp nút"
+
+#: desktop_modules/module_collections.lua:535
+#: desktop_modules/module_collections.lua:548
+msgid "Arrange Collections"
+msgstr "Sắp xếp bộ sưu tập"
+
+#: sui_menu.lua:483 sui_menu.lua:511
+msgid "Arrange Items"
+msgstr "Sắp xếp mục"
+
+#: sui_menu.lua:1280 sui_menu.lua:1296
+msgid "Arrange Modules"
+msgstr "Sắp xếp mô-đun"
+
+#: desktop_modules/module_reading_stats.lua:552
+msgid "Arrange Reading Stats"
+msgstr "Sắp xếp thống kê đọc"
+
+#: sui_menu.lua:193 sui_menu.lua:203
+msgid "Arrange tabs"
+msgstr "Sắp xếp tab"
+
+#: desktop_modules/module_clock.lua:50
+msgid "August"
+msgstr "Tháng Tám"
+
+#: sui_foldercovers.lua:405 desktop_modules/module_collections.lua:497
+msgid "Auto (first book)"
+msgstr "Tự động (sách đầu tiên)"
+
+#: sui_titlebar.lua:54
+msgid "Back"
+msgstr "Quay lại"
+
+#: desktop_modules/module_collections.lua:575
+msgid "Badge position: Bottom"
+msgstr "Vị trí huy hiệu: dưới"
+
+#: desktop_modules/module_collections.lua:576
+msgid "Badge position: Top"
+msgstr "Vị trí huy hiệu: trên"
+
+#: sui_config.lua:143
+msgid "Battery"
+msgstr "Pin"
+
+#: sui_quickactions.lua:404
+msgid "Book Info"
+msgstr "Thông tin sách"
+
+#: sui_bottombar.lua:886
+msgid "Bookmark browser"
+msgstr "Trình duyệt dấu trang"
+
+#: sui_bottombar.lua:859
+msgid "Bookmark browser not available."
+msgstr "Trình duyệt dấu trang không khả dụng."
+
+#: sui_config.lua:118
+msgid "Bookmarks"
+msgstr "Dấu trang"
+
+#: desktop_modules/module_reading_goals.lua:363
+msgid "Books to read in %s:"
+msgstr "Sách cần đọc trong %s:"
+
+#: sui_menu.lua:1545 sui_menu.lua:1624 sui_menu.lua:1680
+msgid "Bottom"
+msgstr "Dưới"
+
+#: sui_bottombar.lua:736 sui_menu.lua:618
+msgid "Bottom Bar"
+msgstr "Thanh dưới"
+
+#: sui_menu.lua:644
+msgid "Bottom Bar Size"
+msgstr "Kích thước thanh dưới"
+
+#: sui_menu.lua:668 sui_menu.lua:671
+msgid "Bottom Margin"
+msgstr "Lề dưới"
+
+#: sui_config.lua:120 sui_config.lua:142
+msgid "Brightness"
+msgstr "Độ sáng"
+
+#: sui_menu.lua:956
+msgid "Button Size"
+msgstr "Kích thước nút"
+
+#: sui_bottombar.lua:1420
+msgid "Quit"
+msgstr "Thoát"
+
+#: sui_quickactions.lua:567 sui_quickactions.lua:835
+msgid "Save"
+msgstr "Lưu"
+
+#: sui_menu.lua:1533
+msgid "Settings"
+msgstr "Cài đặt"
+
+#: sui_titlebar.lua:55
+msgid "Search"
+msgstr "Tìm kiếm"
+
+#: sui_menu.lua:1539
+msgid "Status Bar"
+msgstr "Thanh trạng thái"
+
+#: sui_menu.lua:1540
+msgid "Title Bar"
+msgstr "Thanh tiêu đề"
+
+#: desktop_modules/module_clock.lua:45
+msgid "Monday"
+msgstr "Thứ Hai"
+
+#: desktop_modules/module_clock.lua:45
+msgid "Tuesday"
+msgstr "Thứ Ba"
+
+#: desktop_modules/module_clock.lua:45
+msgid "Wednesday"
+msgstr "Thứ Tư"
+
+#: desktop_modules/module_clock.lua:46
+msgid "Thursday"
+msgstr "Thứ Năm"
+
+#: desktop_modules/module_clock.lua:46
+msgid "Friday"
+msgstr "Thứ Sáu"
+
+#: desktop_modules/module_clock.lua:46
+msgid "Saturday"
+msgstr "Thứ Bảy"
+
+#: desktop_modules/module_clock.lua:45
+msgid "Sunday"
+msgstr "Chủ Nhật"
+

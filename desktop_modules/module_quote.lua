@@ -20,7 +20,9 @@ local FrameContainer = require("ui/widget/container/framecontainer")
 
 local GestureRange   = require("ui/gesturerange")
 
-local ConfirmBox     = require("ui/widget/confirmbox")
+-- ConfirmBox is only needed when the user taps a highlight to open its book.
+-- Lazy-loaded at that point to avoid the cost at module-load time.
+-- local ConfirmBox = require("ui/widget/confirmbox")  ← moved to usage site
 
 local InputContainer = require("ui/widget/container/inputcontainer")
 
@@ -370,6 +372,15 @@ end
 
 
 
+-- Drawer values that represent a real highlight (coloured/underlined selection).
+-- "note" means the user added a text note (no selected text shown as quote).
+-- Bookmarks/page reminders have no drawer field at all.
+local _HIGHLIGHT_DRAWERS = {
+    highlight = true,
+    lighten   = true,
+    underscore = true,
+}
+
 local function _buildPool()
 
     local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
@@ -420,55 +431,78 @@ local function _buildPool()
             books_read = books_read + 1
 
             -- Collect annotation texts and metadata in one pass.
-            -- Since doc_props/stats come AFTER annotations in dump() order,
-            -- we must read the whole file; we cannot stop at annotations end.
-            --
-            -- dump() serialises keys alphabetically, so within each annotation
-            -- entry ["text"] always appears BEFORE ["type"].  We hold the text
-            -- in cur_text and only commit it once we confirm type=="highlight".
-            -- Bookmarks auto-generate text like "in Kapitel 5" with
-            -- type=="bookmark"; this filter drops them entirely.
-            local texts    = {}
-            local title    = nil
-            local authors  = nil
-            local cur_text = nil
+            -- Each annotation block is delimited by a numeric index line ([N] = {).
+            -- We buffer the text for each block and only commit it once we confirm
+            -- the drawer value marks it as a real highlight (not a note or bookmark).
+            -- Each entry in `annots` holds everything needed to jump to that highlight.
+            -- pos0 is the EPUB xpointer (reflowable); page is the fallback for PDFs/CBZ.
+            local annots       = {}
+            local title        = nil
+            local authors      = nil
+            local pending_text = nil   -- text seen before drawer confirmed
+            local pending_pos0 = nil   -- xpointer for reflowable formats
+            local pending_page = nil   -- page number for fixed-layout formats
+            local is_highlight = false -- true once drawer = highlight-type seen
+
+            local function _flushBlock()
+                if pending_text and is_highlight then
+                    annots[#annots + 1] = {
+                        text = pending_text,
+                        pos0 = pending_pos0,
+                        page = pending_page,
+                    }
+                end
+                pending_text = nil
+                pending_pos0 = nil
+                pending_page = nil
+                is_highlight = false
+            end
 
             for line in f:lines() do
-                if line:match("%[%d+%]%s*=") then
-                    cur_text = nil
+                if line:match("^%s*%[%d+%]%s*=%s*{") then
+                    _flushBlock()
                 elseif line:find('["text"]', 1, true) then
                     local t = _extractStr(line, "text")
-                    cur_text = (t and #t > 10 and #t <= MAX_HL_CHARS) and t or nil
-                elseif line:find('["type"]', 1, true) then
-                    if cur_text and _extractStr(line, "type") == "highlight" then
-                        texts[#texts + 1] = cur_text
+                    if t and #t > 10 and #t <= MAX_HL_CHARS then
+                        pending_text = t
+                    else
+                        pending_text = nil
                     end
-                    cur_text = nil
+                elseif line:find('["pos0"]', 1, true) then
+                    pending_pos0 = _extractStr(line, "pos0")
+                elseif line:find('["page"]', 1, true) and not line:find('["pagemap"]', 1, true) then
+                    -- page is a number: ["page"] = 42,
+                    pending_page = tonumber(line:match('%["page"%]%s*=%s*(%d+)'))
+                elseif line:find('["drawer"]', 1, true) then
+                    local drawer = _extractStr(line, "drawer")
+                    is_highlight = drawer ~= nil and _HIGHLIGHT_DRAWERS[drawer] == true
                 elseif not title and line:find('["title"]', 1, true) then
                     title = _extractStr(line, "title")
                 elseif not authors and line:find('["authors"]', 1, true) then
                     authors = _extractStr(line, "authors")
                 end
             end
+            _flushBlock()  -- flush the final annotation block
             f:close()
 
-            if #texts > 0 then
+            if #annots > 0 then
                 local book_title   = title or cand.fp:match("([^/]+)%.[^%.]+$") or "?"
                 local book_authors = authors
                 local remaining    = MAX_POOL_HIGHLIGHTS - #pool
-                -- If this book has more highlights than the remaining budget,
-                -- pick a random subset rather than always taking the first ones.
-                if #texts > remaining then
-                    for i = #texts, 2, -1 do
+                if #annots > remaining then
+                    for i = #annots, 2, -1 do
                         local j = math.random(i)
-                        texts[i], texts[j] = texts[j], texts[i]
+                        annots[i], annots[j] = annots[j], annots[i]
                     end
                     for i = 1, remaining do
-                        pool[#pool + 1] = { text = texts[i], title = book_title, authors = book_authors, filepath = cand.fp }
+                        local a = annots[i]
+                        pool[#pool + 1] = { text = a.text, pos0 = a.pos0, page = a.page,
+                                            title = book_title, authors = book_authors, filepath = cand.fp }
                     end
                 else
-                    for _, t in ipairs(texts) do
-                        pool[#pool + 1] = { text = t, title = book_title, authors = book_authors, filepath = cand.fp }
+                    for _, a in ipairs(annots) do
+                        pool[#pool + 1] = { text = a.text, pos0 = a.pos0, page = a.page,
+                                            title = book_title, authors = book_authors, filepath = cand.fp }
                     end
                 end
             end
@@ -724,7 +758,15 @@ local function buildFromHighlight(inner_w, face_quote, face_attr, vspan_gap)
 
     if h.authors and h.authors ~= "" then attr = attr .. ",  " .. h.authors end
 
-    return buildWidget(inner_w, "\u{201C}" .. h.text .. "\u{201D}", attr, face_quote, face_attr, vspan_gap), h.filepath, h.title
+    -- Strip leading/trailing quote marks before wrapping to avoid double quotes.
+    -- Also strip leading em/en dashes (dialogue markers from books): they are
+    -- typographic artefacts of the source text and the cfont used by TextBoxWidget
+    -- does not have a fallback glyph for U+2014/U+2013 when they are the very
+    -- first character of a text run, causing a replacement glyph to be shown.
+    local text = h.text:gsub('^["\u{201C}\u{2018}%s]+', ''):gsub('["\u{201D}\u{2019}%s]+$', '')
+    text = text:gsub('^[\u{2014}\u{2013}]%s*', '')
+    return buildWidget(inner_w, "\u{201C}" .. text .. "\u{201D}", attr, face_quote, face_attr, vspan_gap),
+           h.filepath, h.title, h.pos0, h.page
 
 end
 
@@ -744,7 +786,7 @@ local function buildFromMixed(inner_w, face_quote, face_attr, vspan_gap)
 
         else
 
-            return buildFromQuote(inner_w, face_quote, face_attr, vspan_gap), nil, nil
+            return buildFromQuote(inner_w, face_quote, face_attr, vspan_gap), nil, nil, nil, nil
 
         end
 
@@ -754,7 +796,7 @@ local function buildFromMixed(inner_w, face_quote, face_attr, vspan_gap)
 
     else
 
-        return buildFromQuote(inner_w, face_quote, face_attr, vspan_gap), nil, nil
+        return buildFromQuote(inner_w, face_quote, face_attr, vspan_gap), nil, nil, nil, nil
 
     end
 
@@ -827,18 +869,18 @@ function M.build(w, ctx)
     logger.warn("simpleui: quote: build source=" .. source)
 
     local content
-
     local hl_filepath
-
     local hl_title
+    local hl_pos0
+    local hl_page
 
     if source == "highlights" then
 
-        content, hl_filepath, hl_title = buildFromHighlight(inner_w, face_quote, face_attr, vspan_gap)
+        content, hl_filepath, hl_title, hl_pos0, hl_page = buildFromHighlight(inner_w, face_quote, face_attr, vspan_gap)
 
     elseif source == "mixed" then
 
-        content, hl_filepath, hl_title = buildFromMixed(inner_w, face_quote, face_attr, vspan_gap)
+        content, hl_filepath, hl_title, hl_pos0, hl_page = buildFromMixed(inner_w, face_quote, face_attr, vspan_gap)
 
     else
 
@@ -870,6 +912,10 @@ function M.build(w, ctx)
 
             _title = hl_title or hl_filepath:match("([^/]+)%.[^%.]+$") or "?",
 
+            _pos0  = hl_pos0,
+
+            _page  = hl_page,
+
             _open  = open_fn,
 
             [1]    = frame,
@@ -895,15 +941,21 @@ function M.build(w, ctx)
         function tappable:onTapQuote()
 
             local fp    = self._fp
-            local title = self._title
+            local pos0  = self._pos0
+            local page  = self._page
             local open  = self._open
+            local BD        = require("ui/bidi")
+            local ConfirmBox = require("ui/widget/confirmbox")
             UIManager:show(ConfirmBox:new{
-                text    = string.format(_(
-                    "Open \"%s\" to see this highlight?"), title),
+                text        = _("Open this file?") .. "\n\n" .. BD.filename(fp:match("([^/]+)$")),
                 ok_text     = _("Open"),
                 cancel_text = _("Cancel"),
                 ok_callback = function()
-                    if open then open(fp) end
+                    if open then
+                        -- Pass the position so the reader jumps directly to the highlight.
+                        -- open_fn signature: open(filepath, pos0_or_nil, page_or_nil)
+                        open(fp, pos0, page)
+                    end
                 end,
             })
 

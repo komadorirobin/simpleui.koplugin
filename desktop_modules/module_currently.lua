@@ -49,7 +49,15 @@ local _CLR_BAR_FG = Blitbuffer.gray(0.75)
 -- Vertical gaps between elements (base values at 100% scale; scaled in build()).
 local _BASE_COVER_GAP  = Screen:scaleBySize(12)  -- between cover and text column
 local _BASE_TITLE_GAP  = Screen:scaleBySize(4)   -- before title
-local _BASE_AUTHOR_GAP = Screen:scaleBySize(3)   -- before author
+local _BASE_AUTHOR_GAP = Screen:scaleBySize(8)   -- before author
+-- Vertical gaps around the progress bar.
+-- The bar (LineWidget) has no internal padding — it starts and ends at exact pixels.
+-- TextWidget includes ascender/descender space inside its reported height, which
+-- the eye reads as part of the gap. To look balanced:
+--   before the bar: slightly smaller because the author text's descender space
+--                   adds ~2px of visual gap "for free" from inside the widget.
+--   after the bar:  larger to compensate for the ascender space of the next text
+--                   being consumed from the gap, making it look narrower.
 local _BASE_BAR_GAP_BEFORE = Screen:scaleBySize(6)   -- gap above the progress bar
 local _BASE_BAR_GAP_AFTER  = Screen:scaleBySize(10)  -- gap below the progress bar
 local _BASE_PCT_GAP    = Screen:scaleBySize(3)   -- before percent / stats rows
@@ -298,6 +306,7 @@ end
 -- Builds the module widget: cover on the left, text column on the right.
 -- Elements in the text column are rendered in user-configured order.
 function M.build(w, ctx)
+    Config.applyLabelToggle(M, _("Currently Reading"))
     if not ctx.current_fp then return nil end
 
     local SH = getSH()
@@ -544,9 +553,21 @@ function M.build(w, ctx)
         meta,
     }
 
-    -- Height is driven by getHeight() so the homescreen allocates enough space
-    -- for the stats rows. Pinning dimen.h to COVER_H would clip taller meta columns.
-    local content_h = M.getHeight(ctx) - Config.getScaledLabelH()
+    -- Compute content_h inline using vars already resolved above — avoids a full
+    -- duplicate call to M.getHeight() which re-reads scale, thumb_scale, getDims
+    -- and all _showElem flags a second time.
+    local content_h = D.COVER_H
+    do
+        local active_stats = (show.days  and 1 or 0)
+                           + (show.time  and 1 or 0)
+                           + (show.remain and 1 or 0)
+        if active_stats > 0 then
+            local lines = stats_style == "compact" and 1 or active_stats
+            content_h = content_h
+                + math.max(1, math.floor(_BASE_PCT_GAP  * scale))
+                + math.max(7, math.floor(_BASE_STATS_FS * scale * lbl_scale)) * lines
+        end
+    end
     local tappable = InputContainer:new{
         dimen    = Geom:new{ w = w, h = content_h },
         _fp      = ctx.current_fp,
@@ -570,6 +591,22 @@ function M.build(w, ctx)
     function tappable:onTapBook()
         if self._open_fn then self._open_fn(self._fp) end
         return true
+    end
+
+    -- Keyboard focus: overlay a black rectangular border on the tappable when
+    -- this book is the currently selected keyboard-navigation item.
+    if ctx.kb_currently_focused then
+        local bw = Screen:scaleBySize(3)
+        local tw = w
+        local th = content_h
+        return OverlapGroup:new{
+            dimen = Geom:new{ w = tw, h = th },
+            tappable,
+            LineWidget:new{ dimen = Geom:new{ w = tw, h = bw },    background = Blitbuffer.COLOR_BLACK },
+            LineWidget:new{ dimen = Geom:new{ w = tw, h = bw },    background = Blitbuffer.COLOR_BLACK, overlap_offset = {0, th - bw} },
+            LineWidget:new{ dimen = Geom:new{ w = bw, h = th },    background = Blitbuffer.COLOR_BLACK },
+            LineWidget:new{ dimen = Geom:new{ w = bw, h = th },    background = Blitbuffer.COLOR_BLACK, overlap_offset = {tw - bw, 0} },
+        }
     end
 
     return tappable
@@ -799,6 +836,7 @@ function M.getMenuItems(ctx_menu)
         _makeScaleItem(ctx_menu),
         _makeTextScaleItem(ctx_menu),
         thumb,
+        Config.makeLabelToggleItem("currently", _("Currently Reading"), refresh, _lc),
         {
             text           = _lc("Items"),
             sub_item_table = items_submenu,

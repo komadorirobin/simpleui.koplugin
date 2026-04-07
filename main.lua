@@ -87,14 +87,48 @@ function SimpleUIPlugin:init()
         self.ui.menu:registerToMainMenu(self)
         if G_reader_settings:nilOrTrue("simpleui_enabled") then
             Patches.installAll(self)
+            -- Regista o botão TBR no diálogo de hold da Library (livro individual).
+            -- addFileDialogButtons é a API oficial do KOReader para isso.
+            -- O botão para seleção múltipla é injectado via patchGetPlusDialogButtons
+            -- em sui_patches.lua → patchFileManagerClass.
+            UIManager:scheduleIn(0, function()
+                local ok_fm, FM = pcall(require, "apps/filemanager/filemanager")
+                if not (ok_fm and FM and FM.instance) then return end
+                local ok_tbr, TBR = pcall(require, "desktop_modules/module_tbr")
+                if not (ok_tbr and TBR) then return end
+                FM.instance:addFileDialogButtons("sui_tbr", function(file, is_file, _book_props)
+                    if not is_file then return nil end
+                    -- Only show the button for files that are books
+                    -- (have a provider or have been opened before).
+                    local ok_dr, DR = pcall(require, "document/documentregistry")
+                    local ok_bl, BL = pcall(require, "ui/widget/booklist")
+                    local is_book = (ok_dr and DR and DR:hasProvider(file))
+                        or (ok_bl and BL and BL.hasBookBeenOpened(file))
+                    if not is_book then return nil end
+                    -- After toggling TBR, close the dialog and refresh the file list,
+                    -- matching the same behaviour as "On Hold", "Reading", etc.
+                    -- Note: file_dialog is a property of file_chooser, not FM.instance.
+                    local close_refresh = function()
+                        local fc = FM.instance and FM.instance.file_chooser
+                        local dlg = fc and fc.file_dialog
+                        if dlg then UIManager:close(dlg) end
+                        if fc then fc:refreshPath() end
+                    end
+                    return { TBR.genTBRButton(file, close_refresh) }
+                end)
+            end)
             if G_reader_settings:nilOrTrue("navbar_topbar_enabled") then
                 Topbar.scheduleRefresh(self, 0)
             end
-            -- Pre-load desktop modules during boot idle time so the first
+            -- Pre-load ALL desktop modules during boot idle time so the first
             -- Homescreen open has no perceptible freeze. scheduleIn(2) runs
             -- after the FileManager UI is fully painted and stable.
+            -- Registry.list() triggers _load() which pcall-requires all 9
+            -- module_*.lua files — they land in package.loaded and subsequent
+            -- require() calls are free table lookups, not disk I/O.
             UIManager:scheduleIn(2, function()
-                pcall(require, "desktop_modules/moduleregistry")
+                local ok, reg = pcall(require, "desktop_modules/moduleregistry")
+                if ok and reg then pcall(reg.list) end
             end)
         end
     end)
@@ -109,7 +143,7 @@ end
 local _PLUGIN_MODULES = {
     "sui_i18n", "sui_config", "sui_core", "sui_bottombar", "sui_topbar",
     "sui_patches", "sui_menu", "sui_titlebar", "sui_quickactions",
-    "sui_homescreen", "sui_foldercovers",
+    "sui_homescreen", "sui_foldercovers", "sui_updater",
     "desktop_modules/moduleregistry",
     "desktop_modules/module_books_shared",
     "desktop_modules/module_clock",
@@ -119,7 +153,9 @@ local _PLUGIN_MODULES = {
     "desktop_modules/module_quote",
     "desktop_modules/module_reading_goals",
     "desktop_modules/module_reading_stats",
+    "desktop_modules/module_stats_provider",
     "desktop_modules/module_recent",
+    "desktop_modules/module_tbr",
     "desktop_modules/quotes",
 }
 
@@ -136,6 +172,15 @@ function SimpleUIPlugin:onTeardown()
     local mod_recent = package.loaded["desktop_modules/module_recent"]
     if mod_recent and type(mod_recent.reset) == "function" then
         pcall(mod_recent.reset)
+    end
+    local mod_tbr = package.loaded["desktop_modules/module_tbr"]
+    if mod_tbr and type(mod_tbr.reset) == "function" then
+        pcall(mod_tbr.reset)
+    end
+    -- Remove o botão TBR do diálogo da Library.
+    local FM = package.loaded["apps/filemanager/filemanager"]
+    if FM and FM.instance and FM.instance.removeFileDialogButtons then
+        pcall(function() FM.instance:removeFileDialogButtons("sui_tbr") end)
     end
     local mod_rg = package.loaded["desktop_modules/module_reading_goals"]
     if mod_rg and type(mod_rg.reset) == "function" then
@@ -167,8 +212,14 @@ end
 function SimpleUIPlugin:onNetworkConnected()
     if self._simpleui_suspended then return end
     local RUI = package.loaded["apps/reader/readerui"]
-    if RUI and RUI.instance then
+    -- If this event was fired by doWifiToggle itself, wifi_optimistic is already
+    -- set correctly and the bars are already rebuilt. Skip the reset so the
+    -- optimistic icon is preserved (on Kindle isWifiOn() may lag behind).
+    -- Still call _refreshCurrentView to rebuild homescreen QA icons.
+    if not Config.wifi_broadcast_self then
         Config.wifi_optimistic = nil
+    end
+    if RUI and RUI.instance then
         self:_rebuildAllNavbars()
     else
         Bottombar.refreshWifiIcon(self)
@@ -178,8 +229,11 @@ end
 function SimpleUIPlugin:onNetworkDisconnected()
     if self._simpleui_suspended then return end
     local RUI = package.loaded["apps/reader/readerui"]
-    if RUI and RUI.instance then
+    -- Same rationale as onNetworkConnected above.
+    if not Config.wifi_broadcast_self then
         Config.wifi_optimistic = nil
+    end
+    if RUI and RUI.instance then
         self:_rebuildAllNavbars()
     else
         Bottombar.refreshWifiIcon(self)
@@ -236,51 +290,93 @@ function SimpleUIPlugin:onCloseDocument()
     if self._simpleui_suspended then return end
     local HS = package.loaded["sui_homescreen"]
     if not HS then return end
-    -- Only invalidate caches for modules that are actually enabled and visible.
-    local ok_reg, Registry = pcall(require, "desktop_modules/moduleregistry")
-    if not ok_reg then return end
+
+    -- Fast-path: if the HS is not visible and is already flagged for rebuild,
+    -- there is nothing further to do — the next Homescreen.show() will rebuild
+    -- from scratch. Avoids loading the Registry and all module pcalls.
+    if not HS._instance and HS._stats_need_refresh then
+        if G_reader_settings:nilOrTrue("navbar_topbar_enabled") then
+            Topbar.scheduleRefresh(self, 0)
+        end
+        return
+    end
+
+    -- Registry is already loaded (moduleregistry was pre-loaded at boot via
+    -- scheduleIn(2)); use package.loaded to avoid a pcall on the hot path.
+    -- Fall back to pcall only if it hasn't been loaded yet.
+    local Registry = package.loaded["desktop_modules/moduleregistry"]
+    if not Registry then
+        local ok, reg = pcall(require, "desktop_modules/moduleregistry")
+        if not ok then return end
+        Registry = reg
+    end
+
     local PFX = "navbar_homescreen_"
-    local needs_refresh = false
+    local needs_refresh    = false
+    local currently_active = false
+
+    -- Only call pcall(require) for modules that are actually enabled.
+    -- Registry.get + Registry.isEnabled are cheap table lookups; the module
+    -- is guaranteed already loaded when enabled (required by the HS on open).
+    -- Invalidate the shared stats provider when either stats module is active.
+    -- One SP.invalidate() covers both reading_goals and reading_stats — they
+    -- both read ctx.stats which is populated from StatsProvider.get().
     local mod_rg = Registry.get("reading_goals")
-    if mod_rg and Registry.isEnabled(mod_rg, PFX) then
-        local ok, RG = pcall(require, "desktop_modules/module_reading_goals")
-        if ok and RG and RG.invalidateCache then RG.invalidateCache(); needs_refresh = true end
-    end
     local mod_rs = Registry.get("reading_stats")
-    if mod_rs and Registry.isEnabled(mod_rs, PFX) then
-        local ok, RS = pcall(require, "desktop_modules/module_reading_stats")
-        if ok and RS and RS.invalidateCache then RS.invalidateCache(); needs_refresh = true end
+    local stats_active = (mod_rg and Registry.isEnabled(mod_rg, PFX))
+        or (mod_rs and mod_rs.isEnabled and mod_rs.isEnabled(PFX))
+    if stats_active then
+        local SP = package.loaded["desktop_modules/module_stats_provider"]
+        if SP then SP.invalidate(); needs_refresh = true end
     end
+
     -- Currently Reading shows the current book's cover, title, author and
     -- progress (percent_finished). All of these come from _cached_books_state,
     -- which keep_cache=true preserves. When the reader closes, percent_finished
     -- has changed — clear _cached_books_state so the next prefetchBooks() re-reads
     -- the updated sidecar data.
     local mod_cr = Registry.get("currently")
-    local currently_active = mod_cr and Registry.isEnabled(mod_cr, PFX)
+    currently_active = mod_cr and Registry.isEnabled(mod_cr, PFX) or false
     if currently_active then
         if HS._instance then HS._instance._cached_books_state = nil end
         HS._cached_books_state = nil
+        local MC = package.loaded["desktop_modules/module_currently"]
+        if MC and MC.invalidateCache then MC.invalidateCache() end
         needs_refresh = true
     end
+
     if not needs_refresh then return end
+
     -- Invalidate the sidecar cache entry for the book that just closed so the
     -- next prefetchBooks() re-reads its updated sidecar (percent_finished, stats).
     -- All other entries remain valid — they haven't changed.
-    local ok_sh, SH = pcall(require, "desktop_modules/module_books_shared")
-    if ok_sh and SH and SH.invalidateSidecarCache then
+    local SH = package.loaded["desktop_modules/module_books_shared"]
+    if SH and SH.invalidateSidecarCache then
         local rh = package.loaded["readhistory"]
         local closed_fp = rh and rh.hist and rh.hist[1] and rh.hist[1].file
         SH.invalidateSidecarCache(closed_fp)  -- nil flushes all; fp invalidates only that entry
     end
+
     if HS._instance then
-        -- If Currently Reading is active we must do a full refresh so
-        -- prefetchBooks() re-reads the updated progress from the sidecar.
-        -- Otherwise keep_cache=true is enough (stats-only update).
-        HS.refresh(not currently_active)
+        -- If Currently Reading is active: full refresh (keep_cache=false) so
+        -- prefetchBooks() re-reads the updated progress from the sidecar, but
+        -- pass books_only=true so _ctx_cache and _enabled_mods_cache are kept —
+        -- the set of enabled modules has not changed, only the book data has.
+        -- Stats-only (not currently_active): keep_cache=true skips even _buildCtx.
+        HS.refresh(not currently_active, true)
     else
         -- Homescreen not visible yet — flag it for rebuild on next open.
         HS._stats_need_refresh = true
+    end
+
+    -- Restart the topbar clock chain. While the reader was open, shouldRunTimer()
+    -- returned false (RUI.instance present) so the chain stopped naturally.
+    -- Without this, the topbar is frozen until the next hardware event (frontlight,
+    -- charge) — wifi state changes that happened during reading would not be
+    -- reflected for up to 60 s. scheduleRefresh guards against suspend internally
+    -- via shouldRunTimer, so this is safe to call unconditionally here.
+    if G_reader_settings:nilOrTrue("navbar_topbar_enabled") then
+        Topbar.scheduleRefresh(self, 0)
     end
 end
 
