@@ -115,6 +115,7 @@ local _PLUGIN_MODULES = {
     "desktop_modules/module_clock",
     "desktop_modules/module_collections",
     "desktop_modules/module_currently",
+    "desktop_modules/module_hardcover",
     "desktop_modules/module_quick_actions",
     "desktop_modules/module_quote",
     "desktop_modules/module_reading_goals",
