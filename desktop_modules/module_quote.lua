@@ -1,12 +1,14 @@
 -- module_quote.lua — Simple UI
 
--- Quote of the Day module. Three source modes:
+-- Quote of the Day module. Four source modes:
 
 --   "quotes"     — random quote from quotes.lua (default)
 
 --   "highlights" — random highlight from the user's books
 
 --   "mixed"      — random pick between both sources
+
+--   "custom"     — random quote from a user-supplied .lua file in the plugin's desktop_modules/custom_quotes/ folder
 
 
 
@@ -16,7 +18,8 @@ local Device         = require("device")
 
 local Font           = require("ui/font")
 
-local FrameContainer = require("ui/widget/container/framecontainer")
+local HorizontalGroup = require("ui/widget/horizontalgroup")
+local HorizontalSpan  = require("ui/widget/horizontalspan")
 
 local GestureRange   = require("ui/gesturerange")
 
@@ -90,7 +93,10 @@ local MAX_POOL_HIGHLIGHTS = 100
 
 
 
-local SETTING_SOURCE = "quote_source"
+local SETTING_SOURCE      = "quote_source"
+local SETTING_CUSTOM_FILE = "quote_custom_file"
+
+local lfs = require("libs/libkoreader-lfs")
 
 
 
@@ -98,6 +104,39 @@ local function getSource(pfx)
 
     return G_reader_settings:readSetting((pfx or "") .. SETTING_SOURCE) or "quotes"
 
+end
+
+local function getCustomFile(pfx)
+    return G_reader_settings:readSetting((pfx or "") .. SETTING_CUSTOM_FILE) or ""
+end
+
+-- Returns the absolute path to the plugin's desktop_modules/custom_quotes/ directory.
+local _CUSTOM_DIR
+local function customDir()
+    if not _CUSTOM_DIR then
+        local info = debug.getinfo(1, "S")
+        local src  = info and info.source and info.source:match("^@(.+)$")
+        if src then
+            _CUSTOM_DIR = src:match("(.+)/[^/]+$") .. "/custom_quotes"
+        else
+            _CUSTOM_DIR = "desktop_modules/custom_quotes"
+        end
+    end
+    return _CUSTOM_DIR
+end
+
+-- Scans desktop_modules/custom_quotes/ for .lua files; returns a sorted list of filenames.
+local function listCustomQuoteFiles()
+    local dir   = customDir()
+    local files = {}
+    if lfs.attributes(dir, "mode") ~= "directory" then return files end
+    for name in lfs.dir(dir) do
+        if name ~= "." and name ~= ".." and name:match("%.lua$") then
+            files[#files + 1] = name
+        end
+    end
+    table.sort(files)
+    return files
 end
 
 
@@ -152,6 +191,87 @@ end
 
 
 
+-- ---------------------------------------------------------------------------
+
+-- Custom quotes engine
+
+-- ---------------------------------------------------------------------------
+
+-- Forward declaration: _shuffle is defined further below (after the default
+-- quotes engine section) but is also needed by pickCustomQuote here.
+-- Declaring it upfront makes the dependency explicit and avoids a nil-call
+-- crash at runtime when the "custom" source mode is active.
+local _shuffle
+
+local _custom_quotes_cache      = nil
+local _custom_quotes_cache_file = nil
+
+local function loadCustomQuotes(filename)
+    if _custom_quotes_cache and _custom_quotes_cache_file == filename then
+        return _custom_quotes_cache
+    end
+    _custom_quotes_cache = nil; _custom_quotes_cache_file = nil
+    if not filename or filename == "" then return nil end
+    local path = customDir() .. "/" .. filename
+    if lfs.attributes(path, "mode") ~= "file" then
+        logger.warn("simpleui: quote: custom file not found: " .. tostring(path))
+        return nil
+    end
+    local ok, data = pcall(dofile, path)
+    if ok and type(data) == "table" and #data > 0 then
+        _custom_quotes_cache = data; _custom_quotes_cache_file = filename
+        logger.info("simpleui: quote: loaded " .. #data .. " custom quotes from " .. filename)
+        return _custom_quotes_cache
+    end
+    logger.warn("simpleui: quote: failed to load " .. tostring(path) .. ": " .. tostring(data))
+    return nil
+end
+
+local _CUSTOM_DECK_KEY  = "quote_custom_deck_order"
+local _CUSTOM_POS_KEY   = "quote_custom_deck_pos"
+local _CUSTOM_COUNT_KEY = "quote_custom_deck_count"
+local _CUSTOM_FILE_KEY  = "quote_custom_deck_file"
+
+local function pickCustomQuote(pfx)
+    local filename = getCustomFile(pfx)
+    local quotes   = loadCustomQuotes(filename)
+    if not quotes or #quotes == 0 then return nil end
+    local n = #quotes
+
+    local sf = G_reader_settings:readSetting(_CUSTOM_FILE_KEY)
+    local sc = G_reader_settings:readSetting(_CUSTOM_COUNT_KEY)
+    local sp = G_reader_settings:readSetting(_CUSTOM_POS_KEY)
+    local sr = G_reader_settings:readSetting(_CUSTOM_DECK_KEY)
+
+    local deck, pos
+    if sf == filename and type(sc) == "number" and sc == n
+            and type(sp) == "number" and sp >= 1 and sp <= n
+            and type(sr) == "string" then
+        deck = {}
+        for v in sr:gmatch("%d+") do deck[#deck + 1] = tonumber(v) end
+        if #deck == n then pos = sp else deck, pos = nil, nil end
+    end
+
+    if not deck then deck = _shuffle(n); pos = 1 end
+
+    local idx = deck[pos]
+    pos = pos + 1
+    if pos > n then
+        local last = idx
+        deck = _shuffle(n)
+        if n > 1 and deck[1] == last then deck[1], deck[2] = deck[2], deck[1] end
+        pos = 1
+    end
+
+    G_reader_settings:saveSetting(_CUSTOM_FILE_KEY,  filename)
+    G_reader_settings:saveSetting(_CUSTOM_DECK_KEY,  table.concat(deck, ","))
+    G_reader_settings:saveSetting(_CUSTOM_POS_KEY,   pos)
+    G_reader_settings:saveSetting(_CUSTOM_COUNT_KEY, n)
+    return quotes[idx]
+end
+
+
+
 -- Picks the next quote using a shuffle-deck approach: all quotes are visited
 
 -- in a random order before any repeats. The current position and shuffled
@@ -166,7 +286,7 @@ local _COUNT_KEY = "quote_deck_count"
 
 
 
-local function _shuffle(n)
+_shuffle = function(n)
 
     local t = {}
 
@@ -700,6 +820,36 @@ end
 
 
 
+local function buildFromCustomQuote(inner_w, face_quote, face_attr, vspan_gap, pfx)
+
+    local q = pickCustomQuote(pfx)
+
+    if not q then
+
+        return TextBoxWidget:new{
+
+            text    = _("No custom quotes found. Add a .lua file to the plugin\'s desktop_modules/custom_quotes/ folder and select it in Settings."),
+
+            face    = face_quote,
+
+            fgcolor = CLR_TEXT_SUB,
+
+            width   = inner_w,
+
+        }
+
+    end
+
+    local attr = "— " .. (q.a or "?")
+
+    if q.b and q.b ~= "" then attr = attr .. ",  " .. q.b end
+
+    return buildWidget(inner_w, "“" .. q.q .. "”", attr, face_quote, face_attr, vspan_gap)
+
+end
+
+
+
 local function buildFromQuote(inner_w, face_quote, face_attr, vspan_gap)
 
     local q = pickQuote()
@@ -838,6 +988,9 @@ function M.invalidateCache()
 
     G_reader_settings:delSetting(_HL_COUNT_KEY)
 
+    -- Clear the custom quotes cache so re-selection picks up any file changes.
+    _custom_quotes_cache = nil; _custom_quotes_cache_file = nil
+
 end
 
 
@@ -882,31 +1035,35 @@ function M.build(w, ctx)
 
         content, hl_filepath, hl_title, hl_pos0, hl_page = buildFromMixed(inner_w, face_quote, face_attr, vspan_gap)
 
+    elseif source == "custom" then
+
+        content = buildFromCustomQuote(inner_w, face_quote, face_attr, vspan_gap, ctx and ctx.pfx)
+
     else
 
         content = buildFromQuote(inner_w, face_quote, face_attr, vspan_gap)
 
     end
 
-    local frame = FrameContainer:new{
-
-        bordersize     = 0,
-
-        padding        = PAD,
-
-        padding_bottom = PAD2,
-
-        content,
-
-    }
+    -- Use a plain VerticalGroup instead of FrameContainer so the module
+    -- background is fully transparent (the homescreen background shows through).
+    -- Padding is replicated with VerticalSpan (top/bottom) and HorizontalSpan
+    -- (left/right) since VerticalGroup has no padding property of its own.
+    local pad_span  = VerticalSpan:new{ width = PAD }
+    local pad2_span = VerticalSpan:new{ width = PAD2 }
+    local hpad      = HorizontalSpan:new{ width = PAD }
+    local inner_row = HorizontalGroup:new{ hpad, content, hpad }
+    local frame = VerticalGroup:new{ align = "center", pad_span, inner_row, pad2_span }
 
     local open_fn = ctx and ctx.open_fn
 
     if hl_filepath and open_fn then
+        local Geom = require("ui/geometry")
+        local frame_size = frame:getSize()
 
         local tappable = InputContainer:new{
 
-            dimen  = frame:getSize(),
+            dimen  = Geom:new{ x = 0, y = 0, w = frame_size.w, h = frame_size.h },
 
             _fp    = hl_filepath,
 
@@ -939,28 +1096,29 @@ function M.build(w, ctx)
         }
 
         function tappable:onTapQuote()
-
-            local fp    = self._fp
-            local pos0  = self._pos0
-            local page  = self._page
-            local open  = self._open
-            local BD        = require("ui/bidi")
-            local ConfirmBox = require("ui/widget/confirmbox")
-            UIManager:show(ConfirmBox:new{
-                text        = _("Open this file?") .. "\n\n" .. BD.filename(fp:match("([^/]+)$")),
-                ok_text     = _("Open"),
-                cancel_text = _("Cancel"),
-                ok_callback = function()
-                    if open then
-                        -- Pass the position so the reader jumps directly to the highlight.
-                        -- open_fn signature: open(filepath, pos0_or_nil, page_or_nil)
+            if not self._open then return true end
+            -- When "Ask before opening file" is enabled, open_fn (openBook in
+            -- sui_homescreen) already shows a ConfirmBox — skip ours to avoid
+            -- two confirmation dialogs in a row.
+            if G_reader_settings:isTrue("file_ask_to_open") then
+                self._open(self._fp, self._pos0, self._page)
+            else
+                local fp    = self._fp
+                local pos0  = self._pos0
+                local page  = self._page
+                local open  = self._open
+                local BD        = require("ui/bidi")
+                local ConfirmBox = require("ui/widget/confirmbox")
+                UIManager:show(ConfirmBox:new{
+                    text        = _("Open this file?") .. "\n\n" .. BD.filename(fp:match("([^/]+)$")),
+                    ok_text     = _("Open"),
+                    cancel_text = _("Cancel"),
+                    ok_callback = function()
                         open(fp, pos0, page)
-                    end
-                end,
-            })
-
+                    end,
+                })
+            end
             return true
-
         end
 
         return tappable
@@ -1095,6 +1253,55 @@ function M.getMenuItems(ctx_menu)
 
                         refresh()
 
+                    end,
+
+                },
+
+                {
+
+                    text         = _lc("Custom File"),
+
+                    radio        = true,
+
+                    checked_func = function() return getSource(pfx) == "custom" end,
+
+                    -- Scan the filesystem only when the user opens this sub-menu.
+                    sub_item_table_func = function()
+                        local files    = listCustomQuoteFiles()
+                        local subitems = {}
+
+                        if #files == 0 then
+                            subitems[#subitems + 1] = {
+                                text    = _lc("No .lua files found in custom_quotes/"),
+                                enabled = false,
+                            }
+                        else
+                            for _, fname in ipairs(files) do
+                                local _fname = fname
+                                subitems[#subitems + 1] = {
+                                    text           = _fname,
+                                    radio          = true,
+                                    checked_func   = function()
+                                        return getSource(pfx) == "custom"
+                                               and getCustomFile(pfx) == _fname
+                                    end,
+                                    keep_menu_open = true,
+                                    callback       = function()
+                                        G_reader_settings:saveSetting(pfx .. SETTING_SOURCE,      "custom")
+                                        G_reader_settings:saveSetting(pfx .. SETTING_CUSTOM_FILE, _fname)
+                                        M.invalidateCache()
+                                        refresh()
+                                    end,
+                                }
+                            end
+                        end
+
+                        subitems[#subitems + 1] = {
+                            text    = _lc("Place .lua files in the plugin's desktop_modules/custom_quotes/ folder"),
+                            enabled = false,
+                        }
+
+                        return subitems
                     end,
 
                 },

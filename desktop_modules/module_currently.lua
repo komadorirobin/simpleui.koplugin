@@ -340,7 +340,8 @@ local function _computeContentH(params)
     local elems = {}
 
     if show.title then
-        elems[#elems+1] = { title_gap, title_line_h }
+        -- TextBoxWidget with max_lines=2: reserve up to 2 lines.
+        elems[#elems+1] = { title_gap, title_line_h * 2 }
     end
     if show.author and bd.authors and bd.authors ~= "" then
         elems[#elems+1] = { author_gap, author_line_h }
@@ -491,13 +492,12 @@ function M.build(w, ctx)
     for _i, elem in ipairs(elem_order) do
         if elem == "title" and show.title then
             gap_before(title_gap)
-            meta[#meta+1] = TextWidget:new{
-                text            = bd.title or "?",
-                face            = face_title,
-                bold            = true,
-                width           = tw,
-                max_width       = tw,
-                truncation_char = "â¦",  -- "…" UTF-8
+            meta[#meta+1] = TextBoxWidget:new{
+                text      = truncateTitle(bd.title) or "?",
+                face      = face_title,
+                bold      = true,
+                width     = tw,
+                max_lines = 2,
             }
             meta_has_content = true
 

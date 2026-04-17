@@ -37,7 +37,7 @@ local _BASE_RS_LBL_FS   = Screen:scaleBySize(8)
 local _BASE_RS_SEP_W    = Screen:scaleBySize(1)
 local _BASE_RS_PH_FS    = Screen:scaleBySize(11)  -- placeholder "No stats" text
 
-local RS_N_COLS    = 3  -- max columns — not a dimension, no scaling needed
+local RS_N_COLS    = 7  -- max columns — not a dimension, no scaling needed
 
 local SETTING_TYPE = "reading_stats_type"   -- suffix: pfx .. "reading_stats_type"
 
@@ -504,8 +504,7 @@ function M.getMenuItems(ctx_menu)
             text_func = function()
                 if isSelected(_sid) then return _lbl end
                 local rem = MAX_RS - #getItems()
-                if rem <= 0 then return _lbl .. "  (0 left)" end
-                if rem <= 2 then return _lbl .. "  (" .. rem .. " left)" end
+                if rem <= 2 then return _lbl .. string.format(N_lc("  (%d left)", "  (%d left)", rem), rem) end
                 return _lbl
             end,
             checked_func   = function() return isSelected(_sid) end,

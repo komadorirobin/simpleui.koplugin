@@ -78,6 +78,10 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
     -- Currently only "frontlight" is hardware-gated; all other ids are always shown.
     local function actionAvailable(id)
         if id == "frontlight" then return hasFrontlight() end
+        if id == "browse_authors" or id == "browse_series" then
+            local ok_bm, BM = pcall(require, "sui_browsemeta")
+            return ok_bm and BM and BM.isEnabled()
+        end
         return true
     end
 
@@ -235,8 +239,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                         if tid == _aid then return _base_label end
                     end
                     local rem = limit - #loadTabConfig()
-                    if rem <= 0 then return _base_label .. "  (0 left)" end
-                    if rem <= 2 then return _base_label .. "  (" .. rem .. " left)" end
+                    if rem <= 2 then return _base_label .. string.format(N_("  (%d left)", "  (%d left)", rem), rem) end
                     return _base_label
                 end,
                 checked_func = function()
@@ -554,9 +557,9 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                     dlg = InputDialog():new{
                         title       = _("Custom Text"),
                         input       = Config.getTopbarCustomText(),
-                        description = string.format(
-                            _("Text shown in the top bar.\nMaximum %d characters."),
-                            Config.TOPBAR_CUSTOM_TEXT_MAX),
+                        description = string.format(N_("Text shown in the top bar.\nMaximum %d character.",
+                                      "Text shown in the top bar.\nMaximum %d characters.", Config.TOPBAR_CUSTOM_TEXT_MAX),
+                                      Config.TOPBAR_CUSTOM_TEXT_MAX),
                         input_type  = "text",
                         buttons     = {{
                             {
@@ -1334,8 +1337,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                 text_func = function()
                     if isSelected(aid) then return _lbl end
                     local rem = MAX_QA_ITEMS - #getItems()
-                    if rem <= 0 then return _lbl .. "  (0 left)" end
-                    if rem <= 2 then return _lbl .. "  (" .. rem .. " left)" end
+                    if rem <= 2 then return _lbl .. string.format(N_("  (%d left)", "  (%d left)", rem), rem) end
                     return _lbl
                 end,
                 checked_func   = function() return isSelected(aid) end,
@@ -1491,14 +1493,14 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                 local current_pages = G_reader_settings:readSetting(ctx.pfx .. "homescreen_num_pages")
                                     or math.max(1, saved_breaks + 1)
                                 UIManager:show(SpinWidget:new{
-                                    title_text    = T("Number of Pages"),
-                                    info_text     = T("Choose how many pages the homescreen has.\nEmpty pages stay empty. Modules keep their position."),
+                                    title_text    = _("Number of Pages"),
+                                    info_text     = _("Choose how many pages the homescreen has.\nEmpty pages stay empty. Modules keep their position."),
                                     value         = current_pages,
                                     value_min     = 1,
                                     value_max     = 10,
                                     value_step    = 1,
-                                    ok_text       = T("OK"),
-                                    cancel_text   = T("Cancel"),
+                                    ok_text       = _("OK"),
+                                    cancel_text   = _("Cancel"),
                                     default_value = 1,
                                     callback = function(spin)
                                         local new_pages = spin.value
@@ -1596,7 +1598,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
 
                                 if #enabled_ids < 2 then
                                     UIManager:show(InfoMessage():new{
-                                        text = T("Enable at least 2 modules to arrange."), timeout = 2 })
+                                        text = _("Enable at least 2 modules to arrange."), timeout = 2 })
                                     return
                                 end
 
@@ -1618,7 +1620,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                             if current_breaks < n_pgs - 1 then
                                                 current_breaks = current_breaks + 1
                                                 items[#items + 1] = {
-                                                    text      = "── " .. string.format(T("Page %d"), current_breaks + 1) .. " ──",
+                                                    text      = "── " .. string.format(_("Page %d"), current_breaks + 1) .. " ──",
                                                     orig_item = PAGE_BREAK,
                                                     _is_break = true,
                                                     dim       = true,
@@ -1638,7 +1640,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                     while current_breaks < n_pgs - 1 do
                                         current_breaks = current_breaks + 1
                                         items[#items + 1] = {
-                                            text      = "── " .. string.format(T("Page %d"), current_breaks + 1) .. " ──",
+                                            text      = "── " .. string.format(_("Page %d"), current_breaks + 1) .. " ──",
                                             orig_item = PAGE_BREAK,
                                             _is_break = true,
                                             dim       = true,
@@ -1649,14 +1651,14 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
 
                                 local function validate(items)
                                     if items[1] and items[1]._is_break then
-                                        return false, T("Cannot place modules after Page 1 separator.\nPage 1 must always have at least 1 module.")
+                                        return false, _("Cannot place modules after Page 1 separator.\nPage 1 must always have at least 1 module.")
                                     end
                                     local has_mod = false
                                     for _i, it in ipairs(items) do
                                         if not it._is_break then has_mod = true; break end
                                     end
                                     if not has_mod then
-                                        return false, T("Enable at least 2 modules to arrange.")
+                                        return false, _("Enable at least 2 modules to arrange.")
                                     end
                                     return true
                                 end
@@ -1693,7 +1695,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
 
                                 local sort_items = buildSortItems(n_pages)
                                 UIManager:show(SortWidget():new{
-                                    title             = T("Arrange Modules"),
+                                    title             = _("Arrange Modules"),
                                     item_table        = sort_items,
                                     covers_fullscreen = true,
                                     callback          = function() saveOrder(sort_items) end,
@@ -1978,6 +1980,46 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                 end
                                 return {
                                     {
+                                        text         = _("Browse by Author / Series"),
+                                        checked_func = function()
+                                            local ok_bm, BM = pcall(require, "sui_browsemeta")
+                                            return ok_bm and BM and BM.isEnabled()
+                                        end,
+                                        separator    = true,
+                                        callback     = function()
+                                            local ok_bm, BM = pcall(require, "sui_browsemeta")
+                                            if not (ok_bm and BM) then return end
+                                            local enabling = not BM.isEnabled()
+                                            BM.setEnabled(enabling)
+                                            -- Teardown titlebar FIRST so the fc.genItemTable hook
+                                            -- (which holds BM upvalues) is removed before
+                                            -- BM.uninstall() nils _orig_genItemTable.
+                                            local FM2 = package.loaded["apps/filemanager/filemanager"]
+                                            local fm2 = FM2 and FM2.instance
+                                            if fm2 then
+                                                local ok_tb, TB = pcall(require, "sui_titlebar")
+                                                if ok_tb and TB then pcall(TB.restore, fm2) end
+                                            end
+                                            if enabling then
+                                                pcall(BM.install)
+                                            else
+                                                -- Exit virtual tree before uninstalling.
+                                                local fc2 = fm2 and fm2.file_chooser
+                                                if fc2 and fc2.path then
+                                                    if fc2.path:find("/\u{E257}", 1, true) then
+                                                        BM.exitToNormal(fc2, fm2)
+                                                    end
+                                                end
+                                                pcall(BM.uninstall)
+                                            end
+                                            -- Rebuild titlebar (with or without browse button).
+                                            if fm2 then
+                                                local ok_tb, TB = pcall(require, "sui_titlebar")
+                                                if ok_tb and TB then pcall(TB.apply, fm2) end
+                                            end
+                                        end,
+                                    },
+                                    {
                                         text         = _("Folder Covers"),
                                         checked_func = function() return FC.isEnabled() end,
                                         separator    = true,
@@ -2001,6 +2043,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                         text           = _("Group Books by Series"),
                                         checked_func   = function() return FC.getSeriesGrouping() end,
                                         keep_menu_open = true,
+                                        enabled_func   = function() return FC.isEnabled() end,
                                         callback       = function()
                                             FC.setSeriesGrouping(not FC.getSeriesGrouping())
                                             FC.invalidateCache()
@@ -2168,6 +2211,9 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                     }
                 end,
             },
+            -- -----------------------------------------------------------------
+            -- Developer submenu
+            -- To re-enable: change _SHOW_DEVELOPER_MENU to true (line below).
             -- -----------------------------------------------------------------
             -- About submenu
             -- -----------------------------------------------------------------
