@@ -414,9 +414,21 @@ function M.build(w, ctx)
     local curIdx = getSelectorIndex(pfx)
     local last_fp = getSelectorFP(pfx)
 
+    -- PRIORIDADE: se há um livro actualmente aberto e está na lista, centra nele.
+    -- Isto garante que abrir um livro no FileManager o coloca no centro do carousel,
+    -- tal como acontece no module_currently.
+    if ctx.current_fp then
+        for i, fp in ipairs(fps) do
+            if fp == ctx.current_fp then
+                curIdx = i
+                setSelectorIndex(pfx, curIdx)
+                setSelectorFP(pfx, fp)
+                break
+            end
+        end
     -- AJUSTE INTELIGENTE DE ÍNDICE: Segue o livro mesmo que a sua posição no histórico tenha mudado.
     -- Ambas as fontes (recent ≤10, tbr ≤5) têm listas curtas — loop linear é suficiente.
-    if last_fp then
+    elseif last_fp then
         local found_idx
         for i, fp in ipairs(fps) do
             if fp == last_fp then found_idx = i; break end
