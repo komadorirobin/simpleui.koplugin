@@ -516,13 +516,14 @@ end
 -- Refresh timer
 -- ---------------------------------------------------------------------------
 
-local function shouldRunTimer(plugin)
+-- Returns true when the topbar is enabled and it is safe to refresh it.
+-- Does NOT check whether the clock item is visible — that is only relevant
+-- for deciding whether to *reschedule* the recurring timer after a tick.
+local function shouldRefreshTopbar(plugin)
     if _topbar_enabled_cache == nil then
         _topbar_enabled_cache = G_reader_settings:nilOrTrue("navbar_topbar_enabled")
     end
     if not _topbar_enabled_cache then return false end
-    local cfg = getTopbarConfigCached()   -- usa a cache em vez de reconstruir a tabela (#5)
-    if (cfg.side["clock"] or "hidden") == "hidden" then return false end
     -- Use package.loaded to avoid any pcall overhead; ReaderUI is only present
     -- while a book is open, and the timer is cancelled before that anyway.
     local RUI = package.loaded["apps/reader/readerui"]
@@ -533,18 +534,27 @@ local function shouldRunTimer(plugin)
     return true
 end
 
+-- Returns true when the recurring minute-tick timer should keep rescheduling.
+-- Requires the clock item to be visible — without it there is nothing to tick.
+local function shouldRunTimer(plugin)
+    if not shouldRefreshTopbar(plugin) then return false end
+    local cfg = getTopbarConfigCached()
+    if (cfg.side["clock"] or "hidden") == "hidden" then return false end
+    return true
+end
+
 function M.scheduleRefresh(plugin, delay)
     if plugin._topbar_timer then
         UIManager:unschedule(plugin._topbar_timer)
         plugin._topbar_timer = nil
     end
-    if not shouldRunTimer(plugin) then return end
+    if not shouldRefreshTopbar(plugin) then return end
     plugin._topbar_timer = function() M.refresh(plugin) end
     UIManager:scheduleIn(delay, plugin._topbar_timer)
 end
 
 function M.refresh(plugin)
-    if not shouldRunTimer(plugin) then return end
+    if not shouldRefreshTopbar(plugin) then return end
     local UI    = require("sui_core")
     local stack = UI.getWindowStack()  -- read once
     -- Each widget gets its own topbar instance. Sharing a single object across
@@ -568,8 +578,14 @@ function M.refresh(plugin)
         local ok, err = pcall(refreshWidget, entry.widget)
         if not ok then logger.warn("simpleui: topbar refreshWidget failed:", tostring(err)) end
     end
-    local delay = 60 - (os.time() % 60) + 1
-    M.scheduleRefresh(plugin, delay)
+    -- Only keep the recurring minute-tick alive when the topbar clock is
+    -- visible.  One-shot refreshes (brightness, wifi, battery events) arrive
+    -- via M.scheduleRefresh(plugin, 0) from main.lua and are not affected —
+    -- they bypass this rescheduling path entirely.
+    if shouldRunTimer(plugin) then
+        local delay = 60 - (os.time() % 60) + 1
+        M.scheduleRefresh(plugin, delay)
+    end
 end
 
 return M

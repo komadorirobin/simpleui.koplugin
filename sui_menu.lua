@@ -2010,6 +2010,13 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                                         BM.exitToNormal(fc2, fm2)
                                                     end
                                                 end
+                                                -- Safety net: ensure "normal" is persisted even
+                                                -- when the FC was already on a real path (so
+                                                -- exitToNormal was skipped) or if exitToNormal
+                                                -- errored before reaching setSavedMode. Must run
+                                                -- before uninstall so the patches are still intact
+                                                -- when changeToPath fires from exitToNormal above.
+                                                BM.setSavedMode("normal")
                                                 pcall(BM.uninstall)
                                             end
                                             -- Rebuild titlebar (with or without browse button).
