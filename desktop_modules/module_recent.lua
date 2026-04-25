@@ -18,7 +18,7 @@ local CenterContainer = require("ui/widget/container/centercontainer")
 local TextWidget      = require("ui/widget/textwidget")
 local VerticalGroup   = require("ui/widget/verticalgroup")
 local Screen          = Device.screen
-local _               = require("gettext")
+local _ = require("sui_i18n").translate
 
 local logger  = require("logger")
 local _SH = nil
@@ -41,9 +41,10 @@ local CLR_TEXT_SUB = UI.CLR_TEXT_SUB
 
 local _BASE_RB_PCT_FS = Screen:scaleBySize(8)  -- "XX% Read" label font size — base value
 
-local SETTING_PROGRESS = "recent_show_progress"  -- pfx .. this; default ON
-local SETTING_TEXT     = "recent_show_text"       -- pfx .. this; default ON
-local SETTING_OVERLAY  = "recent_show_overlay"    -- pfx .. this; default OFF
+local SETTING_PROGRESS      = "recent_show_progress"  -- pfx .. this; default ON
+local SETTING_TEXT          = "recent_show_text"       -- pfx .. this; default ON
+local SETTING_OVERLAY       = "recent_show_overlay"    -- pfx .. this; default OFF
+local SETTING_SHOW_FINISHED = "recent_show_finished"   -- pfx .. this; default OFF
 
 local function showProgress(pfx)
     return G_reader_settings:readSetting(pfx .. SETTING_PROGRESS) ~= false
@@ -53,6 +54,9 @@ local function showText(pfx)
 end
 local function showOverlay(pfx)
     return G_reader_settings:readSetting(pfx .. SETTING_OVERLAY) == true
+end
+local function showFinished(pfx)
+    return G_reader_settings:readSetting(pfx .. SETTING_SHOW_FINISHED) == true
 end
 
 
@@ -306,6 +310,15 @@ function M.getMenuItems(ctx_menu)
             keep_menu_open = true,
             callback       = function()
                 G_reader_settings:saveSetting(pfx .. SETTING_OVERLAY, not showOverlay(pfx))
+                refresh()
+            end,
+        },
+        {
+            text           = _lc("Show finished books"),
+            checked_func   = function() return showFinished(pfx) end,
+            keep_menu_open = true,
+            callback       = function()
+                G_reader_settings:saveSetting(pfx .. SETTING_SHOW_FINISHED, not showFinished(pfx))
                 refresh()
             end,
         },

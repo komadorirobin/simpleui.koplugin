@@ -1706,3 +1706,6 @@ msgid "The maximum of %d tab has been reached. Remove one first."
 msgid_plural "The maximum of %d tabs has been reached. Remove one first."
 msgstr[0] "O máximo de %d separador foi atingido. Remova um primeiro."
 msgstr[1] "O máximo de %d separadores foi atingido. Remova um primeiro."
+#: desktop_modules/module_recent.lua:317 desktop_modules/module_coverdeck.lua:824
+msgid "Show finished books"
+msgstr "Mostrar livros terminados"

@@ -27,7 +27,7 @@
 --   simpleui_fc_series_grouping  — group books by series into virtual folders (default false)
 --   simpleui_fc_item_cache       — 2 000-entry item cache (default true)
 
-local _ = require("gettext")
+local _ = require("sui_i18n").translate
 local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
 
@@ -95,8 +95,9 @@ local M = {}
 -- (including _openSeriesGroupCoverPicker and _installFileDialogButton,
 -- which are defined before the series-grouping section) can reference
 -- these as upvalues rather than globals.
-local _sg_current     = nil   -- active virtual folder state (or nil)
-local _sg_items_cache = {}    -- virtual_path → {series_items}
+local _sg_current           = nil   -- active virtual folder state (or nil)
+local _sg_items_cache       = {}    -- virtual_path → {series_items}
+local _sg_last_evicted_path = nil   -- last path for which _sg_items_cache was evicted
 
 function M.isEnabled()    return G_reader_settings:isTrue(SK.enabled)  end
 function M.setEnabled(v)  G_reader_settings:saveSetting(SK.enabled, v) end
@@ -215,12 +216,35 @@ function M.setRecursiveCover(v) _setFlag(SK.recursive_cover, v) end
 
 local _COVER_EXTS = { ".jpg", ".jpeg", ".png", ".webp", ".gif" }
 
+-- Per-directory cache for .cover.* lookups. Values are the found filepath
+-- (string) or false when the directory was checked and nothing was found.
+-- This avoids up to 5 lfs.attributes() calls per folder per render on slow
+-- e-reader flash. Invalidated in the refreshPath patch so a manually added
+-- .cover file is picked up on the next library refresh.
+local _cover_file_cache = {}
+
+-- Per-directory cache for the ListMenuItem lfs.dir cover scan.
+-- Values are a lightweight bookinfo snapshot (table) when a cover was found,
+-- or false when the directory was fully scanned and nothing was available.
+-- Avoids repeating the lfs.dir + per-file lfs.attributes walk on every
+-- reader->HS cycle. Invalidated alongside _cover_file_cache in refreshPath.
+local _lm_dir_cover_cache = {}
+
 local function findCover(dir_path)
+    local cached = _cover_file_cache[dir_path]
+    if cached ~= nil then
+        return cached or nil  -- false means "checked, not present"
+    end
     local base = dir_path .. "/.cover"
     for i = 1, #_COVER_EXTS do
         local fname = base .. _COVER_EXTS[i]
-        if lfs.attributes(fname, "mode") == "file" then return fname end
+        if lfs.attributes(fname, "mode") == "file" then
+            _cover_file_cache[dir_path] = fname
+            return fname
+        end
     end
+    _cover_file_cache[dir_path] = false
+    return nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -427,30 +451,47 @@ end
 
 local _FC_COVERS_KEY = "simpleui_fc_covers"
 
+-- In-memory cache for the cover-overrides table. The table is read on
+-- every folder-cover render (once per cell per updateItems call), but it
+-- changes only when the user explicitly picks a cover via the long-press
+-- dialog. Caching avoids repeated G_reader_settings deserialisation.
+-- The cache is populated lazily on first read and mutated in-place by the
+-- save/clear helpers, so it never goes stale during a session.
+local _overrides_cache = nil
+
 local function _getCoverOverrides()
-    return G_reader_settings:readSetting(_FC_COVERS_KEY) or {}
+    if not _overrides_cache then
+        _overrides_cache = G_reader_settings:readSetting(_FC_COVERS_KEY) or {}
+    end
+    return _overrides_cache
 end
 
 local function _saveCoverOverride(dir_path, book_path)
     local t = _getCoverOverrides()
     t[dir_path] = book_path
     G_reader_settings:saveSetting(_FC_COVERS_KEY, t)
+    -- Cache already mutated in-place; no reset needed.
 end
 
 local function _clearCoverOverride(dir_path)
     local t = _getCoverOverrides()
     t[dir_path] = nil
     G_reader_settings:saveSetting(_FC_COVERS_KEY, t)
+    -- Cache already mutated in-place; no reset needed.
 end
 
 -- Forces re-render of the folder item by clearing the processed flag.
+-- Works for both mosaic view (items in menu.layout rows) and list view
+-- (items in menu.layout as single-element arrays {item_tmp}).
 local function _invalidateFolderItem(menu, dir_path)
-    if not menu or not menu.layout then return end
-    for _, row in ipairs(menu.layout) do
-        for _, item in ipairs(row) do
-            if item._foldercover_processed
-                and item.entry and item.entry.path == dir_path then
-                item._foldercover_processed = false
+    if not menu then return end
+    if menu.layout then
+        for _, row in ipairs(menu.layout) do
+            for _, item in ipairs(row) do
+                if item._foldercover_processed
+                        and item.entry and item.entry.path == dir_path then
+                    item._foldercover_processed = false
+                end
             end
         end
     end
@@ -469,7 +510,7 @@ local function _findCoverRecursive(menu, dir_path, depth, max_depth, BookInfoMan
     -- Temporarily clear the status filter so that books filtered out by the
     -- user's "show only new/reading" setting are still visible for cover lookup.
     -- The filter governs what is *displayed*, not what can supply cover art.
-    local FileChooser    = require("ui/widget/filechooser")
+    -- FileChooser is already required at module level — no per-call require().
     local saved_filter   = FileChooser.show_filter
     FileChooser.show_filter = {}
     menu._dummy = true
@@ -513,7 +554,7 @@ end
 local function _collectBooks(menu, dir_path, depth, max_depth, out)
     -- Strip status filter so finished/on-hold books are included as cover candidates
     -- even when the browser is set to show only new/reading books.
-    local FileChooser    = require("ui/widget/filechooser")
+    -- FileChooser is already required at module level — no per-call require().
     local saved_filter   = FileChooser.show_filter
     FileChooser.show_filter = {}
     menu._dummy = true
@@ -818,6 +859,32 @@ local function _sgProcessItemTable(item_table, file_chooser)
     if item_table._sg_is_series_view then return end
     -- Skip folder-chooser dialogs (show_current_dir_for_hold is set).
     if file_chooser.show_current_dir_for_hold then return end
+
+    -- Evict stale _sg_items_cache entries for the current directory before
+    -- reprocessing. Without this, the cache grows unboundedly across
+    -- reader->HS cycles: every switchItemTable call adds new virtual-path
+    -- entries but nothing removes old ones, so the Lua GC heap grows with
+    -- each session and the HS slows down progressively.
+    -- Entries for other directories are preserved (they are still valid).
+    --
+    -- Guard: only evict when the path actually changed since the last eviction.
+    -- switchItemTable is called on every refreshPath (including reader->HS),
+    -- so running the loop unconditionally burns CPU on every book close even
+    -- when the user never navigated the FM. The path is stable across those
+    -- calls, so a single eviction per directory visit is sufficient.
+    local current_path = file_chooser.path
+    if current_path and current_path ~= _sg_last_evicted_path then
+        _sg_last_evicted_path = current_path
+        -- vpaths are built as base_path..sname where base_path ends with "/",
+        -- so normalise the prefix the same way.
+        local prefix = current_path
+        if prefix:sub(-1) ~= "/" then prefix = prefix .. "/" end
+        for k in pairs(_sg_items_cache) do
+            if k:sub(1, #prefix) == prefix then
+                _sg_items_cache[k] = nil
+            end
+        end
+    end
 
     local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
     if not ok_bim or not BookInfoManager then return end
@@ -1156,12 +1223,29 @@ local function _installSeriesGrouping()
     -- refreshPath: re-enter the virtual folder after a reload (e.g. after
     -- closing a book and returning to the library).
     FileChooser.refreshPath = function(fc)
-        -- Always flush the item cache before rebuilding the list so that
-        -- status changes (long-press dialog, book close, etc.) are reflected
-        -- immediately — the cache key does not encode per-book status/percent,
-        -- so stale entries would otherwise survive until restart.
+        -- The getListItem cache key encodes path, filename, status filter and
+        -- collate, but NOT the per-book status/percent_finished value — those
+        -- live inside the item returned by _orig_getListItem. When the user
+        -- changes a book's status (e.g. reading→complete) the FM calls
+        -- refreshPath to re-sort the list. Flushing unconditionally is the safe
+        -- fix: the cache repopulates in a single updateItems pass.
         _cache = {}
         _cache_count = 0
+
+        -- The filesystem-level cover caches (_cover_file_cache, _lm_dir_cover_cache)
+        -- encode disk state: whether a .cover.* file exists and which book cover
+        -- to use for a given folder. This state does not change just because the
+        -- user was reading — it only changes when files are added/removed via the
+        -- FM. Guard with _library_was_visited (set by onPathChanged on every FM
+        -- directory change, cleared by the homescreen on close) so that on a plain
+        -- reader->HS transition these caches are preserved and the subsequent
+        -- updateItems call avoids the lfs.attributes×5 + lfs.dir scan per folder.
+        local HS = package.loaded["sui_homescreen"]
+        if HS and HS._library_was_visited then
+            for k in pairs(_cover_file_cache)   do _cover_file_cache[k]   = nil end
+            for k in pairs(_lm_dir_cover_cache) do _lm_dir_cover_cache[k] = nil end
+        end
+
         _sg_orig_refreshPath(fc)
         if not M.getSeriesGrouping() then return end
         if not _sg_current then return end
@@ -1253,8 +1337,9 @@ local function _uninstallSeriesGrouping()
         _sg_orig_updateItems = nil
     end
     FileChooser._simpleui_sg_patched = nil
-    _sg_current     = nil
-    _sg_items_cache = {}
+    _sg_current           = nil
+    _sg_items_cache       = {}
+    _sg_last_evicted_path = nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -1351,6 +1436,35 @@ function M.install()
         if not self.do_cover_image        then return end
         if not M.isEnabled()              then return end
         if self.entry.is_file or self.entry.file or not self.mandatory then return end
+
+        -- Defer the first folder-cover render pass when the homescreen is
+        -- visible and the FM is in the background. The HS has no folder covers
+        -- of its own, so the user sees nothing during this tick. Rendering is
+        -- scheduled for the next tick so the HS paint completes first, making
+        -- the reader->HS transition feel instant. Subsequent updateItems calls
+        -- (with _fc_hs_deferred already consumed) run normally.
+        local HS = package.loaded["sui_homescreen"]
+        if HS and HS._instance and not self.menu._fc_hs_deferred then
+            self.menu._fc_hs_deferred = true
+            local menu_ref = self.menu
+            local UIManager = require("ui/uimanager")
+            UIManager:nextTick(function()
+                -- Always clear the flag first so the updateItems call below
+                -- does not re-enter the deferral path and schedule another tick.
+                menu_ref._fc_hs_deferred = false
+                -- If the HS is still visible the FM is still in the background;
+                -- covers will be built when the user navigates to the FM.
+                local HS2 = package.loaded["sui_homescreen"]
+                if HS2 and HS2._instance then return end
+                -- If the FM is already tearing down (e.g. user tapped a book on
+                -- the HS cover deck before this tick fired) there is nothing to
+                -- render — skip to avoid a stale updateItems on a dead menu.
+                local fm = package.loaded["apps/filemanager/filemanager"]
+                if not fm or not fm.instance or fm.instance.tearing_down then return end
+                menu_ref:updateItems()
+            end)
+            return
+        end
 
         local dir_path = self.entry and self.entry.path
         if not dir_path then return end
@@ -1452,13 +1566,13 @@ function M.install()
 
         -- Strip status filter so finished/on-hold books can still supply cover art
         -- even when the browser is configured to show only new/reading books.
-        local FileChooser_fc  = require("ui/widget/filechooser")
-        local saved_filter_fc = FileChooser_fc.show_filter
-        FileChooser_fc.show_filter = {}
+        -- FileChooser is already required at module level — no per-item require().
+        local saved_filter_fc = FileChooser.show_filter
+        FileChooser.show_filter = {}
         self.menu._dummy = true
         local entries = self.menu:genItemTableFromPath(dir_path)
         self.menu._dummy = false
-        FileChooser_fc.show_filter = saved_filter_fc
+        FileChooser.show_filter = saved_filter_fc
         if not entries then return end
 
         -- Track whether this folder has direct ebooks or only subfolders,
@@ -1668,6 +1782,23 @@ function M.install()
         end
         local text = self._fc_display_text
 
+        -- Cache key: the binary searches depend on available_w and the
+        -- effective max font size. Both are stable for a given cell size
+        -- and label scale, so the result is safe to reuse across renders
+        -- of the same item without re-running the widget allocations.
+        local cache_key = available_w .. "\0" .. (dir_max_font_size or _BASE_DIR_FS)
+        if self._fc_font_size_cache
+            and self._fc_font_size_cache[cache_key] then
+            local dir_font_size = self._fc_font_size_cache[cache_key]
+            return TextBoxWidget:new{
+                text      = text,
+                face      = Font:getFace("cfont", dir_font_size),
+                width     = available_w,
+                alignment = "center",
+                bold      = true,
+            }
+        end
+
         local longest_word = ""
         for word in text:gmatch("%S+") do
             if #word > #longest_word then longest_word = word end
@@ -1706,6 +1837,13 @@ function M.install()
             if fits then lo = mid else hi = mid - 1 end
         end
         dir_font_size = lo
+
+        -- Store the result so subsequent renders of the same item skip
+        -- the binary searches entirely (no widget allocations at all).
+        if not self._fc_font_size_cache then
+            self._fc_font_size_cache = {}
+        end
+        self._fc_font_size_cache[cache_key] = dir_font_size
 
         return TextBoxWidget:new{
             text      = text,
@@ -1903,8 +2041,7 @@ function M.install()
         function ListMenuItem:update(...)
             orig_lm_update(self, ...)
 
-            -- Only act in cover-image mode, on virtual folder entries,
-            -- and only when the feature is enabled.
+            -- Only act in cover-image mode and when the feature is enabled.
             if not self.do_cover_image                      then return end
             if not M.isEnabled()                            then return end
             if self.menu and self.menu.no_refresh_covers    then return end
@@ -1912,67 +2049,167 @@ function M.install()
 
             local entry = self.entry
             if not entry then return end
-            -- Must be a virtual-folder entry (directory, not a real file).
+            -- Only directories (not real book files).
             if entry.is_file or entry.file then return end
-            if not (entry.is_virtual_meta_leaf or entry.is_series_group) then return end
 
             local cover_specs = self.menu and self.menu.cover_specs
+            local dir_path    = entry.path
+            if not dir_path then return end
 
-            -- Resolve the representative filepath.
-            -- is_virtual_meta_leaf: already stored on the entry by browsemeta.
-            -- is_series_group:      no representative_filepath — iterate series_items
-            --                       exactly as MosaicMenuItem does.
-            local repr_fp = entry.representative_filepath
+            -- ── Virtual meta-leaf (browsemeta) ──────────────────────────────
+            if entry.is_virtual_meta_leaf then
+                local repr_fp = entry.representative_filepath
+                local overrides   = _getCoverOverrides()
+                local override_fp = overrides[dir_path]
+                if override_fp then repr_fp = override_fp end
+                if not repr_fp then return end
+                local bookinfo = BookInfoManager:getBookInfo(repr_fp, true)
+                if not bookinfo then return end
+                if not (bookinfo.has_cover and bookinfo.cover_fetched
+                        and not bookinfo.ignore_cover and bookinfo.cover_bb) then return end
+                if cover_specs and BookInfoManager.isCachedCoverInvalid(bookinfo, cover_specs) then return end
+                self:_setListFolderCover(bookinfo)
+                return
+            end
 
-            if not repr_fp and entry.is_series_group then
-                -- Check for a user override first.
-                local sg_overrides = _getCoverOverrides()
-                local sg_override  = sg_overrides[entry.path]
-                if sg_override then
-                    repr_fp = sg_override
-                else
-                    -- Walk series_items (or the _sg_items_cache) to find the
-                    -- first book that already has a cached cover.
-                    local items = entry.series_items or _sg_items_cache[entry.path]
-                    if items then
-                        for _, book_entry in ipairs(items) do
-                            if book_entry.path then
-                                local bi = BookInfoManager:getBookInfo(book_entry.path, true)
-                                if bi and bi.has_cover and bi.cover_fetched
-                                        and not bi.ignore_cover and bi.cover_bb
-                                        and (not cover_specs
-                                             or not BookInfoManager.isCachedCoverInvalid(bi, cover_specs))
+            -- ── Series group ────────────────────────────────────────────────
+            if entry.is_series_group then
+                local sg_overrides   = _getCoverOverrides()
+                local sg_override_fp = sg_overrides[dir_path]
+                if sg_override_fp then
+                    local bi = BookInfoManager:getBookInfo(sg_override_fp, true)
+                    if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                            and not bi.ignore_cover
+                            and not (cover_specs and BookInfoManager.isCachedCoverInvalid(bi, cover_specs))
+                    then
+                        self:_setListFolderCover(bi)
+                        return
+                    end
+                end
+                local items = entry.series_items or _sg_items_cache[dir_path]
+                if items then
+                    for _, book_entry in ipairs(items) do
+                        if book_entry.path then
+                            local bi = BookInfoManager:getBookInfo(book_entry.path, true)
+                            if bi and bi.has_cover and bi.cover_fetched
+                                    and not bi.ignore_cover and bi.cover_bb
+                                    and not (cover_specs and
+                                        BookInfoManager.isCachedCoverInvalid(bi, cover_specs))
+                            then
+                                self:_setListFolderCover(bi)
+                                return
+                            end
+                        end
+                    end
+                end
+                return  -- not processed yet; updateItems will retry
+            end
+
+            -- ── Real folder ─────────────────────────────────────────────────
+            -- 1. User-chosen cover override.
+            local overrides   = _getCoverOverrides()
+            local override_fp = overrides[dir_path]
+            if override_fp then
+                local bi = BookInfoManager:getBookInfo(override_fp, true)
+                if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                        and not bi.ignore_cover
+                        and not (cover_specs and BookInfoManager.isCachedCoverInvalid(bi, cover_specs))
+                then
+                    self:_setListFolderCover(bi)
+                    return
+                end
+            end
+
+            -- 2. Static .cover.* image file inside the folder.
+            local cover_file = findCover(dir_path)
+            if cover_file then
+                local ok, img = pcall(function()
+                    local iw = ImageWidget:new{ file = cover_file, scale_factor = 1 }
+                    iw:_render()
+                    local bb = iw._bb and iw._bb:copy()
+                    local ow = iw:getOriginalWidth()
+                    local oh = iw:getOriginalHeight()
+                    iw:free()
+                    return { cover_bb = bb, cover_w = ow, cover_h = oh,
+                             has_cover = true, cover_fetched = true }
+                end)
+                if ok and img and img.cover_bb then
+                    self:_setListFolderCover(img)
+                    return
+                end
+            end
+
+            -- 3. First cached book cover inside the folder (synchronous check
+            --    against what BookInfoManager already has in its db — no I/O).
+            --    Result is cached per directory so that repeated updateItems
+            --    calls (e.g. every reader->HS cycle) skip the lfs.dir + per-file
+            --    lfs.attributes scan entirely after the first pass.
+            --    _lm_dir_cover_cache lives at module level and is invalidated
+            --    in the refreshPath patch together with _cover_file_cache.
+            local cached_lm = _lm_dir_cover_cache[dir_path]
+            if cached_lm == false then
+                -- Previously scanned, no cover found — skip to async retry.
+            elseif cached_lm ~= nil then
+                -- Hit: reuse cached bookinfo-like table.
+                self:_setListFolderCover(cached_lm)
+                return
+            else
+                -- Miss: scan the directory now.
+                -- FileChooser is already required at module level.
+                local saved_filter = FileChooser.show_filter
+                FileChooser.show_filter = {}
+                local ok_dir, iter, dir_obj = pcall(lfs.dir, dir_path)
+                if ok_dir and iter then
+                    for f in iter, dir_obj do
+                        if f ~= "." and f ~= ".." then
+                            local fp = dir_path .. "/" .. f
+                            local attr = lfs.attributes(fp) or {}
+                            if attr.mode == "file"
+                                    and not f:match("^%._")  -- skip macOS forks
+                                    and FileChooser:show_file(f, fp)
+                            then
+                                local bi = BookInfoManager:getBookInfo(fp, true)
+                                if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                                        and not bi.ignore_cover
+                                        and not (cover_specs and
+                                            BookInfoManager.isCachedCoverInvalid(bi, cover_specs))
                                 then
-                                    repr_fp = book_entry.path
-                                    break
+                                    FileChooser.show_filter = saved_filter
+                                    -- Cache a lightweight snapshot (only the fields
+                                    -- _setListFolderCover actually reads) to avoid
+                                    -- holding the full BookInfoManager entry alive.
+                                    _lm_dir_cover_cache[dir_path] = {
+                                        cover_bb      = bi.cover_bb,
+                                        cover_w       = bi.cover_w,
+                                        cover_h       = bi.cover_h,
+                                        has_cover     = true,
+                                        cover_fetched = true,
+                                    }
+                                    self:_setListFolderCover(_lm_dir_cover_cache[dir_path])
+                                    return
                                 end
                             end
                         end
                     end
                 end
+                FileChooser.show_filter = saved_filter
+                -- No cover found in this directory — record negative result.
+                _lm_dir_cover_cache[dir_path] = false
             end
 
-            if not repr_fp then return end  -- nothing cached yet; updateItems will retry
-
-            -- Check for a user-chosen override for virtual-meta leaves.
-            if entry.is_virtual_meta_leaf then
-                local overrides   = _getCoverOverrides()
-                local override_fp = overrides[entry.path]
-                if override_fp then repr_fp = override_fp end
+            -- 4. Nothing cached yet — register for async retry so that when
+            --    BookInfoManager finishes extracting book covers in the background
+            --    this item gets another chance via items_update_action.
+            if self.menu and self.menu.items_to_update then
+                -- Avoid duplicate registrations.
+                local already = false
+                for _, it in ipairs(self.menu.items_to_update) do
+                    if it == self then already = true; break end
+                end
+                if not already then
+                    table.insert(self.menu.items_to_update, self)
+                end
             end
-
-            -- Fetch the cover blitbuffer.
-            local bookinfo = BookInfoManager:getBookInfo(repr_fp, true)
-            if not bookinfo then return end
-            if not (bookinfo.has_cover and bookinfo.cover_fetched
-                    and not bookinfo.ignore_cover and bookinfo.cover_bb) then
-                return
-            end
-            if cover_specs and BookInfoManager.isCachedCoverInvalid(bookinfo, cover_specs) then
-                return
-            end
-
-            self:_setListFolderCover(bookinfo)
         end
 
         -- Renders a cover thumbnail on the left, folder name + count on the right.
@@ -2111,6 +2348,10 @@ function M.uninstall()
     _uninstallItemCache()
     _uninstallSeriesGrouping()
     _uninstallFileDialogButton()
+    -- Release module-level caches so GC can reclaim memory after uninstall.
+    for k in pairs(_cover_file_cache)   do _cover_file_cache[k]   = nil end
+    for k in pairs(_lm_dir_cover_cache) do _lm_dir_cover_cache[k] = nil end
+    _overrides_cache = nil
 
     -- Uninstall ListMenuItem patch.
     local ListMenuItem = _getListMenuItem()

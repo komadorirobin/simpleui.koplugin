@@ -38,7 +38,7 @@ local HorizontalGroup  = require("ui/widget/horizontalgroup")
 local VerticalGroup    = require("ui/widget/verticalgroup")
 local VerticalSpan     = require("ui/widget/verticalspan")
 local logger           = require("logger")
-local _                = require("gettext")
+local _ = require("sui_i18n").translate
 local T                = require("ffi/util").template
 local Config           = require("sui_config")
 local Registry         = require("desktop_modules/moduleregistry")
@@ -1501,12 +1501,19 @@ function HomescreenWidget:_buildCtx()
         local SH = _getBookShared()
         if SH then
             if show_c or show_r then
-                -- coverdeck exibe até 5 slots (center + 2 side + 2 far) que podem
-                -- mapear para qualquer posição dentro de MAX_RECENT_FPS=10.
-                -- Prefetch 10 entradas para que ctx.prefetched cubra todos os slots
-                -- e getBookData() nunca caia no slow-path (DS.open síncrono) durante build().
-                local max_recent = (mod_cd and Registry.isEnabled(mod_cd, PFX)) and 10 or 5
-                self._cached_books_state = SH.prefetchBooks(show_c, show_r, max_recent)
+                -- The carousel always starts at index 1 (most recent book) and
+                -- navigates linearly, so the 5 visible slots never need data beyond
+                -- fps[1..5]. Prefetching 5 entries is sufficient; the scheduleIn(0)
+                -- warm-up in build() handles the next cover on demand after each swipe.
+                local max_recent = 5
+                -- show_finished is true if ANY active module has opted in.
+                local show_finished =
+                    (mod_r  and Registry.isEnabled(mod_r,  PFX) and
+                        G_reader_settings:readSetting(PFX .. "recent_show_finished") == true)
+                    or
+                    (mod_cd and Registry.isEnabled(mod_cd, PFX) and
+                        G_reader_settings:readSetting(PFX .. "coverdeck_show_finished") == true)
+                self._cached_books_state = SH.prefetchBooks(show_c, show_r, max_recent, show_finished)
                 if Config.cover_extraction_pending then
                     self:_scheduleCoverPoll()
                 end
@@ -1565,14 +1572,17 @@ function HomescreenWidget:_buildCtx()
     -- already in prefetched_data (zero extra IO).  M.build() checks
     -- ctx.coverdeck_center_stats before falling back to its own query.
     --
-    -- We use recent_fps[1] as the best-effort centre approximation; the
-    -- coverdeck may adjust curIdx based on the saved SETTING_FP, but in the
-    -- common case (first render after closing a book) fps[1] == curIdx==1.
-    -- A mismatch is harmless: M.build() will fall back to its own query for
-    -- that one render and the result ends up in _bstats_cache for next time.
+    -- Use the saved SETTING_FP (flow_recent_fp) to identify the exact book
+    -- that is currently centred in the carousel.  This is more accurate than
+    -- guessing recent_fps[1]: when the user had rotated the carousel before
+    -- opening a book, the centre fp is not at index 1 and the old guess caused
+    -- a cache miss in M.build(), leaving stats stale until the next carousel
+    -- rotation triggered a re-render.  Fall back to recent_fps[1] only when
+    -- SETTING_FP is absent (first launch, settings cleared, etc.).
     local coverdeck_center_stats = nil
     if mod_cd and Registry.isEnabled(mod_cd, PFX) and self._db_conn then
-        local center_fp = bs.recent_fps and bs.recent_fps[1]
+        local saved_center_fp = G_reader_settings:readSetting(PFX .. "flow_recent_fp")
+        local center_fp = saved_center_fp or (bs.recent_fps and bs.recent_fps[1])
         local pe = center_fp and bs.prefetched_data and bs.prefetched_data[center_fp]
         local center_md5 = type(pe) == "table" and pe.partial_md5_checksum
         if center_md5 then
@@ -1626,9 +1636,9 @@ function HomescreenWidget:_updateFooter(current_page, total_pages, topbar_on)
     local content_h = self._layout_content_h or (self._navbar_content_h or Screen:getHeight())
     -- Visibility rules for the homescreen footer:
     -- • Navpager on          → dot pager always (arrows handled externally)
-    -- • Geral = Predefinido  → show footer (dots or koreader chevrons)
-    -- • Geral = Oculto + Dot Pager → still show dots (user chose dots explicitly)
-    -- • Geral = Oculto + KOReader  → hide footer completely
+    -- • General = Default     → show footer (dots or koreader chevrons)
+    -- • General = Hidden + Dot Pager → still show dots (user chose dots explicitly)
+    -- • General = Hidden + KOReader  → hide footer completely
     local navpager_on   = Config.isNavpagerEnabled()
     local dot_pager_on  = Config.isDotPagerEnabled()  -- navbar_dotpager_always
     local pag_visible   = G_reader_settings:nilOrTrue("navbar_pagination_visible")
@@ -2378,6 +2388,14 @@ end
 
 -- Immediate full rebuild — bypasses debounce. Used by showSettingsMenu's
 -- onCloseWidget to guarantee the HS reflects changes before the next paint.
+-- Called by the coverdeck tappable after a swipe/tap navigation so that
+-- the session-scoped index survives the keep_cache=true rebuild.
+function HomescreenWidget:_setCoverdeckIdx(idx)
+    if self._ctx_cache then
+        self._ctx_cache.coverdeck_cur_idx = idx
+    end
+end
+
 function HomescreenWidget:_refreshImmediate(keep_cache)
     self._pending_refresh_token = {}
     self._refresh_scheduled     = false

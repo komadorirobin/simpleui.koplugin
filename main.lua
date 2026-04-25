@@ -5,19 +5,17 @@ local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local UIManager       = require("ui/uimanager")
 local logger          = require("logger")
 
--- i18n MUST be installed before any other plugin module is require()'d.
--- All modules capture local _ = require("gettext") at load time — if we
--- replace package.loaded["gettext"] here, every subsequent require("gettext")
--- in this plugin receives our wrapper automatically.
+-- Each simpleui module captures its own local translation proxy from sui_i18n.
+-- The native package.loaded["gettext"] is never wrapped or replaced, which
+-- prevents state-mutation conflicts with other plugins (e.g. zlibrary).
 local I18n = require("sui_i18n")
-I18n.install()
+local _    = I18n.translate
 
 local Config    = require("sui_config")
 local UI        = require("sui_core")
 local Bottombar = require("sui_bottombar")
 local Topbar    = require("sui_topbar")
 local Patches   = require("sui_patches")
-local _ = require("gettext")
 
 local SimpleUIPlugin = WidgetContainer:new{
     name = "simpleui",
@@ -62,7 +60,7 @@ function SimpleUIPlugin:init()
                     "— restart recommended")
                 UIManager:scheduleIn(1, function()
                     local InfoMessage = require("ui/widget/infomessage")
-                    local _t = require("gettext")
+                    local _t = require("sui_i18n").translate
                     UIManager:show(InfoMessage:new{
                         text = string.format(
                             _t("Simple UI was updated (%s → %s).\n\nA restart is recommended to apply all changes cleanly."),
@@ -85,10 +83,10 @@ function SimpleUIPlugin:init()
         self.ui.menu:registerToMainMenu(self)
         if G_reader_settings:nilOrTrue("simpleui_enabled") then
             Patches.installAll(self)
-            -- Regista o botão TBR no diálogo de hold da Library (livro individual).
-            -- addFileDialogButtons é a API oficial do KOReader para isso.
-            -- O botão para seleção múltipla é injectado via patchGetPlusDialogButtons
-            -- em sui_patches.lua → patchFileManagerClass.
+            -- Register the TBR button in the Library hold dialog (single book).
+            -- addFileDialogButtons is the official KOReader API for this.
+            -- The multi-selection button is injected via patchGetPlusDialogButtons
+            -- in sui_patches.lua → patchFileManagerClass.
             UIManager:scheduleIn(0, function()
                 local ok_fm, FM = pcall(require, "apps/filemanager/filemanager")
                 if not (ok_fm and FM and FM.instance) then return end
@@ -248,22 +246,22 @@ function SimpleUIPlugin:onTeardown()
     if mod_tbr and type(mod_tbr.reset) == "function" then
         pcall(mod_tbr.reset)
     end
-    -- Remove o botão TBR do diálogo da Library (browser) e dos resultados de pesquisa.
+    -- Remove the TBR button from the Library browser dialog and search results.
     local FM = package.loaded["apps/filemanager/filemanager"]
     if FM and FM.instance and FM.instance.removeFileDialogButtons then
         pcall(function() FM.instance:removeFileDialogButtons("sui_tbr") end)
     end
-    -- Remove o botão TBR da tabela do FileSearcher e restaura o onMenuHold original.
+    -- Remove the TBR button from the FileSearcher table and restore the original onMenuHold.
     local FS = package.loaded["apps/filemanager/filemanagerfilesearcher"]
     if FS then
-        -- Restaura onMenuHold original se foi substituído.
+        -- Restore the original onMenuHold if it was replaced.
         if FS._sui_onMenuHold_patched and FS._sui_orig_onMenuHold then
             FS.onMenuHold = FS._sui_orig_onMenuHold
             FS._sui_orig_onMenuHold = nil
             FS._sui_onMenuHold_patched = nil
         elseif FS._sui_onMenuHold_patched then
-            -- Patch foi instalado mas orig não foi guardado separadamente
-            -- (está capturado na closure); só limpa a flag e a entrada TBR.
+            -- Patch was installed but orig was not saved separately
+            -- (captured in the closure); just clear the flag and TBR entry.
             FS._sui_onMenuHold_patched = nil
         end
         if FS.file_dialog_added_buttons then
@@ -486,21 +484,22 @@ function SimpleUIPlugin:onCloseDocument()
     -- only the entry for the closed book is removed from prefetched_data.
     -- prefetchBooks() will then re-open exactly one sidecar (the closed book)
     -- and reuse the mtime-validated sidecar cache for all other entries.
+    -- Read the md5 of the closing book once — used by both Currently Reading
+    -- and Cover Deck for surgical stats-cache invalidation.
+    local closed_md5
+    if closed_fp then
+        local bs_pre = (HS._instance and HS._instance._cached_books_state)
+                    or HS._cached_books_state
+        local pe = bs_pre and bs_pre.prefetched_data
+                and bs_pre.prefetched_data[closed_fp]
+        closed_md5 = pe and pe.partial_md5_checksum
+    end
+
+    -- Currently Reading: invalidate book data so the next render shows fresh
+    -- progress. Uses surgical invalidation to avoid re-opening every sidecar.
     local mod_cr = Registry.get("currently")
     currently_active = mod_cr and Registry.isEnabled(mod_cr, PFX) or false
     if currently_active then
-        -- Read the md5 of the closing book BEFORE _partial_invalidate removes
-        -- its prefetched_data entry.  Needed below to surgically evict only
-        -- this book from the Cover Deck stats cache.
-        local closed_md5
-        if closed_fp then
-            local bs_pre = (HS._instance and HS._instance._cached_books_state)
-                        or HS._cached_books_state
-            local pe = bs_pre and bs_pre.prefetched_data
-                    and bs_pre.prefetched_data[closed_fp]
-            closed_md5 = pe and pe.partial_md5_checksum
-        end
-
         local function _partial_invalidate(bs)
             if not bs then return end
             -- Drop the entry for the closed book so prefetchBooks() re-reads it.
@@ -526,15 +525,32 @@ function SimpleUIPlugin:onCloseDocument()
         end
         local MC = package.loaded["desktop_modules/module_currently"]
         if MC and MC.invalidateCache then MC.invalidateCache() end
+        needs_refresh = true
+    end
 
-        -- Invalidate the Cover Deck stats cache for the closed book only.
-        -- The other books in the carousel have not been read, so their cached
-        -- stats are still valid and should not be discarded.
+    -- Cover Deck: invalidate book list and stats cache so the carousel
+    -- reflects the updated reading history immediately on return to the HS.
+    -- This is independent of Currently Reading — coverdeck may be active alone.
+    local mod_cd = Registry.get("coverdeck")
+    local coverdeck_active = mod_cd and Registry.isEnabled(mod_cd, PFX) or false
+    if coverdeck_active then
+        -- Surgically evict only the closed book's stats from the cache.
+        -- All other carousel entries are unaffected.
         local MCD = package.loaded["desktop_modules/module_coverdeck"]
         if MCD and MCD.invalidateCacheForMd5 then
             MCD.invalidateCacheForMd5(closed_md5)
         end
-
+        -- Invalidate _cached_books_state so prefetchBooks() re-reads the
+        -- updated history order (closed book moves to position 1 = new centre).
+        -- Also reset the session index so the carousel returns to fps[1].
+        if HS._instance then
+            HS._instance._cached_books_state = nil
+            if HS._instance._ctx_cache then
+                HS._instance._ctx_cache.coverdeck_cur_idx = nil
+            end
+        else
+            HS._cached_books_state = nil
+        end
         needs_refresh = true
     end
 
@@ -674,7 +690,7 @@ function SimpleUIPlugin:_updateFMHomeIcon() end
 local _menu_installer = nil
 
 function SimpleUIPlugin:addToMainMenu(menu_items)
-    local _ = require("gettext")
+    local _ = require("sui_i18n").translate
     if not _menu_installer then
         local ok, result = pcall(require, "sui_menu")
         if not ok then

@@ -1,7 +1,7 @@
 -- module_books_shared.lua — Simple UI
--- Helpers partilhados pelos módulos Currently Reading e Recent Books:
+-- Helpers shared by the Currently Reading and Recent Books modules:
 -- cover loading, book data, progress bar, prefetch, formatTimeLeft.
--- Não é um módulo — não tem id nem build(). Apenas utilitários partilhados.
+-- Not a module — no id or build(). Pure shared utilities.
 
 local Blitbuffer      = require("ffi/blitbuffer")
 local CenterContainer = require("ui/widget/container/centercontainer")
@@ -375,7 +375,7 @@ end
 -- NOTE: _cover_extraction_pending was removed from SH.
 -- Use Config.cover_extraction_pending (the single source of truth) instead.
 
-function SH.prefetchBooks(show_currently, show_recent, max_recent)
+function SH.prefetchBooks(show_currently, show_recent, max_recent, show_finished)
     max_recent = max_recent or 5
     local state = { current_fp = nil, recent_fps = {}, prefetched_data = {} }
     if not show_currently and not show_recent then return state end
@@ -463,9 +463,10 @@ function SH.prefetchBooks(show_currently, show_recent, max_recent)
                         end
                     end
                 end
-                -- Exclude books that are 100% read or explicitly marked as complete.
+                -- Exclude books that are 100% read or explicitly marked as complete,
+                -- unless the caller has opted in to showing finished books.
                 local is_complete = type(book_summary) == "table" and book_summary.status == "complete"
-                if pct < 1.0 and not is_complete then
+                if show_finished or (pct < 1.0 and not is_complete) then
                     state.recent_fps[#state.recent_fps + 1] = fp
                 end
             end

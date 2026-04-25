@@ -40,7 +40,7 @@ local lfs     = require("libs/libkoreader-lfs")
 local util    = require("util")
 local ffiUtil = require("ffi/util")
 local logger  = require("logger")
-local _       = require("gettext")
+local _ = require("sui_i18n").translate
 
 -- ---------------------------------------------------------------------------
 -- Virtual path constants
@@ -580,14 +580,17 @@ end
 function M.exitToNormal(fc, fm)
     if not fc then return end
     local base = _baseDir(fc.path)
+    -- Persist "normal" BEFORE changeToPath so that if changeToPath errors out
+    -- (caught upstream by a pcall), the next session never tries to restore a
+    -- virtual path with the BM patches absent.
+    M.setSavedMode("normal")
+    fc._browse_by_meta_entry_path = nil
     if fm then fm._navbar_suppress_path_change = true end
     fc:changeToPath(base)
     if fm then fm._navbar_suppress_path_change = nil end
-    fc._browse_by_meta_entry_path = nil
     if fm and fm.updateTitleBarPath then
         pcall(function() fm:updateTitleBarPath(base) end)
     end
-    M.setSavedMode("normal")
 end
 
 function M.navigateTo(fm, mode)

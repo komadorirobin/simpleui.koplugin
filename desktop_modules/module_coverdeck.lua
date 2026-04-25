@@ -11,8 +11,8 @@ local OverlapGroup   = require("ui/widget/overlapgroup")
 local TextWidget     = require("ui/widget/textwidget")
 local VerticalGroup  = require("ui/widget/verticalgroup")
 local Screen         = Device.screen
-local _              = require("gettext")
-local N_             = _.ngettext
+local _ = require("sui_i18n").translate
+local N_ = require("sui_i18n").ngettext
 local logger         = require("logger")
 
 local Config       = require("sui_config")
@@ -64,10 +64,9 @@ end
 -- Settings keys
 -- ---------------------------------------------------------------------------
 
-local SETTING_INDEX     = "flow_recent_index"
-local SETTING_FP        = "flow_recent_fp"    -- GUARDA O FICHEIRO CENTRADO
-local SETTING_SOURCE    = "flow_recent_source"
-local SETTING_TITLE_POS = "coverdeck_title_pos"
+local SETTING_SOURCE        = "flow_recent_source"
+local SETTING_TITLE_POS     = "coverdeck_title_pos"
+local SETTING_SHOW_FINISHED = "coverdeck_show_finished"  -- pfx .. this; default OFF
 local ELEM_ORDER_KEY    = "flow_stats_order"
 
 local _ELEM_DEFAULT_ORDER = { "percent", "book_days", "book_time", "book_remaining" }
@@ -82,30 +81,16 @@ local _ELEM_LABELS = {
 -- Settings accessors
 -- ---------------------------------------------------------------------------
 
-local function getSelectorIndex(pfx)
-    return G_reader_settings:readSetting(pfx .. SETTING_INDEX) or 1
-end
-
-local function setSelectorIndex(pfx, idx)
-    G_reader_settings:saveSetting(pfx .. SETTING_INDEX, idx)
-end
-
-local function getSelectorFP(pfx)
-    return G_reader_settings:readSetting(pfx .. SETTING_FP)
-end
-
-local function setSelectorFP(pfx, fp)
-    if fp then
-        G_reader_settings:saveSetting(pfx .. SETTING_FP, fp)
-    end
-end
-
 local function getSource(pfx)
     return G_reader_settings:readSetting(pfx .. SETTING_SOURCE) or "recent"
 end
 
 local function getTitlePos(pfx)
     return G_reader_settings:readSetting(pfx .. SETTING_TITLE_POS) or "below"
+end
+
+local function showFinished(pfx)
+    return G_reader_settings:readSetting(pfx .. SETTING_SHOW_FINISHED) == true
 end
 
 local function _showElem(pfx, key)
@@ -406,26 +391,12 @@ function M.build(w, ctx)
     local centerY     = math.floor(center_h / 2) + TOP_CLEAR
 
     local count  = #fps
-    local curIdx = getSelectorIndex(pfx)
-    local last_fp = getSelectorFP(pfx)
-
-    -- AJUSTE INTELIGENTE DE ÍNDICE: Segue o livro mesmo que a sua posição no histórico tenha mudado.
-    -- Ambas as fontes (recent ≤10, tbr ≤5) têm listas curtas — loop linear é suficiente.
-    if last_fp then
-        local found_idx
-        for i, fp in ipairs(fps) do
-            if fp == last_fp then found_idx = i; break end
-        end
-        if found_idx and found_idx ~= curIdx then
-            curIdx = found_idx
-            setSelectorIndex(pfx, curIdx)
-        end
-    end
-
+    -- The centre is always fps[1] by default. Swipe navigation is session-scoped:
+    -- stored in ctx (which lives for the homescreen session) but not persisted
+    -- across sessions in settings.
+    local curIdx = ctx.coverdeck_cur_idx or 1
     if curIdx > count then curIdx = 1 end
-    
-    -- Lembra sempre qual é o livro (file path) que ficou no centro
-    setSelectorFP(pfx, fps[curIdx])
+    ctx.coverdeck_cur_idx = curIdx
 
     -- Covers
     local function buildCover(fp, cw, ch, align)
@@ -457,7 +428,6 @@ function M.build(w, ctx)
     local tappable = InputContainer:new{
         dimen    = Geom:new{ w = inner_w, h = group_h },
         [1]      = OverlapGroup:new{ dimen = Geom:new{ w = inner_w, h = group_h }, unpack(items) },
-        _pfx     = pfx,
         _hs      = ctx._hs_widget,
         _open_fn = ctx.open_fn,
         _fps     = fps,
@@ -470,15 +440,17 @@ function M.build(w, ctx)
     function tappable:onTap(_, ges)
         local x = ges.pos.x - self.dimen.x
         if x < self._mid - self._half_cw then
-            local new_idx = (self._cur - 2 + self._count) % self._count + 1
-            setSelectorIndex(self._pfx, new_idx)
-            setSelectorFP(self._pfx, self._fps[new_idx])
-            if self._hs then self._hs:_refreshImmediate(false) end
+            self._cur = (self._cur - 2 + self._count) % self._count + 1
+            if self._hs then
+                self._hs:_setCoverdeckIdx(self._cur)
+                self._hs:_refreshImmediate(true)
+            end
         elseif x > self._mid + self._half_cw then
-            local new_idx = self._cur % self._count + 1
-            setSelectorIndex(self._pfx, new_idx)
-            setSelectorFP(self._pfx, self._fps[new_idx])
-            if self._hs then self._hs:_refreshImmediate(false) end
+            self._cur = self._cur % self._count + 1
+            if self._hs then
+                self._hs:_setCoverdeckIdx(self._cur)
+                self._hs:_refreshImmediate(true)
+            end
         else
             if self._open_fn then self._open_fn(self._fps[self._cur]) end
         end
@@ -487,16 +459,18 @@ function M.build(w, ctx)
 
     function tappable:onSwipe(_, ges)
         if ges.direction == "east" then
-            local new_idx = (self._cur - 2 + self._count) % self._count + 1
-            setSelectorIndex(self._pfx, new_idx)
-            setSelectorFP(self._pfx, self._fps[new_idx])
-            if self._hs then self._hs:_refreshImmediate(false) end
+            self._cur = (self._cur - 2 + self._count) % self._count + 1
+            if self._hs then
+                self._hs:_setCoverdeckIdx(self._cur)
+                self._hs:_refreshImmediate(true)
+            end
             return true
         elseif ges.direction == "west" then
-            local new_idx = self._cur % self._count + 1
-            setSelectorIndex(self._pfx, new_idx)
-            setSelectorFP(self._pfx, self._fps[new_idx])
-            if self._hs then self._hs:_refreshImmediate(false) end
+            self._cur = self._cur % self._count + 1
+            if self._hs then
+                self._hs:_setCoverdeckIdx(self._cur)
+                self._hs:_refreshImmediate(true)
+            end
             return true
         end
         return false
@@ -815,6 +789,15 @@ function M.getMenuItems(ctx_menu)
     menu[#menu+1] = source_item
     menu[#menu+1] = title_pos_item
     menu[#menu+1] = items_item
+    menu[#menu+1] = {
+        text           = _lc("Show finished books"),
+        checked_func   = function() return showFinished(pfx) end,
+        keep_menu_open = true,
+        callback       = function()
+            G_reader_settings:saveSetting(pfx .. SETTING_SHOW_FINISHED, not showFinished(pfx))
+            refresh()
+        end,
+    }
     return menu
 end
 
