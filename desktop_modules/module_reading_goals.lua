@@ -579,7 +579,7 @@ end
 function M.getMenuItems(ctx_menu)
     local refresh = ctx_menu.refresh
     local _lc     = ctx_menu._
-    local N_lc    = _lc.ngettext
+    local N_lc    = ctx_menu.N_
     local scale_item = _makeScaleItem(ctx_menu)
     scale_item.separator = true
     return {

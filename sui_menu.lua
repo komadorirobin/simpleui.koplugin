@@ -1376,6 +1376,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
             refresh       = ctx.refresh,
             UIManager     = UIManager,
             _             = _,
+            N_            = N_,
             MAX_LABEL_LEN = MAX_LABEL_LEN,
             makeQAMenu    = makeQAMenu,
             _cover_picker = nil,

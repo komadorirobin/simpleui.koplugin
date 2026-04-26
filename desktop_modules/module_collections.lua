@@ -525,7 +525,7 @@ function M.getMenuItems(ctx_menu)
     local SortWidget  = ctx_menu.SortWidget
     local refresh     = ctx_menu.refresh
     local _lc         = ctx_menu._
-    local N_lc        = _lc.ngettext
+    local N_lc        = ctx_menu.N_
 
     local ok_rc, rc  = pcall(require, "readcollection")
     local all_colls  = {}
