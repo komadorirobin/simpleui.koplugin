@@ -1,41 +1,12 @@
 -- sui_foldercovers.lua — Simple UI
--- Folder cover art and book cover overlays for the CoverBrowser mosaic view.
---
--- Folder covers:
---   - Vertical spine lines on the left (module_collections style)
---   - Folder name overlay at bottom with padding
---   - Book count badge at top-right, black circle
---   - Hide selection underline option
---
--- Book cover overlays:
---   - Pages badge ("123 p.") — white rect at bottom-left of book covers
---   - Series index badge ("#N") — white rect at top-left of book covers
---
--- Series grouping:
---   - Virtual folders for multi-book series in the mosaic view
---   - Back button / titlebar fully integrated with SimpleUI navigation
---
--- Item cache:
---   - 2 000-entry LRU for FileChooser:getListItem()
---
--- Settings keys:
---   simpleui_fc_enabled          — folder covers master toggle (default false)
---   simpleui_fc_show_name        — show folder name overlay (default true)
---   simpleui_fc_hide_underline   — hide focus underline (default true)
---   simpleui_fc_overlay_pages    — pages badge on book covers (default true)
---   simpleui_fc_overlay_series   — series index badge on book covers (default false)
---   simpleui_fc_series_grouping  — group books by series into virtual folders (default false)
---   simpleui_fc_item_cache       — 2 000-entry item cache (default true)
+-- Folder cover art and book cover overlays for the CoverBrowser mosaic/list views.
 
-local _ = require("sui_i18n").translate
-local lfs = require("libs/libkoreader-lfs")
-local logger = require("logger")
+local _        = require("sui_i18n").translate
+local lfs      = require("libs/libkoreader-lfs")
+local logger   = require("logger")
 
--- ---------------------------------------------------------------------------
--- Widget requires — at module level so require() cache lookup happens once,
+-- Widget requires at module level so the require() cache is hit once,
 -- not on every cell render.
--- ---------------------------------------------------------------------------
-
 local AlphaContainer  = require("ui/widget/container/alphacontainer")
 local BD              = require("ui/bidi")
 local Blitbuffer      = require("ffi/blitbuffer")
@@ -61,102 +32,105 @@ local TextWidget      = require("ui/widget/textwidget")
 local TopContainer    = require("ui/widget/container/topcontainer")
 
 -- ---------------------------------------------------------------------------
--- Settings
+-- Settings keys
 -- ---------------------------------------------------------------------------
 
 local SK = {
-    enabled          = "simpleui_fc_enabled",
-    show_name        = "simpleui_fc_show_name",
-    hide_underline   = "simpleui_fc_hide_underline",
-    label_style      = "simpleui_fc_label_style",
-    label_position   = "simpleui_fc_label_position",
-    badge_position   = "simpleui_fc_badge_position",
-    badge_hidden     = "simpleui_fc_badge_hidden",
-    cover_mode       = "simpleui_fc_cover_mode",
-    label_mode       = "simpleui_fc_label_mode",
-    -- Pages badge
-    overlay_pages    = "simpleui_fc_overlay_pages",
-    -- Series index badge
-    overlay_series   = "simpleui_fc_overlay_series",
-    -- Series grouping into virtual folders
-    series_grouping  = "simpleui_fc_series_grouping",
-    -- Item cache
-    item_cache       = "simpleui_fc_item_cache",
-    -- Subfolder / bookless-folder covers
-    subfolder_cover  = "simpleui_fc_subfolder_cover",
-    recursive_cover  = "simpleui_fc_recursive_cover",
-    -- Folder name text scale (integer %, default 100)
-    label_scale      = "simpleui_fc_label_scale",
+    enabled         = "simpleui_fc_enabled",
+    show_name       = "simpleui_fc_show_name",
+    hide_underline  = "simpleui_fc_hide_underline",
+    label_style     = "simpleui_fc_label_style",
+    label_position  = "simpleui_fc_label_position",
+    badge_position  = "simpleui_fc_badge_position",
+    badge_hidden    = "simpleui_fc_badge_hidden",
+    cover_mode      = "simpleui_fc_cover_mode",
+    label_mode      = "simpleui_fc_label_mode",
+    overlay_pages   = "simpleui_fc_overlay_pages",
+    overlay_series  = "simpleui_fc_overlay_series",
+    series_grouping = "simpleui_fc_series_grouping",
+    item_cache      = "simpleui_fc_item_cache",
+    subfolder_cover = "simpleui_fc_subfolder_cover",
+    recursive_cover = "simpleui_fc_recursive_cover",
+    label_scale     = "simpleui_fc_label_scale",
 }
+
+-- ---------------------------------------------------------------------------
+-- Module table and forward declarations
+-- ---------------------------------------------------------------------------
 
 local M = {}
 
--- Forward-declare series-grouping state so all functions in this file
--- (including _openSeriesGroupCoverPicker and _installFileDialogButton,
--- which are defined before the series-grouping section) can reference
--- these as upvalues rather than globals.
-local _sg_current           = nil   -- active virtual folder state (or nil)
-local _sg_items_cache       = {}    -- virtual_path → {series_items}
-local _sg_last_evicted_path = nil   -- last path for which _sg_items_cache was evicted
+-- Series-grouping state — forward-declared so all functions can close over them.
+local _sg_current           = nil
+local _sg_items_cache       = {}
+local _sg_last_evicted_path = nil
 
-function M.isEnabled()    return G_reader_settings:isTrue(SK.enabled)  end
-function M.setEnabled(v)  G_reader_settings:saveSetting(SK.enabled, v) end
+-- ---------------------------------------------------------------------------
+-- Settings API
+-- ---------------------------------------------------------------------------
 
-local function _getFlag(key)
-    return G_reader_settings:readSetting(key) ~= false
-end
-local function _setFlag(key, v) G_reader_settings:saveSetting(key, v) end
+function M.isEnabled()   return G_reader_settings:isTrue(SK.enabled)          end
+function M.setEnabled(v) G_reader_settings:saveSetting(SK.enabled, v)         end
+
+local function _getFlag(key)      return G_reader_settings:readSetting(key) ~= false end
+local function _setFlag(key, v)   G_reader_settings:saveSetting(key, v)              end
 
 function M.getShowName()       return _getFlag(SK.show_name)      end
 function M.setShowName(v)      _setFlag(SK.show_name, v)          end
 function M.getHideUnderline()  return _getFlag(SK.hide_underline) end
 function M.setHideUnderline(v) _setFlag(SK.hide_underline, v)     end
 
--- "alpha" (default) = semitransparent white overlay
--- "frame" = solid grey frame matching the cover border style
-function M.getLabelStyle()
-    return G_reader_settings:readSetting(SK.label_style) or "alpha"
-end
-function M.setLabelStyle(v) G_reader_settings:saveSetting(SK.label_style, v) end
+-- "alpha" (default) = semitransparent white overlay; "frame" = solid grey border.
+function M.getLabelStyle()    return G_reader_settings:readSetting(SK.label_style)    or "alpha"   end
+function M.setLabelStyle(v)   G_reader_settings:saveSetting(SK.label_style, v)                     end
 
--- "bottom" (default) = anchored to bottom of cover
--- "center" = vertically centred on cover
--- "top"    = anchored to top of cover
-function M.getLabelPosition()
-    return G_reader_settings:readSetting(SK.label_position) or "bottom"
-end
-function M.setLabelPosition(v) G_reader_settings:saveSetting(SK.label_position, v) end
+-- "bottom" (default) | "center" | "top"
+function M.getLabelPosition()  return G_reader_settings:readSetting(SK.label_position) or "bottom" end
+function M.setLabelPosition(v) G_reader_settings:saveSetting(SK.label_position, v)                 end
 
--- "top" (default) = badge at top-right
--- "bottom"        = badge at bottom-right
-function M.getBadgePosition()
-    return G_reader_settings:readSetting(SK.badge_position) or "top"
-end
-function M.setBadgePosition(v) G_reader_settings:saveSetting(SK.badge_position, v) end
+-- "top" (default) | "bottom"
+function M.getBadgePosition()  return G_reader_settings:readSetting(SK.badge_position) or "top"   end
+function M.setBadgePosition(v) G_reader_settings:saveSetting(SK.badge_position, v)                 end
 
--- true = badge hidden entirely
-function M.getBadgeHidden() return G_reader_settings:isTrue(SK.badge_hidden) end
-function M.setBadgeHidden(v) G_reader_settings:saveSetting(SK.badge_hidden, v) end
+function M.getBadgeHidden()  return G_reader_settings:isTrue(SK.badge_hidden)                      end
+function M.setBadgeHidden(v) G_reader_settings:saveSetting(SK.badge_hidden, v)                     end
 
--- "default" = proportional scale-to-fit
--- "2_3"     = force 2:3 aspect ratio with stretch_limit 50
-function M.getCoverMode()
-    return G_reader_settings:readSetting(SK.cover_mode) or "default"
-end
-function M.setCoverMode(v) G_reader_settings:saveSetting(SK.cover_mode, v) end
+-- "default" = scale-to-fit; "2_3" = force 2:3 aspect ratio.
+function M.getCoverMode()    return G_reader_settings:readSetting(SK.cover_mode) or "default"      end
+function M.setCoverMode(v)   G_reader_settings:saveSetting(SK.cover_mode, v)                       end
 
--- "overlay" (default) = folder name overlaid on the cover image
--- "hidden"            = no label at all
-function M.getLabelMode()
-    return G_reader_settings:readSetting(SK.label_mode) or "overlay"
-end
-function M.setLabelMode(v) G_reader_settings:saveSetting(SK.label_mode, v) end
+-- "overlay" (default) = folder name on cover; "hidden" = no label.
+function M.getLabelMode()    return G_reader_settings:readSetting(SK.label_mode) or "overlay"      end
+function M.setLabelMode(v)   G_reader_settings:saveSetting(SK.label_mode, v)                       end
 
--- Folder name text scale: integer % stored in SK.label_scale, default 100.
--- Returns a float multiplier (e.g. 1.0, 1.2) for use in _buildLabel.
-local _FC_SCALE_MIN = 50
-local _FC_SCALE_MAX = 200
-local _FC_SCALE_DEF = 100
+-- Pages badge on book covers (default on).
+function M.getOverlayPages()  return G_reader_settings:readSetting(SK.overlay_pages) ~= false      end
+function M.setOverlayPages(v) _setFlag(SK.overlay_pages, v)                                        end
+
+-- Series index badge on book covers (default off).
+function M.getOverlaySeries()  return G_reader_settings:isTrue(SK.overlay_series)                  end
+function M.setOverlaySeries(v) _setFlag(SK.overlay_series, v)                                      end
+
+-- Virtual series folders in the mosaic (default off).
+function M.getSeriesGrouping()  return G_reader_settings:isTrue(SK.series_grouping)                end
+function M.setSeriesGrouping(v) _setFlag(SK.series_grouping, v)                                    end
+
+-- 2000-entry two-generation item cache for FileChooser:getListItem() (default on).
+function M.getItemCache()  return G_reader_settings:readSetting(SK.item_cache) ~= false            end
+function M.setItemCache(v) _setFlag(SK.item_cache, v)                                              end
+
+-- Placeholder cover for folders with no direct ebooks (default off).
+function M.getSubfolderCover()  return G_reader_settings:isTrue(SK.subfolder_cover)                end
+function M.setSubfolderCover(v) _setFlag(SK.subfolder_cover, v)                                    end
+
+-- Scan up to 3 subfolder levels for a cached cover (default off).
+function M.getRecursiveCover()  return G_reader_settings:isTrue(SK.recursive_cover)                end
+function M.setRecursiveCover(v) _setFlag(SK.recursive_cover, v)                                    end
+
+-- Folder label text scale: integer %, clamped to [50, 200], default 100.
+local _FC_SCALE_MIN  = 50
+local _FC_SCALE_MAX  = 200
+local _FC_SCALE_DEF  = 100
 local _FC_SCALE_STEP = 10
 M.FC_LABEL_SCALE_MIN  = _FC_SCALE_MIN
 M.FC_LABEL_SCALE_MAX  = _FC_SCALE_MAX
@@ -168,103 +142,27 @@ local function _clampFCScale(n)
 end
 
 function M.getLabelScalePct()
-    local v = G_reader_settings:readSetting(SK.label_scale)
-    local n = tonumber(v)
+    local n = tonumber(G_reader_settings:readSetting(SK.label_scale))
     if not n then return _FC_SCALE_DEF end
     return _clampFCScale(n)
 end
-
-function M.getLabelScale()
-    return M.getLabelScalePct() / 100
-end
-
-function M.setLabelScale(pct)
-    G_reader_settings:saveSetting(SK.label_scale, _clampFCScale(pct))
-end
-
--- Pages badge getter / setter (default true)
-function M.getOverlayPages() return G_reader_settings:readSetting(SK.overlay_pages) ~= false end
-function M.setOverlayPages(v) _setFlag(SK.overlay_pages, v) end
-
--- Series index badge getter / setter (default false)
-function M.getOverlaySeries() return G_reader_settings:isTrue(SK.overlay_series) end
-function M.setOverlaySeries(v) _setFlag(SK.overlay_series, v) end
-
--- Series grouping into virtual folders (default false)
-function M.getSeriesGrouping() return G_reader_settings:isTrue(SK.series_grouping) end
-function M.setSeriesGrouping(v) _setFlag(SK.series_grouping, v) end
-
--- Item cache (default on)
-function M.getItemCache() return G_reader_settings:readSetting(SK.item_cache) ~= false end
-function M.setItemCache(v) _setFlag(SK.item_cache, v) end
-
--- Placeholder cover for bookless folders (default off).
--- When enabled, folders with no direct ebooks display a generic folder icon
--- instead of being left blank in the mosaic view.
-function M.getSubfolderCover() return G_reader_settings:isTrue(SK.subfolder_cover) end
-function M.setSubfolderCover(v) _setFlag(SK.subfolder_cover, v) end
-
--- Recursive cover search (default off). Requires subfolder_cover to be on.
--- When enabled, SimpleUI scans up to 3 levels of subfolders for a cached
--- book cover to use as the folder's representative image.
-function M.getRecursiveCover() return G_reader_settings:isTrue(SK.recursive_cover) end
-function M.setRecursiveCover(v) _setFlag(SK.recursive_cover, v) end
+function M.getLabelScale()    return M.getLabelScalePct() / 100 end
+function M.setLabelScale(pct) G_reader_settings:saveSetting(SK.label_scale, _clampFCScale(pct)) end
 
 -- ---------------------------------------------------------------------------
--- Cover file discovery — identical to original patch
+-- Module-level constants — computed once from device DPI.
 -- ---------------------------------------------------------------------------
 
-local _COVER_EXTS = { ".jpg", ".jpeg", ".png", ".webp", ".gif" }
+local _BASE_COVER_H = math.floor(Screen:scaleBySize(96))
+local _BASE_NB_SIZE = Screen:scaleBySize(10)
+local _BASE_NB_FS   = Screen:scaleBySize(4)
+local _BASE_DIR_FS  = Screen:scaleBySize(5)
 
--- Per-directory cache for .cover.* lookups. Values are the found filepath
--- (string) or false when the directory was checked and nothing was found.
--- This avoids up to 5 lfs.attributes() calls per folder per render on slow
--- e-reader flash. Invalidated in the refreshPath patch so a manually added
--- .cover file is picked up on the next library refresh.
-local _cover_file_cache = {}
-
--- Per-directory cache for the ListMenuItem lfs.dir cover scan.
--- Values are a lightweight bookinfo snapshot (table) when a cover was found,
--- or false when the directory was fully scanned and nothing was available.
--- Avoids repeating the lfs.dir + per-file lfs.attributes walk on every
--- reader->HS cycle. Invalidated alongside _cover_file_cache in refreshPath.
-local _lm_dir_cover_cache = {}
-
-local function findCover(dir_path)
-    local cached = _cover_file_cache[dir_path]
-    if cached ~= nil then
-        return cached or nil  -- false means "checked, not present"
-    end
-    local base = dir_path .. "/.cover"
-    for i = 1, #_COVER_EXTS do
-        local fname = base .. _COVER_EXTS[i]
-        if lfs.attributes(fname, "mode") == "file" then
-            _cover_file_cache[dir_path] = fname
-            return fname
-        end
-    end
-    _cover_file_cache[dir_path] = false
-    return nil
-end
-
--- ---------------------------------------------------------------------------
--- Constants — computed once at load time from device DPI.
--- Scaled at render time by a factor derived from actual cover height,
--- mirroring the pattern used in module_collections / module_books_shared.
--- ---------------------------------------------------------------------------
-
-local _BASE_COVER_H = math.floor(Screen:scaleBySize(96))  -- reference cover height (mosaic cell)
-local _BASE_NB_SIZE = Screen:scaleBySize(10)  -- badge circle diameter
-local _BASE_NB_FS   = Screen:scaleBySize(4)   -- badge font size
-local _BASE_DIR_FS  = Screen:scaleBySize(5)   -- folder name max font size
-
--- Spine constants — duas linhas verticais, ambas do mesmo cinza escuro.
 local _EDGE_THICK  = math.max(1, Screen:scaleBySize(3))
 local _EDGE_MARGIN = math.max(1, Screen:scaleBySize(1))
 local _SPINE_W     = _EDGE_THICK * 2 + _EDGE_MARGIN * 2
 local _SPINE_COLOR = Blitbuffer.gray(0.70)
 
--- Padding constants — computed once.
 local _LATERAL_PAD        = Screen:scaleBySize(10)
 local _VERTICAL_PAD       = Screen:scaleBySize(4)
 local _BADGE_MARGIN_BASE  = Screen:scaleBySize(8)
@@ -272,11 +170,107 @@ local _BADGE_MARGIN_R_BASE = Screen:scaleBySize(4)
 
 local _LABEL_ALPHA = 0.75
 
+-- Badge geometry — pre-computed so paintTo() never calls scaleBySize per frame.
+local _BADGE_FONT_SZ  = Screen:scaleBySize(5)
+local _BADGE_PAD_H    = Screen:scaleBySize(2)
+local _BADGE_PAD_V    = Screen:scaleBySize(1)
+local _BADGE_INSET    = Screen:scaleBySize(3)
+local _BADGE_CORNER   = Screen:scaleBySize(2)
+local _BADGE_BAR_H    = Screen:scaleBySize(8)   -- progress-bar height (badge Y anchor)
+local _BADGE_BAR_GAP  = Screen:scaleBySize(4)   -- gap between pages badge and progress bar
+
+-- Module-level font-size cache for _getFolderNameWidget.
+-- Key: display_text .. "\0" .. available_w .. "\0" .. max_font_size
+-- Survives MosaicMenuItem recycling across scrolls, unlike a per-item cache.
+-- Two-generation design (same as the item cache): each generation holds at most
+-- _FS_CACHE_MAX entries; when full the current gen is demoted and a fresh one
+-- starts. Effective capacity is 2 × _FS_CACHE_MAX with smooth eviction.
+local _FS_CACHE_MAX   = 200
+local _fs_cache_a     = {}
+local _fs_cache_b     = {}
+local _fs_cache_a_cnt = 0
+
+local function _fsCacheGet(key)
+    return _fs_cache_a[key] or _fs_cache_b[key]
+end
+
+local function _fsCacheSet(key, value)
+    if _fs_cache_a_cnt >= _FS_CACHE_MAX then
+        _fs_cache_b   = _fs_cache_a
+        _fs_cache_a   = {}
+        _fs_cache_a_cnt = 0
+    end
+    _fs_cache_a[key] = value
+    _fs_cache_a_cnt  = _fs_cache_a_cnt + 1
+end
+
+local _PLUGIN_DIR  = debug.getinfo(1, "S").source:match("^@(.+/)[^/]+$") or "./"
+local _ICON_PATH   = _PLUGIN_DIR .. "icons/custom.svg"
+local _ICON_EXISTS = lfs.attributes(_ICON_PATH, "mode") == "file"
+
+-- ---------------------------------------------------------------------------
+-- Cover-file discovery
+-- ---------------------------------------------------------------------------
+
+local _COVER_EXTS = { ".jpg", ".jpeg", ".png", ".webp", ".gif" }
+
+-- Per-directory cache for .cover.* lookups.
+-- Values: filepath string on hit, false on confirmed miss.
+-- Invalidated in refreshPath when the library was visited (files may have changed).
+-- Capped at _DIR_CACHE_MAX entries (two-generation) to bound memory use.
+local _DIR_CACHE_MAX    = 300
+local _cover_file_cache = {}
+local _cfc_b            = {}
+local _cfc_cnt          = 0
+
+local function _cfcGet(key)   return _cover_file_cache[key] or _cfc_b[key] end
+local function _cfcSet(key, v)
+    if _cfc_cnt >= _DIR_CACHE_MAX then
+        _cfc_b            = _cover_file_cache
+        _cover_file_cache = {}
+        _cfc_cnt          = 0
+    end
+    _cover_file_cache[key] = v
+    _cfc_cnt = _cfc_cnt + 1
+end
+
+local function findCover(dir_path)
+    local cached = _cfcGet(dir_path)
+    if cached ~= nil then return cached or nil end
+    local base = dir_path .. "/.cover"
+    for i = 1, #_COVER_EXTS do
+        local fname = base .. _COVER_EXTS[i]
+        if lfs.attributes(fname, "mode") == "file" then
+            _cfcSet(dir_path, fname)
+            return fname
+        end
+    end
+    _cfcSet(dir_path, false)
+    return nil
+end
+
+-- Per-directory cache for the ListMenuItem lfs.dir cover scan.
+-- Same invalidation rules as _cover_file_cache.
+-- Capped at _DIR_CACHE_MAX entries (two-generation).
+local _lm_dir_cover_cache = {}
+local _lmc_b              = {}
+local _lmc_cnt            = 0
+
+local function _lmcGet(key)   return _lm_dir_cover_cache[key] or _lmc_b[key] end
+local function _lmcSet(key, v)
+    if _lmc_cnt >= _DIR_CACHE_MAX then
+        _lmc_b            = _lm_dir_cover_cache
+        _lm_dir_cover_cache = {}
+        _lmc_cnt          = 0
+    end
+    _lm_dir_cover_cache[key] = v
+    _lmc_cnt = _lmc_cnt + 1
+end
+
 -- ---------------------------------------------------------------------------
 -- Patch helpers
 -- ---------------------------------------------------------------------------
 
--- Returns MosaicMenuItem and userpatch, or nil, nil on failure.
 local function _getMosaicMenuItemAndPatch()
     local ok_mm, MosaicMenu = pcall(require, "mosaicmenu")
     if not ok_mm or not MosaicMenu then return nil, nil end
@@ -285,10 +279,6 @@ local function _getMosaicMenuItemAndPatch()
     return userpatch.getUpValue(MosaicMenu._updateItemsBuildUI, "MosaicMenuItem"), userpatch
 end
 
--- Returns ListMenuItem (the upvalue inside listmenu's _updateItemsBuildUI),
--- or nil on failure.  ListMenuItem is a module-level local in listmenu.lua,
--- so it is a closure upvalue of ListMenu._updateItemsBuildUI — same pattern
--- as MosaicMenuItem.
 local function _getListMenuItem()
     local ok_lm, ListMenu = pcall(require, "listmenu")
     if not ok_lm or not ListMenu then return nil end
@@ -298,10 +288,830 @@ local function _getListMenuItem()
 end
 
 -- ---------------------------------------------------------------------------
--- Build helpers — each responsible for one visual layer of the cover widget.
+-- Cover-override settings
+-- Stored in G_reader_settings under "simpleui_fc_covers": { [dir_path] = book_path }
 -- ---------------------------------------------------------------------------
 
--- Builds two vertical spine lines on the left of the cover, mesma cor.
+local _FC_COVERS_KEY = "simpleui_fc_covers"
+
+-- Lazy-loaded, mutated in-place — never goes stale during a session.
+local _overrides_cache = nil
+
+local function _getCoverOverrides()
+    if not _overrides_cache then
+        _overrides_cache = G_reader_settings:readSetting(_FC_COVERS_KEY) or {}
+    end
+    return _overrides_cache
+end
+
+local function _saveCoverOverride(dir_path, book_path)
+    local t = _getCoverOverrides()
+    t[dir_path] = book_path
+    G_reader_settings:saveSetting(_FC_COVERS_KEY, t)
+end
+
+local function _clearCoverOverride(dir_path)
+    local t = _getCoverOverrides()
+    t[dir_path] = nil
+    G_reader_settings:saveSetting(_FC_COVERS_KEY, t)
+end
+
+-- ---------------------------------------------------------------------------
+-- Shared helper: run genItemTableFromPath with the status filter suppressed.
+-- Folders with "show only new/reading" active would otherwise hide books that
+-- can still supply cover art. Returns the entries table or nil.
+-- ---------------------------------------------------------------------------
+local function _entriesWithNoFilter(menu, dir_path)
+    local saved = FileChooser.show_filter
+    FileChooser.show_filter = {}
+    menu._dummy = true
+    local entries = menu:genItemTableFromPath(dir_path)
+    menu._dummy = false
+    FileChooser.show_filter = saved
+    return entries
+end
+
+-- ---------------------------------------------------------------------------
+-- Folder-item invalidation: clears _foldercover_processed so the next
+-- updateItems re-fetches the cover. Triggers a full redraw of the grid.
+-- ---------------------------------------------------------------------------
+local function _invalidateFolderItem(menu, dir_path)
+    if not menu then return end
+    if menu.layout then
+        for _, row in ipairs(menu.layout) do
+            for _, item in ipairs(row) do
+                if item._foldercover_processed
+                        and item.entry and item.entry.path == dir_path then
+                    item._foldercover_processed = false
+                end
+            end
+        end
+    end
+    menu:updateItems(1, true)
+end
+
+-- ---------------------------------------------------------------------------
+-- Recursive cover search: scans dir_path up to max_depth levels for any
+-- cached book cover. Returns { data, w, h } or nil.
+-- ---------------------------------------------------------------------------
+local function _findCoverRecursive(menu, dir_path, depth, max_depth, BookInfoManager)
+    if depth > max_depth then return nil end
+
+    local entries = _entriesWithNoFilter(menu, dir_path)
+    if not entries then return nil end
+
+    -- Single pass: try files immediately, accumulate subdirs for later.
+    local subdirs = {}
+    for _, entry in ipairs(entries) do
+        if entry.is_file or entry.file then
+            local bi = BookInfoManager:getBookInfo(entry.path, true)
+            if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                    and not bi.ignore_cover
+                    and not BookInfoManager.isCachedCoverInvalid(bi, menu.cover_specs)
+            then
+                return { data = bi.cover_bb, w = bi.cover_w, h = bi.cover_h }
+            end
+        else
+            subdirs[#subdirs + 1] = entry
+        end
+    end
+
+    for _, entry in ipairs(subdirs) do
+        local found = _findCoverRecursive(menu, entry.path, depth + 1, max_depth, BookInfoManager)
+        if found then return found end
+    end
+
+    return nil
+end
+
+-- ---------------------------------------------------------------------------
+-- Book collection for the cover picker dialog.
+-- Recursion follows the same max_depth used by the automatic scan.
+-- Capped at _COLLECT_MAX entries so the picker dialog stays usable.
+local _COLLECT_MAX = 50
+local function _collectBooks(menu, dir_path, depth, max_depth, out)
+    if #out >= _COLLECT_MAX then return end
+    local entries = _entriesWithNoFilter(menu, dir_path)
+    if not entries then return end
+    for _, entry in ipairs(entries) do
+        if entry.is_file or entry.file then
+            out[#out + 1] = entry
+            if #out >= _COLLECT_MAX then return end
+        elseif depth < max_depth then
+            _collectBooks(menu, entry.path, depth + 1, max_depth, out)
+            if #out >= _COLLECT_MAX then return end
+        end
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Cover picker dialogs
+-- ---------------------------------------------------------------------------
+
+local function _openSeriesGroupCoverPicker(vpath, menu, BookInfoManager)
+    local UIManager    = require("ui/uimanager")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local InfoMessage  = require("ui/widget/infomessage")
+
+    local series_items = _sg_items_cache[vpath]
+    if not series_items or #series_items == 0 then
+        UIManager:show(InfoMessage:new{ text = _("No books found in this series."), timeout = 2 })
+        return
+    end
+
+    local overrides    = _getCoverOverrides()
+    local cur_override = overrides[vpath]
+    local picker
+    local buttons = {}
+
+    buttons[#buttons + 1] = {{
+        text = (not cur_override and "✓ " or "  ") .. _("Auto (first book)"),
+        callback = function()
+            UIManager:close(picker)
+            _clearCoverOverride(vpath)
+            _invalidateFolderItem(menu, vpath)
+        end,
+    }}
+
+    for _, item in ipairs(series_items) do
+        local fp = item.path
+        if fp then
+            local bi    = BookInfoManager:getBookInfo(fp, false)
+            local title = (bi and bi.title and bi.title ~= "")
+                and bi.title
+                or (fp:match("([^/]+)%.[^%.]+$") or fp)
+            local _fp   = fp
+            buttons[#buttons + 1] = {{
+                text = ((cur_override == _fp) and "✓ " or "  ") .. title,
+                callback = function()
+                    UIManager:close(picker)
+                    _saveCoverOverride(vpath, _fp)
+                    _invalidateFolderItem(menu, vpath)
+                end,
+            }}
+        end
+    end
+
+    buttons[#buttons + 1] = {{
+        text = _("Cancel"),
+        callback = function() UIManager:close(picker) end,
+    }}
+
+    picker = ButtonDialog:new{ title = _("Series cover"), buttons = buttons }
+    UIManager:show(picker)
+end
+
+local function _openFolderCoverPicker(dir_path, menu, BookInfoManager)
+    local UIManager    = require("ui/uimanager")
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local InfoMessage  = require("ui/widget/infomessage")
+
+    local books     = {}
+    local max_depth = M.getRecursiveCover() and 3 or 1
+    _collectBooks(menu, dir_path, 1, max_depth, books)
+
+    if #books == 0 then
+        UIManager:show(InfoMessage:new{ text = _("No books found in this folder."), timeout = 2 })
+        return
+    end
+
+    local overrides    = _getCoverOverrides()
+    local cur_override = overrides[dir_path]
+    local picker
+    local buttons = {}
+
+    buttons[#buttons + 1] = {{
+        text = (not cur_override and "✓ " or "  ") .. _("Auto (first book)"),
+        callback = function()
+            UIManager:close(picker)
+            _clearCoverOverride(dir_path)
+            _invalidateFolderItem(menu, dir_path)
+        end,
+    }}
+
+    for _, entry in ipairs(books) do
+        local fp      = entry.path
+        local bi      = BookInfoManager:getBookInfo(fp, false)
+        local title   = (bi and bi.title and bi.title ~= "")
+            and bi.title
+            or (fp:match("([^/]+)%.[^%.]+$") or fp)
+        local rel       = fp:sub(#dir_path + 2)
+        local subfolder = rel:match("^(.+)/[^/]+$")
+        local label     = subfolder and (title .. "  [" .. subfolder .. "]") or title
+        buttons[#buttons + 1] = {{
+            text = ((cur_override == fp) and "✓ " or "  ") .. label,
+            callback = function()
+                UIManager:close(picker)
+                _saveCoverOverride(dir_path, fp)
+                _invalidateFolderItem(menu, dir_path)
+            end,
+        }}
+    end
+
+    buttons[#buttons + 1] = {{
+        text = _("Cancel"),
+        callback = function() UIManager:close(picker) end,
+    }}
+
+    picker = ButtonDialog:new{ title = _("Folder cover"), buttons = buttons }
+    UIManager:show(picker)
+end
+
+-- ---------------------------------------------------------------------------
+-- Long-press "Set folder cover…" button in the FileManager file dialog.
+-- ---------------------------------------------------------------------------
+
+local function _installFileDialogButton(BookInfoManager)
+    local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
+    if not ok_fm or not FileManager then return end
+
+    FileManager:addFileDialogButtons("simpleui_fc_cover",
+        function(file, is_file, _book_props)
+            if is_file then return nil end
+            if not M.isEnabled() then return nil end
+
+            local is_virtual_series = _sg_items_cache[file] ~= nil
+
+            local fc         = FileManager.instance and FileManager.instance.file_chooser
+            local item_entry = nil
+            if fc and fc.item_table then
+                for _, it in ipairs(fc.item_table) do
+                    if it.path == file then item_entry = it; break end
+                end
+            end
+            local is_virtual_meta = item_entry and item_entry.is_virtual_meta_leaf
+
+            local label
+            if is_virtual_series then
+                label = _("Set series cover…")
+            elseif is_virtual_meta then
+                label = _("Set virtual folder cover…")
+            else
+                label = _("Set folder cover…")
+            end
+
+            return {{
+                text = label,
+                callback = function()
+                    local UIManager = require("ui/uimanager")
+                    if fc and fc.file_dialog then UIManager:close(fc.file_dialog) end
+                    if not fc then return end
+                    if is_virtual_series then
+                        _openSeriesGroupCoverPicker(file, fc, BookInfoManager)
+                    elseif is_virtual_meta then
+                        local ok_bm, BM = pcall(require, "sui_browsemeta")
+                        if ok_bm and BM and BM.openVirtualCoverPicker then
+                            BM.openVirtualCoverPicker(file, fc)
+                        end
+                    else
+                        _openFolderCoverPicker(file, fc, BookInfoManager)
+                    end
+                end,
+            }}
+        end
+    )
+end
+
+local function _uninstallFileDialogButton()
+    local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
+    if not ok_fm or not FileManager then return end
+    FileManager:removeFileDialogButtons("simpleui_fc_cover")
+end
+
+-- ---------------------------------------------------------------------------
+-- Item cache — two-generation cache for FileChooser:getListItem().
+--
+-- Strategy: two fixed-size buckets (_cache_a and _cache_b), each capped at
+-- _CACHE_MAX entries. New entries always go into _cache_a. When _cache_a is
+-- full, it is promoted to _cache_b (discarding the old _cache_b) and a fresh
+-- _cache_a is started. A lookup checks _cache_a first, then _cache_b.
+--
+-- This avoids the flush-everything problem of a single-bucket cache: the
+-- working set stays hot in _cache_a while _cache_b acts as a fallback for
+-- items that did not fit in the current generation. Effective capacity is
+-- 2 * _CACHE_MAX entries with a smooth eviction pattern.
+-- ---------------------------------------------------------------------------
+
+local _CACHE_MAX    = 1000
+local _cache_a      = {}
+local _cache_b      = {}
+local _cache_a_count = 0
+local _orig_getListItem = FileChooser.getListItem
+
+local function _cacheGet(key)
+    return _cache_a[key] or _cache_b[key]
+end
+
+local function _cacheSet(key, value)
+    if _cache_a_count >= _CACHE_MAX then
+        _cache_b      = _cache_a
+        _cache_a      = {}
+        _cache_a_count = 0
+    end
+    _cache_a[key]  = value
+    _cache_a_count = _cache_a_count + 1
+end
+
+local _orig_setBookInfoCacheProperty = nil
+
+local function _installItemCache()
+    if FileChooser._simpleui_fc_cache_patched then return end
+    FileChooser._simpleui_fc_cache_patched = true
+
+    -- Patch BookList.setBookInfoCacheProperty so that any status/property change
+    -- (e.g. marking a book read in the FM) immediately evicts that file's entry
+    -- from our item cache. Without this, the cached item carries stale sort_percent/
+    -- percent_finished values and the book stays in the wrong position after a
+    -- status change until the next full cache flush.
+    local ok_bl, BookList = pcall(require, "ui/widget/booklist")
+    if ok_bl and BookList and BookList.setBookInfoCacheProperty then
+        _orig_setBookInfoCacheProperty = BookList.setBookInfoCacheProperty
+        BookList.setBookInfoCacheProperty = function(file, prop_name, prop_value)
+            -- Evict all cache entries for this file before delegating.
+            -- The key encodes fullpath as the third NUL-separated field, so a
+            -- substring search is sufficient and exact.
+            if file then
+                local needle = "\0" .. file .. "\0"
+                local removed = 0
+                for k in pairs(_cache_a) do
+                    if k:find(needle, 1, true) then
+                        _cache_a[k] = nil
+                        removed = removed + 1
+                    end
+                end
+                _cache_a_count = math.max(0, _cache_a_count - removed)
+                for k in pairs(_cache_b) do
+                    if k:find(needle, 1, true) then _cache_b[k] = nil end
+                end
+            end
+            return _orig_setBookInfoCacheProperty(file, prop_name, prop_value)
+        end
+    end
+
+    FileChooser.getListItem = function(fc, dirpath, f, fullpath, attributes, collate)
+        if not M.getItemCache() then
+            return _orig_getListItem(fc, dirpath, f, fullpath, attributes, collate)
+        end
+
+        -- Build a cache key that captures everything that affects the item shape.
+        local filter_raw = fc.show_filter and fc.show_filter.status or ""
+        local filter
+        if type(filter_raw) == "table" then
+            local parts = {}
+            for k, v in pairs(filter_raw) do
+                if v then parts[#parts + 1] = tostring(k) end
+            end
+            table.sort(parts)
+            filter = table.concat(parts, "\1")
+        else
+            filter = tostring(filter_raw)
+        end
+        local collate_id = (collate and (collate.id or collate.text)) or ""
+
+        local key = tostring(dirpath) .. "\0" .. tostring(f) .. "\0"
+                 .. tostring(fullpath) .. "\0" .. filter .. "\0"
+                 .. tostring(collate_id)
+
+        local cached = _cacheGet(key)
+        if cached then return cached end
+
+        local item = _orig_getListItem(fc, dirpath, f, fullpath, attributes, collate)
+        _cacheSet(key, item)
+        return item
+    end
+end
+
+local function _uninstallItemCache()
+    if not FileChooser._simpleui_fc_cache_patched then return end
+    FileChooser.getListItem = _orig_getListItem
+    FileChooser._simpleui_fc_cache_patched = nil
+    -- Restore BookList patch if we installed it.
+    if _orig_setBookInfoCacheProperty then
+        local ok_bl, BookList = pcall(require, "ui/widget/booklist")
+        if ok_bl and BookList then
+            BookList.setBookInfoCacheProperty = _orig_setBookInfoCacheProperty
+        end
+        _orig_setBookInfoCacheProperty = nil
+    end
+    _cache_a = {}
+    _cache_b = {}
+    _cache_a_count = 0
+end
+
+function M.invalidateCache()
+    _cache_a = {}
+    _cache_b = {}
+    _cache_a_count = 0
+end
+
+-- ---------------------------------------------------------------------------
+-- Series grouping — virtual folders for multi-book series.
+--
+-- _sg_current:  active virtual-folder state while browsing a series group,
+--               nil when in a real filesystem folder.
+-- _sg_items_cache: vpath → { series_items }
+-- ---------------------------------------------------------------------------
+
+-- Groups series books from item_table into virtual folder items.
+-- Modifies item_table in place. No-ops when grouping is not applicable.
+local function _sgProcessItemTable(item_table, file_chooser)
+    if not M.getSeriesGrouping()                  then return end
+    if not file_chooser or not item_table         then return end
+    if item_table._sg_is_series_view              then return end
+    if file_chooser.show_current_dir_for_hold     then return end
+
+    -- Evict stale _sg_items_cache entries for the current directory.
+    -- Without this the cache grows unboundedly across reader→HS cycles.
+    -- The guard skips the loop when the path hasn't changed since last eviction.
+    local current_path = file_chooser.path
+    if current_path and current_path ~= _sg_last_evicted_path then
+        _sg_last_evicted_path = current_path
+        local prefix = current_path
+        if prefix:sub(-1) ~= "/" then prefix = prefix .. "/" end
+        for k in pairs(_sg_items_cache) do
+            if k:sub(1, #prefix) == prefix then _sg_items_cache[k] = nil end
+        end
+    end
+
+    local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
+    if not ok_bim or not BookInfoManager then return end
+
+    local series_map      = {}
+    local processed       = {}
+    local book_count      = 0
+    local no_series_count = 0
+
+    for _, item in ipairs(item_table) do
+        if item.is_go_up then
+            processed[#processed + 1] = item
+        else
+            if not item.sort_percent     then item.sort_percent     = 0     end
+            if not item.percent_finished then item.percent_finished = 0     end
+            if not item.opened           then item.opened           = false end
+
+            local handled = false
+
+            if (item.is_file or item.file) and item.path then
+                book_count = book_count + 1
+                local doc_props = item.doc_props or BookInfoManager:getDocProps(item.path)
+                local sname = doc_props and doc_props.series
+                if sname and sname ~= "\u{FFFF}" then
+                    item._sg_series_index = doc_props.series_index or 0
+                    if not series_map[sname] then
+                        local base_path  = item.path:match("(.*/)") or ""
+                        local group_attr = {}
+                        if item.attr then
+                            for k, v in pairs(item.attr) do group_attr[k] = v end
+                        end
+                        group_attr.mode = "directory"
+                        local vpath      = base_path .. sname
+                        local group_item = {
+                            text             = sname,
+                            is_file          = false,
+                            is_directory     = true,
+                            is_series_group  = true,
+                            path             = vpath,
+                            series_items     = { item },
+                            attr             = group_attr,
+                            mode             = "directory",
+                            sort_percent     = item.sort_percent,
+                            percent_finished = item.percent_finished,
+                            opened           = item.opened,
+                            doc_props        = item.doc_props or {
+                                series        = sname,
+                                series_index  = 0,
+                                display_title = sname,
+                            },
+                            suffix = item.suffix,
+                        }
+                        series_map[sname]             = group_item
+                        group_item._sg_list_index     = #processed + 1
+                        processed[#processed + 1]     = group_item
+                    else
+                        local si = series_map[sname].series_items
+                        si[#si + 1] = item
+                    end
+                    handled = true
+                else
+                    no_series_count = no_series_count + 1
+                end
+            end
+
+            if not handled then processed[#processed + 1] = item end
+        end
+    end
+
+    -- If every book belongs to the same single series the folder is already
+    -- organized — skip grouping to avoid a redundant wrapping level.
+    local series_count = 0
+    for _ in pairs(series_map) do
+        series_count = series_count + 1
+        if series_count > 1 then break end
+    end
+    if series_count == 1 and no_series_count == 0 and book_count > 0 then return end
+
+    -- Ungroup singletons; sort and cache multi-book groups.
+    for _, group in pairs(series_map) do
+        local items = group.series_items
+        if #items == 1 then
+            local idx = group._sg_list_index
+            if idx and processed[idx] == group then processed[idx] = items[1] end
+        else
+            table.sort(items, function(a, b)
+                return (a._sg_series_index or 0) < (b._sg_series_index or 0)
+            end)
+            group.mandatory           = tostring(#items) .. " \u{F016}"
+            _sg_items_cache[group.path] = items
+        end
+    end
+
+    -- Re-sort the full processed list using FileChooser's sort function.
+    -- Read sort settings once — G_reader_settings calls are not free.
+    local ok_collate, collate = pcall(function() return file_chooser:getCollate() end)
+    local collate_obj = ok_collate and collate or nil
+    local reverse     = G_reader_settings:isTrue("reverse_collate")
+    local sort_func
+    pcall(function() sort_func = file_chooser:getSortingFunction(collate_obj, reverse) end)
+    local mixed = G_reader_settings:isTrue("collate_mixed")
+        and collate_obj and collate_obj.can_collate_mixed
+
+    local final   = {}
+    local up_item = nil
+
+    if mixed then
+        local to_sort = {}
+        for _, item in ipairs(processed) do
+            if item.is_go_up then up_item = item
+            else to_sort[#to_sort + 1] = item end
+        end
+        if sort_func then pcall(table.sort, to_sort, sort_func) end
+        if up_item then final[#final + 1] = up_item end
+        for _, item in ipairs(to_sort) do final[#final + 1] = item end
+    else
+        local dirs  = {}
+        local files = {}
+        for _, item in ipairs(processed) do
+            if item.is_go_up then
+                up_item = item
+            elseif item.is_directory or item.is_series_group
+                or (item.attr and item.attr.mode == "directory")
+                or item.mode == "directory"
+            then
+                dirs[#dirs + 1] = item
+            else
+                files[#files + 1] = item
+            end
+        end
+        if sort_func then pcall(table.sort, dirs,  sort_func) end
+        if sort_func then pcall(table.sort, files, sort_func) end
+        if up_item then final[#final + 1] = up_item end
+        for _, d in ipairs(dirs)  do final[#final + 1] = d end
+        for _, f in ipairs(files) do final[#final + 1] = f end
+    end
+
+    -- Write result back into item_table in place.
+    -- Use a numeric loop to clear the array part; avoids hash traversal from pairs().
+    for i = #item_table, 1, -1 do item_table[i] = nil end
+    for i, v in ipairs(final)   do item_table[i] = v   end
+end
+
+-- Switches the file_chooser view into a virtual series folder.
+local function _sgOpenGroup(file_chooser, group_item)
+    if not file_chooser then return end
+
+    local parent_path = file_chooser.path
+    local items       = group_item.series_items
+    local parent_page = file_chooser.page or 1
+
+    _sg_current = {
+        series_name    = group_item.text,
+        parent_path    = parent_path,
+        parent_page    = parent_page,
+        should_restore = false,
+    }
+
+    items._sg_is_series_view = true
+    items._sg_parent_path    = parent_path
+    file_chooser._simpleui_has_go_up = true
+    file_chooser:switchItemTable(nil, items, nil, nil, group_item.text)
+
+    -- Update the titlebar subtitle to show the series name.
+    local ok_p, Patches = pcall(require, "sui_patches")
+    if ok_p and Patches and Patches.setFMPathBase then
+        local fm = require("apps/filemanager/filemanager").instance
+        Patches.setFMPathBase(group_item.text, fm)
+    end
+
+    if file_chooser.onGotoPage then
+        pcall(function() file_chooser:onGotoPage(1) end)
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Series grouping hooks — installed/uninstalled as a unit.
+-- ---------------------------------------------------------------------------
+
+local _sg_orig_switchItemTable = nil
+local _sg_orig_onMenuSelect    = nil
+local _sg_orig_onMenuHold      = nil
+local _sg_orig_onFolderUp      = nil
+local _sg_orig_changeToPath    = nil
+local _sg_orig_refreshPath     = nil
+local _sg_orig_updateItems     = nil
+
+local function _installSeriesGrouping()
+    if FileChooser._simpleui_sg_patched then return end
+    FileChooser._simpleui_sg_patched = true
+
+    _sg_orig_switchItemTable = FileChooser.switchItemTable
+    _sg_orig_onMenuSelect    = FileChooser.onMenuSelect
+    _sg_orig_onMenuHold      = FileChooser.onMenuHold
+    _sg_orig_onFolderUp      = FileChooser.onFolderUp
+    _sg_orig_changeToPath    = FileChooser.changeToPath
+    _sg_orig_refreshPath     = FileChooser.refreshPath
+    _sg_orig_updateItems     = FileChooser.updateItems
+
+    -- Process items before KOReader calculates itemmatch so the grouped list
+    -- is what the page/focus logic sees.
+    FileChooser.switchItemTable = function(fc, new_title, new_item_table,
+                                           itemnumber, itemmatch, new_subtitle)
+        if new_item_table and not new_item_table._sg_is_series_view then
+            _sgProcessItemTable(new_item_table, fc)
+        end
+        return _sg_orig_switchItemTable(fc, new_title, new_item_table,
+                                        itemnumber, itemmatch, new_subtitle)
+    end
+
+    FileChooser.onMenuSelect = function(fc, item)
+        if item and item.is_series_group and M.getSeriesGrouping() then
+            _sgOpenGroup(fc, item)
+            return true
+        end
+        return _sg_orig_onMenuSelect(fc, item)
+    end
+
+    -- Long-press on a virtual series folder only shows the cover picker.
+    FileChooser.onMenuHold = function(fc, item)
+        if item and item.is_series_group and M.getSeriesGrouping() then
+            if not M.isEnabled() then return true end
+            local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
+            if ok_bim and BookInfoManager then
+                _openSeriesGroupCoverPicker(item.path, fc, BookInfoManager)
+            end
+            return true
+        end
+        return _sg_orig_onMenuHold(fc, item)
+    end
+
+    FileChooser.onFolderUp = function(fc)
+        if fc.item_table and fc.item_table._sg_is_series_view then
+            local parent = fc.item_table._sg_parent_path
+            if _sg_current then _sg_current.should_restore = true end
+            if parent then fc:changeToPath(parent) end
+            return true
+        end
+        return _sg_orig_onFolderUp(fc)
+    end
+
+    FileChooser.changeToPath = function(fc, path, ...)
+        if fc.item_table and fc.item_table._sg_is_series_view then
+            local parent = fc.item_table._sg_parent_path
+            -- Redirect relative ".." paths to the real parent.
+            if parent and path and (path:match("/%.%.") or path:match("^%.%.")) then
+                path = parent
+            end
+            fc.item_table._sg_is_series_view = false
+            if path == parent then
+                -- Back to real parent: keep _sg_current so updateItems can
+                -- restore focus on the series group item.
+                if _sg_current then
+                    _sg_current.should_restore = true
+                    local saved_page = _sg_current.parent_page
+                    if saved_page and saved_page > 1 then
+                        fc.page = saved_page
+                    end
+                end
+            else
+                -- Navigating somewhere else entirely: drop series state.
+                _sg_current = nil
+            end
+        else
+            _sg_current = nil
+        end
+        return _sg_orig_changeToPath(fc, path, ...)
+    end
+
+    -- After refreshPath (e.g. closing a book) re-enter the virtual folder
+    -- if one was active.
+    FileChooser.refreshPath = function(fc)
+        -- Selective item-cache invalidation: only discard the entry for the
+        -- book that was just closed. The cache key encodes fullpath as the
+        -- third NUL-separated field, so a needle search is exact.
+        -- G_reader_settings["lastfile"] is written by readhistory:addItem()
+        -- when the book opens, so it is always the path of the closed book.
+        -- Fall back to a full flush when the path is unavailable.
+        local last_book = G_reader_settings:readSetting("lastfile")
+        if last_book then
+            local needle = "\0" .. last_book .. "\0"
+            local removed = 0
+            for k in pairs(_cache_a) do
+                if k:find(needle, 1, true) then
+                    _cache_a[k] = nil
+                    removed = removed + 1
+                end
+            end
+            _cache_a_count = math.max(0, _cache_a_count - removed)
+            for k in pairs(_cache_b) do
+                if k:find(needle, 1, true) then _cache_b[k] = nil end
+            end
+        else
+            -- Unknown what changed — full flush (safe fallback).
+            _cache_a       = {}
+            _cache_b       = {}
+            _cache_a_count = 0
+        end
+
+        -- Only flush disk-level cover caches when the library was actually
+        -- visited (files may have been added/removed). Preserving them on a
+        -- plain reader→HS transition avoids redundant lfs.* calls per folder.
+        local HS = package.loaded["sui_homescreen"]
+        if HS and HS._library_was_visited then
+            for k in pairs(_cover_file_cache)   do _cover_file_cache[k]   = nil end
+            for k in pairs(_cfc_b)              do _cfc_b[k]              = nil end
+            _cfc_cnt = 0
+            for k in pairs(_lm_dir_cover_cache) do _lm_dir_cover_cache[k] = nil end
+            for k in pairs(_lmc_b)              do _lmc_b[k]              = nil end
+            _lmc_cnt = 0
+        end
+
+        _sg_orig_refreshPath(fc)
+        if not M.getSeriesGrouping() then return end
+        if not _sg_current then return end
+
+        local sname      = _sg_current.series_name
+        local saved_page = _sg_current.parent_page
+        for _, item in ipairs(fc.item_table or {}) do
+            if item.is_series_group and item.text == sname then
+                _sgOpenGroup(fc, item)
+                if _sg_current then _sg_current.parent_page = saved_page end
+                return
+            end
+        end
+        _sg_current = nil
+    end
+
+    -- Restore focus to the series group item when returning from a virtual folder.
+    FileChooser.updateItems = function(fc, ...)
+        if not M.getSeriesGrouping() then
+            _sg_current = nil
+            return _sg_orig_updateItems(fc, ...)
+        end
+
+        if fc.item_table and fc.item_table._sg_is_series_view then
+            return _sg_orig_updateItems(fc, ...)
+        end
+
+        if _sg_current and _sg_current.should_restore
+                and fc.item_table and #fc.item_table > 0 then
+            local sname = _sg_current.series_name
+            for idx, item in ipairs(fc.item_table) do
+                if item.is_series_group and item.text == sname then
+                    fc.page = math.ceil(idx / fc.perpage)
+                    local select_num = ((idx - 1) % fc.perpage) + 1
+                    if fc.path_items and fc.path then fc.path_items[fc.path] = idx end
+                    _sg_current = nil
+                    fc._simpleui_has_go_up = (fc.item_table[1] and
+                        (fc.item_table[1].is_go_up or false)) or false
+                    return _sg_orig_updateItems(fc, select_num)
+                end
+            end
+            _sg_current = nil
+        end
+
+        return _sg_orig_updateItems(fc, ...)
+    end
+end
+
+local function _uninstallSeriesGrouping()
+    if not FileChooser._simpleui_sg_patched then return end
+    if _sg_orig_switchItemTable then FileChooser.switchItemTable = _sg_orig_switchItemTable; _sg_orig_switchItemTable = nil end
+    if _sg_orig_onMenuSelect    then FileChooser.onMenuSelect    = _sg_orig_onMenuSelect;    _sg_orig_onMenuSelect    = nil end
+    if _sg_orig_onMenuHold      then FileChooser.onMenuHold      = _sg_orig_onMenuHold;      _sg_orig_onMenuHold      = nil end
+    if _sg_orig_onFolderUp      then FileChooser.onFolderUp      = _sg_orig_onFolderUp;      _sg_orig_onFolderUp      = nil end
+    if _sg_orig_changeToPath    then FileChooser.changeToPath    = _sg_orig_changeToPath;    _sg_orig_changeToPath    = nil end
+    if _sg_orig_refreshPath     then FileChooser.refreshPath     = _sg_orig_refreshPath;     _sg_orig_refreshPath     = nil end
+    if _sg_orig_updateItems     then FileChooser.updateItems     = _sg_orig_updateItems;     _sg_orig_updateItems     = nil end
+    FileChooser._simpleui_sg_patched = nil
+    _sg_current           = nil
+    _sg_items_cache       = {}
+    _sg_last_evicted_path = nil
+end
+
+-- ---------------------------------------------------------------------------
+-- Visual build helpers — one per overlay layer.
+-- ---------------------------------------------------------------------------
+
+-- Two vertical spine lines on the left of the cover (folder-book aesthetic).
 local function _buildSpine(img_h)
     local h1 = math.floor(img_h * 0.97)
     local h2 = math.floor(img_h * 0.94)
@@ -314,10 +1124,7 @@ local function _buildSpine(img_h)
             background = _SPINE_COLOR,
         }
         line.overlap_offset = { 0, y_off }
-        return OverlapGroup:new{
-            dimen = Geom:new{ w = _EDGE_THICK, h = img_h },
-            line,
-        }
+        return OverlapGroup:new{ dimen = Geom:new{ w = _EDGE_THICK, h = img_h }, line }
     end
 
     return HorizontalGroup:new{
@@ -329,11 +1136,13 @@ local function _buildSpine(img_h)
     }
 end
 
--- Builds the folder-name label overlay (OverlapGroup over the image area).
--- Returns nil when label mode is not "overlay" or show_name is disabled.
-local function _buildLabel(item, available_w, size, border, cv_scale)
-    if M.getLabelMode() ~= "overlay" then return nil end
-    if not M.getShowName() then return nil end
+-- Folder-name label overlaid on the cover image. Returns nil when disabled.
+-- label_style, label_position, and show_name are passed in pre-read by the
+-- caller (_setFolderCover) so this function makes zero settings reads.
+local function _buildLabel(item, available_w, size, border, cv_scale,
+                            label_mode, show_name, label_style, label_pos)
+    if label_mode ~= "overlay" then return nil end
+    if not show_name            then return nil end
 
     local dir_max_fs = math.max(8, math.floor(_BASE_DIR_FS * cv_scale * M.getLabelScale()))
     local directory  = item:_getFolderNameWidget(available_w, dir_max_fs)
@@ -352,43 +1161,33 @@ local function _buildLabel(item, available_w, size, border, cv_scale)
     }
 
     local label_inner
-    if M.getLabelStyle() == "alpha" then
+    if label_style == "alpha" then
         label_inner = AlphaContainer:new{ alpha = _LABEL_ALPHA, frame }
     else
         label_inner = frame
     end
 
     local name_og = OverlapGroup:new{ dimen = img_dimen }
-    local pos = M.getLabelPosition()
-    if pos == "center" then
+
+    if label_pos == "center" then
         name_og[1] = CenterContainer:new{
-            dimen         = img_only,
-            label_inner,
-            overlap_align = "center",
+            dimen = img_only, label_inner, overlap_align = "center",
         }
-    elseif pos == "top" then
-        -- Shift up by border so the label's bottom border overlaps the
-        -- book frame's top border — no visible gap or double line.
+    elseif label_pos == "top" then
         name_og[1] = TopContainer:new{
-            dimen         = img_dimen,
-            label_inner,
-            overlap_align = "center",
+            dimen = img_dimen, label_inner, overlap_align = "center",
         }
-    else  -- "bottom" (default)
-        -- Shift down by border so the label's top border overlaps the
-        -- book frame's bottom border — no visible gap or double line.
+    else  -- "bottom"
         name_og[1] = BottomContainer:new{
-            dimen         = img_dimen,
-            label_inner,
-            overlap_align = "center",
+            dimen = img_dimen, label_inner, overlap_align = "center",
         }
     end
+
     name_og.overlap_offset = { _SPINE_W, 0 }
     return name_og
 end
 
--- Builds the book-count badge (circular, top- or bottom-right of cover).
--- Returns nil when there is no count to display or the badge is hidden.
+-- Book-count badge (circle, top- or bottom-right). Returns nil when hidden.
 local function _buildBadge(mandatory, cover_dimen, cv_scale)
     if M.getBadgeHidden() then return nil end
     local nb_text = mandatory and mandatory:match("(%d+) \u{F016}") or ""
@@ -434,7 +1233,7 @@ local function _buildBadge(mandatory, cover_dimen, cv_scale)
             inner,
             overlap_align  = "center",
         }
-    else  -- "top" (default)
+    else
         return TopContainer:new{
             dimen         = cover_dimen,
             padding_top   = badge_margin,
@@ -442,904 +1241,6 @@ local function _buildBadge(mandatory, cover_dimen, cv_scale)
             overlap_align = "center",
         }
     end
-end
-
--- ---------------------------------------------------------------------------
--- Cover override — settings-based, identical pattern to module_collections.
--- Key: "simpleui_fc_covers" → table { [dir_path] = book_filepath }
--- ---------------------------------------------------------------------------
-
-local _FC_COVERS_KEY = "simpleui_fc_covers"
-
--- In-memory cache for the cover-overrides table. The table is read on
--- every folder-cover render (once per cell per updateItems call), but it
--- changes only when the user explicitly picks a cover via the long-press
--- dialog. Caching avoids repeated G_reader_settings deserialisation.
--- The cache is populated lazily on first read and mutated in-place by the
--- save/clear helpers, so it never goes stale during a session.
-local _overrides_cache = nil
-
-local function _getCoverOverrides()
-    if not _overrides_cache then
-        _overrides_cache = G_reader_settings:readSetting(_FC_COVERS_KEY) or {}
-    end
-    return _overrides_cache
-end
-
-local function _saveCoverOverride(dir_path, book_path)
-    local t = _getCoverOverrides()
-    t[dir_path] = book_path
-    G_reader_settings:saveSetting(_FC_COVERS_KEY, t)
-    -- Cache already mutated in-place; no reset needed.
-end
-
-local function _clearCoverOverride(dir_path)
-    local t = _getCoverOverrides()
-    t[dir_path] = nil
-    G_reader_settings:saveSetting(_FC_COVERS_KEY, t)
-    -- Cache already mutated in-place; no reset needed.
-end
-
--- Forces re-render of the folder item by clearing the processed flag.
--- Works for both mosaic view (items in menu.layout rows) and list view
--- (items in menu.layout as single-element arrays {item_tmp}).
-local function _invalidateFolderItem(menu, dir_path)
-    if not menu then return end
-    if menu.layout then
-        for _, row in ipairs(menu.layout) do
-            for _, item in ipairs(row) do
-                if item._foldercover_processed
-                        and item.entry and item.entry.path == dir_path then
-                    item._foldercover_processed = false
-                end
-            end
-        end
-    end
-    menu:updateItems(1, true)
-end
-
--- ---------------------------------------------------------------------------
--- Recursive cover search helper.
--- Scans dir_path up to max_depth levels looking for a cached book cover.
--- Returns a cover table { data, w, h } on success, or nil if nothing found.
--- BookInfoManager is passed in to avoid a module-level require.
--- ---------------------------------------------------------------------------
-local function _findCoverRecursive(menu, dir_path, depth, max_depth, BookInfoManager)
-    if depth > max_depth then return nil end
-
-    -- Temporarily clear the status filter so that books filtered out by the
-    -- user's "show only new/reading" setting are still visible for cover lookup.
-    -- The filter governs what is *displayed*, not what can supply cover art.
-    -- FileChooser is already required at module level — no per-call require().
-    local saved_filter   = FileChooser.show_filter
-    FileChooser.show_filter = {}
-    menu._dummy = true
-    local entries = menu:genItemTableFromPath(dir_path)
-    menu._dummy = false
-    FileChooser.show_filter = saved_filter
-    if not entries then return nil end
-
-    -- First pass: try files at this level.
-    for _, entry in ipairs(entries) do
-        if entry.is_file or entry.file then
-            local bookinfo = BookInfoManager:getBookInfo(entry.path, true)
-            if bookinfo
-                and bookinfo.cover_bb
-                and bookinfo.has_cover
-                and bookinfo.cover_fetched
-                and not bookinfo.ignore_cover
-                and not BookInfoManager.isCachedCoverInvalid(bookinfo, menu.cover_specs)
-            then
-                return { data = bookinfo.cover_bb, w = bookinfo.cover_w, h = bookinfo.cover_h }
-            end
-        end
-    end
-
-    -- Second pass: recurse into subfolders.
-    for _, entry in ipairs(entries) do
-        if not entry.is_file and not entry.file then
-            local found = _findCoverRecursive(menu, entry.path, depth + 1, max_depth, BookInfoManager)
-            if found then return found end
-        end
-    end
-
-    return nil
-end
-
--- Opens a ButtonDialog listing the books inside dir_path so the user can
--- pick which one's cover to use.
-
--- Collects all book entries under dir_path, optionally recursing into
--- subfolders up to max_depth levels when recursive cover scan is enabled.
-local function _collectBooks(menu, dir_path, depth, max_depth, out)
-    -- Strip status filter so finished/on-hold books are included as cover candidates
-    -- even when the browser is set to show only new/reading books.
-    -- FileChooser is already required at module level — no per-call require().
-    local saved_filter   = FileChooser.show_filter
-    FileChooser.show_filter = {}
-    menu._dummy = true
-    local entries = menu:genItemTableFromPath(dir_path)
-    menu._dummy = false
-    FileChooser.show_filter = saved_filter
-    if not entries then return end
-    for _, entry in ipairs(entries) do
-        if entry.is_file or entry.file then
-            out[#out + 1] = entry
-        elseif depth < max_depth and not entry.is_file and not entry.file then
-            _collectBooks(menu, entry.path, depth + 1, max_depth, out)
-        end
-    end
-end
-
--- Opens the cover picker for a virtual series group.
--- Uses the cached series_items directly instead of scanning the (non-existent)
--- virtual directory on disk.
-local function _openSeriesGroupCoverPicker(vpath, menu, BookInfoManager)
-    local UIManager    = require("ui/uimanager")
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local InfoMessage  = require("ui/widget/infomessage")
-
-    local series_items = _sg_items_cache[vpath]
-    if not series_items or #series_items == 0 then
-        UIManager:show(InfoMessage:new{
-            text = _("No books found in this series."), timeout = 2 })
-        return
-    end
-
-    local overrides    = _getCoverOverrides()
-    local cur_override = overrides[vpath]
-    local picker
-
-    local buttons = {}
-
-    buttons[#buttons + 1] = {{
-        text = (not cur_override and "✓ " or "  ") .. _("Auto (first book)"),
-        callback = function()
-            UIManager:close(picker)
-            _clearCoverOverride(vpath)
-            -- Invalidate so the mosaic re-fetches the auto cover.
-            _invalidateFolderItem(menu, vpath)
-        end,
-    }}
-
-    for _, item in ipairs(series_items) do
-        local fp = item.path
-        if fp then
-            local bookinfo = BookInfoManager:getBookInfo(fp, false)
-            local title = (bookinfo and bookinfo.title and bookinfo.title ~= "")
-                and bookinfo.title
-                or (fp:match("([^/]+)%.[^%.]+$") or fp)
-            local _fp = fp
-            buttons[#buttons + 1] = {{
-                text = ((cur_override == _fp) and "✓ " or "  ") .. title,
-                callback = function()
-                    UIManager:close(picker)
-                    _saveCoverOverride(vpath, _fp)
-                    _invalidateFolderItem(menu, vpath)
-                end,
-            }}
-        end
-    end
-
-    buttons[#buttons + 1] = {{
-        text = _("Cancel"),
-        callback = function() UIManager:close(picker) end,
-    }}
-
-    picker = ButtonDialog:new{
-        title   = _("Series cover"),
-        buttons = buttons,
-    }
-    UIManager:show(picker)
-end
-
-local function _openFolderCoverPicker(dir_path, menu, BookInfoManager)
-    local UIManager    = require("ui/uimanager")
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local InfoMessage  = require("ui/widget/infomessage")
-
-    -- When recursive cover scan is enabled, collect books from subfolders too
-    -- (same max_depth=3 used by the automatic scan), so the user can pick from
-    -- the same set of covers that the auto-scan finds.
-    local books = {}
-    local max_depth = M.getRecursiveCover() and 3 or 1
-    _collectBooks(menu, dir_path, 1, max_depth, books)
-
-    if #books == 0 then
-        UIManager:show(InfoMessage:new{
-            text = _("No books found in this folder."), timeout = 2 })
-        return
-    end
-
-    local overrides = _getCoverOverrides()
-    local cur_override = overrides[dir_path]
-    local picker
-
-    local buttons = {}
-
-    buttons[#buttons + 1] = {{
-        text = (not cur_override and "✓ " or "  ") .. _("Auto (first book)"),
-        callback = function()
-            UIManager:close(picker)
-            _clearCoverOverride(dir_path)
-            _invalidateFolderItem(menu, dir_path)
-        end,
-    }}
-
-    for _, entry in ipairs(books) do
-        local fp = entry.path
-        local bookinfo = BookInfoManager:getBookInfo(fp, false)
-        local title = (bookinfo and bookinfo.title and bookinfo.title ~= "")
-            and bookinfo.title
-            or (fp:match("([^/]+)%.[^%.]+$") or fp)
-        -- When the book is in a subfolder, append the relative path so the
-        -- user can tell apart books with the same title in different subfolders.
-        local rel = fp:sub(#dir_path + 2) -- strip "dir_path/" prefix
-        local subfolder = rel:match("^(.+)/[^/]+$") -- everything before the filename
-        local label = subfolder and (title .. "  [" .. subfolder .. "]") or title
-        local _fp = fp
-        buttons[#buttons + 1] = {{
-            text = ((cur_override == _fp) and "✓ " or "  ") .. label,
-            callback = function()
-                UIManager:close(picker)
-                _saveCoverOverride(dir_path, _fp)
-                _invalidateFolderItem(menu, dir_path)
-            end,
-        }}
-    end
-
-    buttons[#buttons + 1] = {{
-        text = _("Cancel"),
-        callback = function() UIManager:close(picker) end,
-    }}
-
-    picker = ButtonDialog:new{
-        title   = _("Folder cover"),
-        buttons = buttons,
-    }
-    UIManager:show(picker)
-end
-
--- Injects "Set folder cover…" into the long-press file dialog for directories.
-local function _installFileDialogButton(BookInfoManager)
-    local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
-    if not ok_fm or not FileManager then return end
-
-    -- addFileDialogButtons must be called on the class (it stores on the class table,
-    -- which is then checked by every instance's showFileDialog). KOReader's API
-    -- expects the method called as FileManager:addFileDialogButtons(...).
-    FileManager:addFileDialogButtons("simpleui_fc_cover",
-        function(file, is_file, _book_props)
-            if is_file then return nil end
-            if not M.isEnabled() then return nil end
-            -- Check if this is a virtual series-group folder.
-            -- Virtual paths are not on disk, so we use the cached series_items
-            -- instead of scanning the directory.
-            local is_virtual_series = _sg_items_cache[file] ~= nil
-            -- Check if this is a browsemeta virtual leaf (author/series dim_list).
-            local fc = FileManager.instance and FileManager.instance.file_chooser
-            local item_entry = nil
-            if fc and fc.item_table then
-                for _, it in ipairs(fc.item_table) do
-                    if it.path == file then item_entry = it; break end
-                end
-            end
-            local is_virtual_meta = item_entry and item_entry.is_virtual_meta_leaf
-            local label
-            if is_virtual_series then
-                label = _("Set series cover…")
-            elseif is_virtual_meta then
-                label = _("Set virtual folder cover…")
-            else
-                label = _("Set folder cover…")
-            end
-            return {{
-                text = label,
-                callback = function()
-                    local UIManager = require("ui/uimanager")
-                    if fc and fc.file_dialog then
-                        UIManager:close(fc.file_dialog)
-                    end
-                    if fc then
-                        if is_virtual_series then
-                            _openSeriesGroupCoverPicker(file, fc, BookInfoManager)
-                        elseif is_virtual_meta then
-                            -- Delegate to browsemeta's own picker which knows
-                            -- about the virtual path structure and overrides.
-                            local ok_bm, BM = pcall(require, "sui_browsemeta")
-                            if ok_bm and BM and BM.openVirtualCoverPicker then
-                                BM.openVirtualCoverPicker(file, fc)
-                            end
-                        else
-                            _openFolderCoverPicker(file, fc, BookInfoManager)
-                        end
-                    end
-                end,
-            }}
-        end
-    )
-end
-
-local function _uninstallFileDialogButton()
-    local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
-    if not ok_fm or not FileManager then return end
-    FileManager:removeFileDialogButtons("simpleui_fc_cover")
-end
-
--- ---------------------------------------------------------------------------
--- Item cache — 2 000-entry LRU for FileChooser:getListItem()
--- Avoids redundant item rebuilds while scrolling a large library.
--- Installed/uninstalled independently of the folder-covers feature toggle.
--- ---------------------------------------------------------------------------
-
-local _cache       = {}
-local _cache_count = 0
-local _CACHE_MAX   = 1000
-local _orig_getListItem = FileChooser.getListItem
-
-local function _installItemCache()
-    if FileChooser._simpleui_fc_cache_patched then return end
-    FileChooser._simpleui_fc_cache_patched = true
-    FileChooser.getListItem = function(fc, dirpath, f, fullpath, attributes, collate)
-        if not M.getItemCache() then
-            return _orig_getListItem(fc, dirpath, f, fullpath, attributes, collate)
-        end
-        local filter_raw = fc.show_filter and fc.show_filter.status or ""
-        local filter
-        if type(filter_raw) == "table" then
-            -- Newer KOReader stores active status filters as a set table.
-            -- Sort keys so equivalent filter states produce the same cache key.
-            local parts = {}
-            for k, v in pairs(filter_raw) do
-                if v then
-                    parts[#parts + 1] = tostring(k)
-                end
-            end
-            table.sort(parts)
-            filter = table.concat(parts, "\1")
-        else
-            filter = tostring(filter_raw)
-        end
-        local collate_id = (collate and (collate.id or collate.text)) or ""
-        local key = tostring(dirpath) .. "\0" .. tostring(f) .. "\0"
-                 .. tostring(fullpath) .. "\0" .. filter .. "\0"
-                 .. tostring(collate_id)
-        if not _cache[key] then
-            if _cache_count >= _CACHE_MAX then
-                _cache = {}
-                _cache_count = 0
-            end
-            _cache[key] = _orig_getListItem(fc, dirpath, f, fullpath, attributes, collate)
-            _cache_count = _cache_count + 1
-        end
-        return _cache[key]
-    end
-end
-
-local function _uninstallItemCache()
-    if not FileChooser._simpleui_fc_cache_patched then return end
-    FileChooser.getListItem = _orig_getListItem
-    FileChooser._simpleui_fc_cache_patched = nil
-    _cache = {}
-    _cache_count = 0
-end
-
--- Invalidate cache (called after settings changes that affect item appearance).
-function M.invalidateCache()
-    _cache = {}
-    _cache_count = 0
-end
-
--- ---------------------------------------------------------------------------
--- Series grouping — virtual folders for multi-book series
--- ---------------------------------------------------------------------------
---
--- State persisted across refreshes. All access is from the main UI thread.
--- _sg_current holds the active virtual folder state while browsing a series;
--- nil means we are in a real filesystem folder.
---
--- Fields of _sg_current:
---   series_name      (string)  — name of the series being browsed
---   parent_path      (string)  — real filesystem path the user navigated from
---   should_restore   (bool)    — true after exiting the virtual folder,
---                                signals updateItems to restore focus
--- ---------------------------------------------------------------------------
-
--- _sg_current and _sg_items_cache are forward-declared above near 'local M = {}'.
-
--- ---------------------------------------------------------------------------
--- _sgProcessItemTable: group series books into virtual folder items.
--- Modifies item_table in place. Returns immediately when grouping is not
--- applicable (disabled, dialog chooser, view already grouped, etc.).
--- ---------------------------------------------------------------------------
-local function _sgProcessItemTable(item_table, file_chooser)
-    if not M.getSeriesGrouping() then return end
-    if not file_chooser or not item_table then return end
-    -- Never re-group inside a virtual series view.
-    if item_table._sg_is_series_view then return end
-    -- Skip folder-chooser dialogs (show_current_dir_for_hold is set).
-    if file_chooser.show_current_dir_for_hold then return end
-
-    -- Evict stale _sg_items_cache entries for the current directory before
-    -- reprocessing. Without this, the cache grows unboundedly across
-    -- reader->HS cycles: every switchItemTable call adds new virtual-path
-    -- entries but nothing removes old ones, so the Lua GC heap grows with
-    -- each session and the HS slows down progressively.
-    -- Entries for other directories are preserved (they are still valid).
-    --
-    -- Guard: only evict when the path actually changed since the last eviction.
-    -- switchItemTable is called on every refreshPath (including reader->HS),
-    -- so running the loop unconditionally burns CPU on every book close even
-    -- when the user never navigated the FM. The path is stable across those
-    -- calls, so a single eviction per directory visit is sufficient.
-    local current_path = file_chooser.path
-    if current_path and current_path ~= _sg_last_evicted_path then
-        _sg_last_evicted_path = current_path
-        -- vpaths are built as base_path..sname where base_path ends with "/",
-        -- so normalise the prefix the same way.
-        local prefix = current_path
-        if prefix:sub(-1) ~= "/" then prefix = prefix .. "/" end
-        for k in pairs(_sg_items_cache) do
-            if k:sub(1, #prefix) == prefix then
-                _sg_items_cache[k] = nil
-            end
-        end
-    end
-
-    local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
-    if not ok_bim or not BookInfoManager then return end
-
-    local series_map   = {}   -- series_name → group_item
-    local processed    = {}   -- final flat list (goes-up + dirs + files)
-    local book_count   = 0
-    local no_series_count = 0
-
-    for _, item in ipairs(item_table) do
-        if item.is_go_up then
-            table.insert(processed, item)
-        else
-            -- Ensure safe sort keys for all items.
-            if not item.sort_percent     then item.sort_percent     = 0     end
-            if not item.percent_finished then item.percent_finished = 0     end
-            if not item.opened           then item.opened           = false end
-
-            local handled = false
-
-            if (item.is_file or item.file) and item.path then
-                book_count = book_count + 1
-                local doc_props = item.doc_props
-                    or BookInfoManager:getDocProps(item.path)
-                -- Filter sentinel value used by series collate for nil.
-                local sname = doc_props and doc_props.series
-                if sname and sname ~= "\u{FFFF}" then
-                    item._sg_series_index = doc_props.series_index or 0
-                    if not series_map[sname] then
-                        -- Create the virtual folder item.
-                        local base_path = item.path:match("(.*/)") or ""
-                        local group_attr = {}
-                        if item.attr then
-                            for k, v in pairs(item.attr) do
-                                group_attr[k] = v
-                            end
-                        end
-                        group_attr.mode = "directory"
-                        local vpath = base_path .. sname
-                        local group_item = {
-                            text          = sname,
-                            is_file       = false,
-                            is_directory  = true,
-                            is_series_group = true,
-                            path          = vpath,
-                            series_items  = { item },
-                            attr          = group_attr,
-                            mode          = "directory",
-                            sort_percent  = item.sort_percent,
-                            percent_finished = item.percent_finished,
-                            opened        = item.opened,
-                            doc_props     = item.doc_props or {
-                                series       = sname,
-                                series_index = 0,
-                                display_title = sname,
-                            },
-                            suffix        = item.suffix,
-                        }
-                        series_map[sname]    = group_item
-                        group_item._sg_list_index = #processed + 1
-                        table.insert(processed, group_item)
-                    else
-                        table.insert(series_map[sname].series_items, item)
-                    end
-                    handled = true
-                else
-                    no_series_count = no_series_count + 1
-                end
-            end
-
-            if not handled then
-                table.insert(processed, item)
-            end
-        end
-    end
-
-    -- Count distinct series (short-circuit after 2).
-    local series_count = 0
-    for _ in pairs(series_map) do
-        series_count = series_count + 1
-        if series_count > 1 then break end
-    end
-
-    -- If every book is from the same single series the folder is already
-    -- organized — skip grouping to avoid wrapping it in a redundant layer.
-    if series_count == 1 and no_series_count == 0 and book_count > 0 then
-        return
-    end
-
-    -- Post-process: ungroup singletons, finalize multi-book groups.
-    for sname, group in pairs(series_map) do
-        local items = group.series_items
-        if #items == 1 then
-            -- Replace the virtual folder with the single book in-place.
-            local idx = group._sg_list_index
-            if idx and processed[idx] == group then
-                processed[idx] = items[1]
-            end
-        else
-            -- Sort books by series index.
-            table.sort(items, function(a, b)
-                return (a._sg_series_index or 0) < (b._sg_series_index or 0)
-            end)
-            group.mandatory = tostring(#items) .. " \u{F016}"
-            -- Cache items so cover lookup and re-entry can find them.
-            _sg_items_cache[group.path] = items
-        end
-    end
-
-    -- Re-sort the full processed list using the FileChooser sort function,
-    -- so virtual folder items slot into the correct position among real dirs.
-    local ok_collate, collate = pcall(function()
-        return file_chooser:getCollate()
-    end)
-    local collate_obj = ok_collate and collate or nil
-    local reverse     = G_reader_settings:isTrue("reverse_collate")
-    local sort_func
-    local ok_sf = pcall(function()
-        sort_func = file_chooser:getSortingFunction(collate_obj, reverse)
-    end)
-    local mixed = G_reader_settings:isTrue("collate_mixed")
-        and collate_obj and collate_obj.can_collate_mixed
-
-    local final = {}
-
-    if mixed then
-        -- Mixed mode: single sorted pass (dirs and files together).
-        local up_item
-        local to_sort = {}
-        for _, item in ipairs(processed) do
-            if item.is_go_up then up_item = item
-            else table.insert(to_sort, item) end
-        end
-        if sort_func then
-            pcall(table.sort, to_sort, sort_func)
-        end
-        if up_item then table.insert(final, up_item) end
-        for _, item in ipairs(to_sort) do table.insert(final, item) end
-    else
-        -- Non-mixed: dirs first, then files.
-        local up_item
-        local dirs  = {}
-        local files = {}
-        for _, item in ipairs(processed) do
-            if item.is_go_up then
-                up_item = item
-            elseif item.is_directory or item.is_series_group
-                or (item.attr and item.attr.mode == "directory")
-                or item.mode == "directory"
-            then
-                table.insert(dirs, item)
-            else
-                table.insert(files, item)
-            end
-        end
-        if sort_func then
-            pcall(table.sort, dirs, sort_func)
-        end
-        if up_item then table.insert(final, up_item) end
-        for _, d in ipairs(dirs)  do table.insert(final, d) end
-        for _, f in ipairs(files) do table.insert(final, f) end
-    end
-
-    -- Update item_table in place.
-    for k in pairs(item_table) do item_table[k] = nil end
-    for i, v in ipairs(final)  do item_table[i] = v    end
-end
-
--- ---------------------------------------------------------------------------
--- _sgOpenGroup: switch the view into a virtual series folder.
--- ---------------------------------------------------------------------------
-local function _sgOpenGroup(file_chooser, group_item)
-    if not file_chooser then return end
-
-    local parent_path = file_chooser.path
-    local items       = group_item.series_items
-
-    -- Persist state so refreshPath / updateItems can restore the view.
-    -- Save the parent page so we can return to it when the user presses back,
-    -- even after re-entering the series view via refreshPath (e.g. after closing a book).
-    local parent_page = file_chooser.page or 1
-    _sg_current = {
-        series_name    = group_item.text,
-        parent_path    = parent_path,
-        parent_page    = parent_page,
-        should_restore = false,
-    }
-
-    -- Tag the list so switchItemTable and updateItems skip re-grouping.
-    items._sg_is_series_view = true
-    items._sg_parent_path    = parent_path
-
-    -- Notify the SimpleUI titlebar system that we are one level deep,
-    -- so the back button appears and calls onFolderUp correctly.
-    file_chooser._simpleui_has_go_up = true
-
-    file_chooser:switchItemTable(nil, items, nil, nil, group_item.text)
-
-    -- Notify the subtitle system about the virtual folder name so the
-    -- title-bar subtitle shows the series name (and optionally page X of Y)
-    -- even though no real updateTitleBarPath is fired for virtual folders.
-    local ok_p, Patches = pcall(require, "sui_patches")
-    if ok_p and Patches and Patches.setFMPathBase then
-        local fm = require("apps/filemanager/filemanager").instance
-        Patches.setFMPathBase(group_item.text, fm)
-    end
-
-    -- After switching to the virtual item table, force the titlebar to
-    -- re-evaluate the up-button state for page 1. The genItemTable hook
-    -- is not called for virtual folders (no real FS scan), so we trigger
-    -- onGotoPage(1) explicitly. _simpleui_has_go_up is already true so
-    -- the lock_home_folder branch in onGotoPage will show the button.
-    if file_chooser.onGotoPage then
-        pcall(function() file_chooser:onGotoPage(1) end)
-    end
-end
-
--- ---------------------------------------------------------------------------
--- Install / uninstall the FileChooser hooks for series grouping.
--- Called from M.install / M.uninstall — guards prevent double-patching.
--- ---------------------------------------------------------------------------
-local _sg_orig_switchItemTable = nil
-local _sg_orig_onMenuSelect    = nil
-local _sg_orig_onMenuHold      = nil
-local _sg_orig_onFolderUp      = nil
-local _sg_orig_changeToPath    = nil
-local _sg_orig_refreshPath     = nil
-local _sg_orig_updateItems     = nil
-
-local function _installSeriesGrouping()
-    if FileChooser._simpleui_sg_patched then return end
-    FileChooser._simpleui_sg_patched = true
-
-    _sg_orig_switchItemTable = FileChooser.switchItemTable
-    _sg_orig_onMenuSelect    = FileChooser.onMenuSelect
-    _sg_orig_onMenuHold      = FileChooser.onMenuHold
-    _sg_orig_onFolderUp      = FileChooser.onFolderUp
-    _sg_orig_changeToPath    = FileChooser.changeToPath
-    _sg_orig_refreshPath     = FileChooser.refreshPath
-    _sg_orig_updateItems     = FileChooser.updateItems
-
-    -- switchItemTable: process items BEFORE KOReader calculates itemmatch,
-    -- so the grouped list is the one that the page/focus logic sees.
-    FileChooser.switchItemTable = function(fc, new_title, new_item_table,
-                                           itemnumber, itemmatch, new_subtitle)
-        if new_item_table and not new_item_table._sg_is_series_view then
-            _sgProcessItemTable(new_item_table, fc)
-        end
-        return _sg_orig_switchItemTable(fc, new_title, new_item_table,
-                                        itemnumber, itemmatch, new_subtitle)
-    end
-
-    -- onMenuSelect: intercept taps on virtual folder items.
-    FileChooser.onMenuSelect = function(fc, item)
-        if item and item.is_series_group and M.getSeriesGrouping() then
-            _sgOpenGroup(fc, item)
-            return true
-        end
-        return _sg_orig_onMenuSelect(fc, item)
-    end
-
-    -- onMenuHold: intercept long-press on virtual series folder items.
-    -- Shows only the cover picker since rename/delete/move don't apply
-    -- to virtual paths that don't exist on disk.
-    FileChooser.onMenuHold = function(fc, item)
-        if item and item.is_series_group and M.getSeriesGrouping() then
-            if not M.isEnabled() then return true end
-            local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
-            if ok_bim and BookInfoManager then
-                _openSeriesGroupCoverPicker(item.path, fc, BookInfoManager)
-            end
-            return true
-        end
-        return _sg_orig_onMenuHold(fc, item)
-    end
-
-    -- onFolderUp: exit the virtual folder instead of going up the real FS.
-    FileChooser.onFolderUp = function(fc)
-        if fc.item_table and fc.item_table._sg_is_series_view then
-            local parent = fc.item_table._sg_parent_path
-            if _sg_current then
-                _sg_current.should_restore = true
-            end
-            -- NOTE: do NOT clear _sg_is_series_view here. The changeToPath hook
-            -- reads it to distinguish a series-exit from normal navigation.
-            -- changeToPath will clear it after preserving _sg_current.
-            if parent then
-                fc:changeToPath(parent)
-            end
-            return true
-        end
-        return _sg_orig_onFolderUp(fc)
-    end
-
-    -- changeToPath: clear virtual-folder state when navigating to real paths.
-    FileChooser.changeToPath = function(fc, path, ...)
-        if fc.item_table and fc.item_table._sg_is_series_view then
-            -- Leaving a virtual folder via changeToPath.
-            local parent = fc.item_table._sg_parent_path
-            if parent and path and (path:match("/%.%.") or path:match("^%.%.")) then
-                -- Redirect relative ".." paths to the real parent.
-                path = parent
-            end
-            fc.item_table._sg_is_series_view = false
-            if path == parent then
-                -- Navigating back to the real parent (back button / onFolderUp):
-                -- keep _sg_current so updateItems can restore focus on the group.
-                if _sg_current then
-                    _sg_current.should_restore = true
-                    -- Pre-seed path_items with the item index matching the series group,
-                    -- so KOReader's native changeToPath opens the right page directly.
-                    local saved_page = _sg_current.parent_page
-                    if saved_page and saved_page > 1 and fc.path_items and fc.perpage then
-                        -- Find the series item index to pass to KOReader as itemnumber.
-                        -- We do this after _sgProcessItemTable has already run so the
-                        -- grouped item_table is available via the switchItemTable hook.
-                        -- Instead, just seek via _sg_orig_changeToPath and let updateItems
-                        -- restore the focus; but ensure fc.page is pre-set so the render
-                        -- lands on the right page even if updateItems is called with 1.
-                        fc.page = saved_page
-                    end
-                end
-            else
-                -- Navigating somewhere else entirely (Library tab → home, goHome,
-                -- breadcrumb, etc.): discard series state completely so refreshPath
-                -- does not try to re-enter the virtual folder.
-                _sg_current = nil
-            end
-        else
-            -- Normal filesystem navigation: clear series state entirely.
-            _sg_current = nil
-        end
-        return _sg_orig_changeToPath(fc, path, ...)
-    end
-
-    -- refreshPath: re-enter the virtual folder after a reload (e.g. after
-    -- closing a book and returning to the library).
-    FileChooser.refreshPath = function(fc)
-        -- The getListItem cache key encodes path, filename, status filter and
-        -- collate, but NOT the per-book status/percent_finished value — those
-        -- live inside the item returned by _orig_getListItem. When the user
-        -- changes a book's status (e.g. reading→complete) the FM calls
-        -- refreshPath to re-sort the list. Flushing unconditionally is the safe
-        -- fix: the cache repopulates in a single updateItems pass.
-        _cache = {}
-        _cache_count = 0
-
-        -- The filesystem-level cover caches (_cover_file_cache, _lm_dir_cover_cache)
-        -- encode disk state: whether a .cover.* file exists and which book cover
-        -- to use for a given folder. This state does not change just because the
-        -- user was reading — it only changes when files are added/removed via the
-        -- FM. Guard with _library_was_visited (set by onPathChanged on every FM
-        -- directory change, cleared by the homescreen on close) so that on a plain
-        -- reader->HS transition these caches are preserved and the subsequent
-        -- updateItems call avoids the lfs.attributes×5 + lfs.dir scan per folder.
-        local HS = package.loaded["sui_homescreen"]
-        if HS and HS._library_was_visited then
-            for k in pairs(_cover_file_cache)   do _cover_file_cache[k]   = nil end
-            for k in pairs(_lm_dir_cover_cache) do _lm_dir_cover_cache[k] = nil end
-        end
-
-        _sg_orig_refreshPath(fc)
-        if not M.getSeriesGrouping() then return end
-        if not _sg_current then return end
-        -- The item_table was rebuilt by refreshPath; find the matching group.
-        local sname       = _sg_current.series_name
-        local saved_page  = _sg_current.parent_page  -- preserve across _sgOpenGroup
-        for _, item in ipairs(fc.item_table or {}) do
-            if item.is_series_group and item.text == sname then
-                _sgOpenGroup(fc, item)
-                -- Restore parent_page so back-button can return to the right page.
-                if _sg_current then
-                    _sg_current.parent_page = saved_page
-                end
-                return
-            end
-        end
-        -- Series group not found (e.g. the book was removed); clear state.
-        _sg_current = nil
-    end
-
-    -- updateItems: restore focus to the series group item when returning from
-    -- a virtual folder.
-    FileChooser.updateItems = function(fc, ...)
-        if not M.getSeriesGrouping() then
-            _sg_current = nil
-            return _sg_orig_updateItems(fc, ...)
-        end
-
-        -- Skip focus restoration while inside a virtual folder.
-        if fc.item_table and fc.item_table._sg_is_series_view then
-            return _sg_orig_updateItems(fc, ...)
-        end
-
-        if _sg_current and _sg_current.should_restore
-            and fc.item_table and #fc.item_table > 0
-        then
-            local sname = _sg_current.series_name
-            for idx, item in ipairs(fc.item_table) do
-                if item.is_series_group and item.text == sname then
-                    local page         = math.ceil(idx / fc.perpage)
-                    local select_num   = ((idx - 1) % fc.perpage) + 1
-                    fc.page            = page
-                    if fc.path_items and fc.path then
-                        fc.path_items[fc.path] = idx
-                    end
-                    _sg_current = nil
-                    -- Tell the SimpleUI titlebar we are back at a real folder.
-                    fc._simpleui_has_go_up = (fc.item_table[1] and
-                        (fc.item_table[1].is_go_up or false)) or false
-                    return _sg_orig_updateItems(fc, select_num)
-                end
-            end
-            -- Group disappeared; just render normally.
-            _sg_current = nil
-        end
-
-        return _sg_orig_updateItems(fc, ...)
-    end
-end
-
-local function _uninstallSeriesGrouping()
-    if not FileChooser._simpleui_sg_patched then return end
-    if _sg_orig_switchItemTable then
-        FileChooser.switchItemTable = _sg_orig_switchItemTable
-        _sg_orig_switchItemTable = nil
-    end
-    if _sg_orig_onMenuSelect then
-        FileChooser.onMenuSelect = _sg_orig_onMenuSelect
-        _sg_orig_onMenuSelect = nil
-    end
-    if _sg_orig_onMenuHold then
-        FileChooser.onMenuHold = _sg_orig_onMenuHold
-        _sg_orig_onMenuHold = nil
-    end
-    if _sg_orig_onFolderUp then
-        FileChooser.onFolderUp = _sg_orig_onFolderUp
-        _sg_orig_onFolderUp = nil
-    end
-    if _sg_orig_changeToPath then
-        FileChooser.changeToPath = _sg_orig_changeToPath
-        _sg_orig_changeToPath = nil
-    end
-    if _sg_orig_refreshPath then
-        FileChooser.refreshPath = _sg_orig_refreshPath
-        _sg_orig_refreshPath = nil
-    end
-    if _sg_orig_updateItems then
-        FileChooser.updateItems = _sg_orig_updateItems
-        _sg_orig_updateItems = nil
-    end
-    FileChooser._simpleui_sg_patched = nil
-    _sg_current           = nil
-    _sg_items_cache       = {}
-    _sg_last_evicted_path = nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -1354,9 +1255,8 @@ function M.install()
     local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
     if not ok_bim or not BookInfoManager then return end
 
-    -- max_img_w/max_img_h are captured in MosaicMenuItem.init before each
-    -- render and used by StretchingImageWidget to enforce the 2:3 ratio on
-    -- every book cover — exactly the same pattern as 2--visual-overhaul.lua.
+    -- Capture cell dimensions before each render so the 2:3 StretchingImageWidget
+    -- can enforce the correct aspect ratio.
     local max_img_w, max_img_h
 
     if not MosaicMenuItem._simpleui_fc_iw_n then
@@ -1365,10 +1265,7 @@ function M.install()
         while true do
             local name, value = debug.getupvalue(MosaicMenuItem.update, n)
             if not name then break end
-            if name == "ImageWidget" then
-                local_ImageWidget = value
-                break
-            end
+            if name == "ImageWidget" then local_ImageWidget = value; break end
             n = n + 1
         end
 
@@ -1376,7 +1273,7 @@ function M.install()
             local StretchingImageWidget = local_ImageWidget:extend({})
             StretchingImageWidget.init = function(self)
                 if local_ImageWidget.init then local_ImageWidget.init(self) end
-                if M.getCoverMode() ~= "2_3" then return end
+                if M.getCoverMode() ~= "2_3"   then return end
                 if not max_img_w or not max_img_h then return end
                 local ratio = 2 / 3
                 self.scale_factor = nil
@@ -1389,7 +1286,6 @@ function M.install()
                     self.height = math.floor(max_img_w / ratio)
                 end
             end
-
             debug.setupvalue(MosaicMenuItem.update, n, StretchingImageWidget)
             MosaicMenuItem._simpleui_fc_iw_n         = n
             MosaicMenuItem._simpleui_fc_orig_iw      = local_ImageWidget
@@ -1397,7 +1293,6 @@ function M.install()
         end
     end
 
-    -- Override init to capture cell dimensions before each render.
     local orig_init = MosaicMenuItem.init
     MosaicMenuItem._simpleui_fc_orig_init = orig_init
     function MosaicMenuItem:init()
@@ -1417,17 +1312,92 @@ function M.install()
     function MosaicMenuItem:update(...)
         original_update(self, ...)
 
-        -- Capture pages count and series index for badges (from BookList cache — no extra I/O).
+        -- Capture pages and series index from the BookList cache (no extra I/O).
+        -- Stored on self so paintTo() can use them without a redundant getBookInfo call.
         if not self.is_directory and not self.file_deleted and self.filepath then
-            self._fc_pages = nil
+            self._fc_pages        = nil
             self._fc_series_index = nil
-            local bi_pages = self.menu and self.menu.getBookInfo
-                             and self.menu.getBookInfo(self.filepath)
-            if bi_pages and bi_pages.pages then
-                self._fc_pages = bi_pages.pages
+            local bi = self.menu and self.menu.getBookInfo
+                       and self.menu.getBookInfo(self.filepath)
+            if bi then
+                if bi.pages then self._fc_pages = bi.pages end
+                if bi.series and bi.series_index then
+                    self._fc_series_index = bi.series_index
+                end
             end
-            if bi_pages and bi_pages.series and bi_pages.series_index then
-                self._fc_series_index = bi_pages.series_index
+            -- Pre-compute the underline color once per update so onFocus()
+            -- is a plain field assignment rather than a settings read.
+            self._fc_underline_color = M.getHideUnderline()
+                and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+            -- Pre-read badge visibility flags so paintTo() makes zero settings reads.
+            self._fc_overlay_pages  = M.getOverlayPages()
+            self._fc_overlay_series = M.getOverlaySeries()
+
+            -- Pre-render badge blitbuffers so paintTo() only calls bb:blitFrom,
+            -- never allocates widgets. Free previous bbs to avoid leaks.
+            if self._fc_pages_bb  then self._fc_pages_bb:free();  self._fc_pages_bb  = nil end
+            if self._fc_series_bb then self._fc_series_bb:free(); self._fc_series_bb = nil end
+
+            if self._fc_overlay_pages and self.status ~= "complete" and self._fc_pages then
+                local ptw = TextWidget:new{
+                    text    = self._fc_pages .. " p.",
+                    face    = Font:getFace("cfont", _BADGE_FONT_SZ),
+                    bold    = false,
+                    fgcolor = Blitbuffer.COLOR_BLACK,
+                }
+                local tsz    = ptw:getSize()
+                local rect_w = tsz.w + _BADGE_PAD_H * 2
+                local rect_h = tsz.h + _BADGE_PAD_V * 2
+                local bw = FrameContainer:new{
+                    dimen      = Geom:new{ w = rect_w, h = rect_h },
+                    bordersize = Size.border.thin,
+                    color      = Blitbuffer.COLOR_DARK_GRAY,
+                    background = Blitbuffer.COLOR_WHITE,
+                    radius     = _BADGE_CORNER,
+                    padding    = 0,
+                    CenterContainer:new{
+                        dimen = Geom:new{ w = rect_w, h = rect_h },
+                        ptw,
+                    },
+                }
+                local ok_buf, buf = pcall(Blitbuffer.new, rect_w, rect_h, Blitbuffer.TYPE_BB8A)
+                if ok_buf and buf then
+                    buf:fill(Blitbuffer.COLOR_WHITE)
+                    bw:paintTo(buf, 0, 0)
+                    self._fc_pages_bb = buf
+                end
+                bw:free()
+            end
+
+            if self._fc_overlay_series and self._fc_series_index then
+                local stw = TextWidget:new{
+                    text    = "#" .. self._fc_series_index,
+                    face    = Font:getFace("cfont", _BADGE_FONT_SZ),
+                    bold    = false,
+                    fgcolor = Blitbuffer.COLOR_BLACK,
+                }
+                local tsz    = stw:getSize()
+                local rect_w = tsz.w + _BADGE_PAD_H * 2
+                local rect_h = tsz.h + _BADGE_PAD_V * 2
+                local bw = FrameContainer:new{
+                    dimen      = Geom:new{ w = rect_w, h = rect_h },
+                    bordersize = Size.border.thin,
+                    color      = Blitbuffer.COLOR_DARK_GRAY,
+                    background = Blitbuffer.COLOR_WHITE,
+                    radius     = _BADGE_CORNER,
+                    padding    = 0,
+                    CenterContainer:new{
+                        dimen = Geom:new{ w = rect_w, h = rect_h },
+                        stw,
+                    },
+                }
+                local ok_buf, buf = pcall(Blitbuffer.new, rect_w, rect_h, Blitbuffer.TYPE_BB8A)
+                if ok_buf and buf then
+                    buf:fill(Blitbuffer.COLOR_WHITE)
+                    bw:paintTo(buf, 0, 0)
+                    self._fc_series_bb = buf
+                end
+                bw:free()
             end
         end
 
@@ -1437,28 +1407,18 @@ function M.install()
         if not M.isEnabled()              then return end
         if self.entry.is_file or self.entry.file or not self.mandatory then return end
 
-        -- Defer the first folder-cover render pass when the homescreen is
-        -- visible and the FM is in the background. The HS has no folder covers
-        -- of its own, so the user sees nothing during this tick. Rendering is
-        -- scheduled for the next tick so the HS paint completes first, making
-        -- the reader->HS transition feel instant. Subsequent updateItems calls
-        -- (with _fc_hs_deferred already consumed) run normally.
+        -- Defer the first folder-cover pass when the homescreen is visible.
+        -- The HS has no folder covers so the user sees nothing during this tick;
+        -- rendering is scheduled for the next tick so the HS paints first.
         local HS = package.loaded["sui_homescreen"]
         if HS and HS._instance and not self.menu._fc_hs_deferred then
             self.menu._fc_hs_deferred = true
             local menu_ref = self.menu
             local UIManager = require("ui/uimanager")
             UIManager:nextTick(function()
-                -- Always clear the flag first so the updateItems call below
-                -- does not re-enter the deferral path and schedule another tick.
                 menu_ref._fc_hs_deferred = false
-                -- If the HS is still visible the FM is still in the background;
-                -- covers will be built when the user navigates to the FM.
                 local HS2 = package.loaded["sui_homescreen"]
                 if HS2 and HS2._instance then return end
-                -- If the FM is already tearing down (e.g. user tapped a book on
-                -- the HS cover deck before this tick fired) there is nothing to
-                -- render — skip to avoid a stale updateItems on a dead menu.
                 local fm = package.loaded["apps/filemanager/filemanager"]
                 if not fm or not fm.instance or fm.instance.tearing_down then return end
                 menu_ref:updateItems()
@@ -1469,85 +1429,67 @@ function M.install()
         local dir_path = self.entry and self.entry.path
         if not dir_path then return end
 
-        -- ── Series group cover: use first available book cover from the group ──
+        -- Read all display settings once here so the build helpers make zero
+        -- individual settings reads per cell.
+        local label_mode  = M.getLabelMode()
+        local show_name   = M.getShowName()
+        local label_style = M.getLabelStyle()
+        local label_pos   = M.getLabelPosition()
+
+        -- ── Series group cover ────────────────────────────────────────────────
         if self.entry.is_series_group then
             if self._foldercover_processed then return end
 
-            -- Check for a user-chosen cover override first.
-            local sg_overrides = _getCoverOverrides()
-            local sg_override_fp = sg_overrides[dir_path]
+            local sg_override_fp = _getCoverOverrides()[dir_path]
             if sg_override_fp then
-                local bookinfo = BookInfoManager:getBookInfo(sg_override_fp, true)
-                if bookinfo
-                    and bookinfo.cover_bb
-                    and bookinfo.has_cover
-                    and bookinfo.cover_fetched
-                    and not bookinfo.ignore_cover
-                    and not BookInfoManager.isCachedCoverInvalid(bookinfo, self.menu.cover_specs)
+                local bi = BookInfoManager:getBookInfo(sg_override_fp, true)
+                if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                        and not bi.ignore_cover
+                        and not BookInfoManager.isCachedCoverInvalid(bi, self.menu.cover_specs)
                 then
-                    self:_setFolderCover{
-                        data = bookinfo.cover_bb,
-                        w    = bookinfo.cover_w,
-                        h    = bookinfo.cover_h,
-                    }
+                    self:_setFolderCover(
+                        { data = bi.cover_bb, w = bi.cover_w, h = bi.cover_h },
+                        label_mode, show_name, label_style, label_pos)
                     return
                 end
             end
 
-            -- No override: use first available book cover from the group.
-            local items = self.entry.series_items
-                or _sg_items_cache[dir_path]
+            local items = self.entry.series_items or _sg_items_cache[dir_path]
             if items then
                 for _, book_entry in ipairs(items) do
                     if book_entry.path then
-                        local bookinfo = BookInfoManager:getBookInfo(book_entry.path, true)
-                        if bookinfo
-                            and bookinfo.cover_bb
-                            and bookinfo.has_cover
-                            and bookinfo.cover_fetched
-                            and not bookinfo.ignore_cover
-                            and not BookInfoManager.isCachedCoverInvalid(
-                                    bookinfo, self.menu.cover_specs)
+                        local bi = BookInfoManager:getBookInfo(book_entry.path, true)
+                        if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                                and not bi.ignore_cover
+                                and not BookInfoManager.isCachedCoverInvalid(bi, self.menu.cover_specs)
                         then
-                            self:_setFolderCover{
-                                data = bookinfo.cover_bb,
-                                w    = bookinfo.cover_w,
-                                h    = bookinfo.cover_h,
-                            }
+                            self:_setFolderCover(
+                                { data = bi.cover_bb, w = bi.cover_w, h = bi.cover_h },
+                                label_mode, show_name, label_style, label_pos)
                             return
                         end
                     end
                 end
             end
-            -- No cover found yet; leave _foldercover_processed unset so
-            -- updateItems retries once BookInfoManager finishes fetching.
             return
         end
-        -- It is only set inside _setFolderCover, after a cover is successfully
-        -- applied. This allows BookInfoManager's async fetch to complete and
-        -- trigger updateItems again — at which point the cover will be available
-        -- and _setFolderCover will be called. If we set the flag here, the folder
-        -- would be permanently skipped on the first open before covers are cached.
 
-        -- Check for a user-chosen cover override.
-        local overrides = _getCoverOverrides()
-        local override_fp = overrides[dir_path]
+        -- ── User-chosen cover override ────────────────────────────────────────
+        local override_fp = _getCoverOverrides()[dir_path]
         if override_fp then
-            local bookinfo = BookInfoManager:getBookInfo(override_fp, true)
-            if bookinfo
-                and bookinfo.cover_bb
-                and bookinfo.has_cover
-                and bookinfo.cover_fetched
-                and not bookinfo.ignore_cover
-                and not BookInfoManager.isCachedCoverInvalid(bookinfo, self.menu.cover_specs)
+            local bi = BookInfoManager:getBookInfo(override_fp, true)
+            if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                    and not bi.ignore_cover
+                    and not BookInfoManager.isCachedCoverInvalid(bi, self.menu.cover_specs)
             then
-                self:_setFolderCover{ data = bookinfo.cover_bb, w = bookinfo.cover_w, h = bookinfo.cover_h }
+                self:_setFolderCover(
+                    { data = bi.cover_bb, w = bi.cover_w, h = bi.cover_h },
+                    label_mode, show_name, label_style, label_pos)
                 return
             end
         end
 
-        -- Check for a .cover.* image file placed manually in the folder.
-        -- Static files are always available — mark as processed immediately.
+        -- ── Static .cover.* image file ────────────────────────────────────────
         local cover_file = findCover(dir_path)
         if cover_file then
             local ok, w, h = pcall(function()
@@ -1559,75 +1501,77 @@ function M.install()
                 return ow, oh
             end)
             if ok and w and h then
-                self:_setFolderCover{ file = cover_file, w = w, h = h }
+                self:_setFolderCover(
+                    { file = cover_file, w = w, h = h },
+                    label_mode, show_name, label_style, label_pos)
                 return
             end
         end
 
-        -- Strip status filter so finished/on-hold books can still supply cover art
-        -- even when the browser is configured to show only new/reading books.
-        -- FileChooser is already required at module level — no per-item require().
-        local saved_filter_fc = FileChooser.show_filter
-        FileChooser.show_filter = {}
-        self.menu._dummy = true
-        local entries = self.menu:genItemTableFromPath(dir_path)
-        self.menu._dummy = false
-        FileChooser.show_filter = saved_filter_fc
-        if not entries then return end
-
-        -- Track whether this folder has direct ebooks or only subfolders,
-        -- so we can decide whether to show a placeholder cover.
+        -- ── First cached book cover inside the folder ─────────────────────────
         local has_files      = false
         local has_subfolders = false
 
-        for _, entry in ipairs(entries) do
-            if entry.is_file or entry.file then
-                has_files = true
-                local bookinfo = BookInfoManager:getBookInfo(entry.path, true)
-                if bookinfo
-                    and bookinfo.cover_bb
-                    and bookinfo.has_cover
-                    and bookinfo.cover_fetched
-                    and not bookinfo.ignore_cover
-                    and not BookInfoManager.isCachedCoverInvalid(bookinfo, self.menu.cover_specs)
-                then
-                    self:_setFolderCover{ data = bookinfo.cover_bb, w = bookinfo.cover_w, h = bookinfo.cover_h }
-                    return
+        local entries = _entriesWithNoFilter(self.menu, dir_path)
+        if entries then
+            for _, entry in ipairs(entries) do
+                if entry.is_file or entry.file then
+                    has_files = true
+                    local bi = BookInfoManager:getBookInfo(entry.path, true)
+                    if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                            and not bi.ignore_cover
+                            and not BookInfoManager.isCachedCoverInvalid(bi, self.menu.cover_specs)
+                    then
+                        self:_setFolderCover(
+                            { data = bi.cover_bb, w = bi.cover_w, h = bi.cover_h },
+                            label_mode, show_name, label_style, label_pos)
+                        return
+                    end
+                else
+                    has_subfolders = true
                 end
-            else
-                has_subfolders = true
             end
         end
 
-        -- No direct ebook cover found. For bookless folders (only subfolders or
-        -- completely empty) optionally search subfolders recursively, then fall
-        -- back to the generic placeholder cover.
+        -- ── Bookless folder: recursive scan or placeholder ────────────────────
         if not has_files then
             if has_subfolders and M.getSubfolderCover() and M.getRecursiveCover() then
                 local cover = _findCoverRecursive(self.menu, dir_path, 1, 3, BookInfoManager)
                 if cover then
-                    self:_setFolderCover(cover)
+                    self:_setFolderCover(cover, label_mode, show_name, label_style, label_pos)
                     return
                 end
             end
             if M.getSubfolderCover() then
-                self:_setEmptyFolderCover()
+                self:_setEmptyFolderCover(label_mode, show_name, label_style, label_pos)
+            end
+            return
+        end
+
+        -- No cover found yet — register for async retry once BookInfoManager
+        -- finishes extracting covers in the background.
+        if self.menu and self.menu.items_to_update then
+            if not self.menu._fc_pending_set then
+                self.menu._fc_pending_set = {}
+            end
+            if not self.menu._fc_pending_set[self] then
+                self.menu._fc_pending_set[self] = true
+                table.insert(self.menu.items_to_update, self)
             end
         end
     end
 
-    function MosaicMenuItem:_setFolderCover(img)
-        -- Mark as processed here — only reached when a cover is actually available.
-        -- This lets updateItems retry (after async BookInfoManager fetch) without
-        -- being blocked by an early flag set before the cover data was ready.
+    -- Builds and installs the cover widget into the cell.
+    -- Display settings are passed in to avoid per-call settings reads.
+    function MosaicMenuItem:_setFolderCover(img, label_mode, show_name, label_style, label_pos)
         self._foldercover_processed = true
         local border    = Size.border.thin
         local max_img_w = self.width  - _SPINE_W - border * 2
         local max_img_h = self.height - border * 2
 
         local img_options = {}
-        if img.file then img_options.file  = img.file  end
-        if img.data then img_options.image = img.data  end
+        if img.file then img_options.file  = img.file end
+        if img.data then img_options.image = img.data end
 
         if M.getCoverMode() == "2_3" then
             local ratio = 2 / 3
@@ -1646,80 +1590,62 @@ function M.install()
         local image        = ImageWidget:new(img_options)
         local size         = image:getSize()
         local image_widget = FrameContainer:new{ padding = 0, bordersize = border, image }
+        local spine        = _buildSpine(size.h)
+        local cover_group  = HorizontalGroup:new{ align = "center", spine, image_widget }
 
-        local spine       = _buildSpine(size.h)
-        local cover_group = HorizontalGroup:new{ align = "center", spine, image_widget }
-
-        local cover_w     = _SPINE_W + size.w + border * 2
-        local cover_h     = size.h + border * 2
+        local cover_w    = _SPINE_W + size.w + border * 2
+        local cover_h    = size.h  + border * 2
         local cover_dimen = Geom:new{ w = cover_w, h = cover_h }
         local cell_dimen  = Geom:new{ w = self.width, h = self.height }
-        local cv_scale    = math.max(0.1, (math.floor((cover_h / _BASE_COVER_H) * 10) / 10))
+        local cv_scale    = math.max(0.1, math.floor((cover_h / _BASE_COVER_H) * 10) / 10)
 
-        local label_w            = size.w - _LATERAL_PAD * 2
-        local folder_name_widget = _buildLabel(self, label_w, size, border, cv_scale)
-        local nbitems_widget     = _buildBadge(self.mandatory, cover_dimen, cv_scale)
+        local folder_name_widget = _buildLabel(self, size.w - _LATERAL_PAD * 2,
+            size, border, cv_scale, label_mode, show_name, label_style, label_pos)
+        local nbitems_widget = _buildBadge(self.mandatory, cover_dimen, cv_scale)
 
         local overlap = OverlapGroup:new{ dimen = cover_dimen, cover_group }
         if folder_name_widget then overlap[#overlap + 1] = folder_name_widget end
         if nbitems_widget     then overlap[#overlap + 1] = nbitems_widget     end
 
-        -- Centre the cover in the cell, then shift left by half the spine
-        -- width so the visible image edge aligns with regular book covers.
-        local x_center = math.floor((self.width  - cover_w) / 2)
-        local y_center = math.floor((self.height - cover_h) / 2)
-        local spine_offset = -math.floor(_SPINE_W / 2)
-        overlap.overlap_offset = { x_center + spine_offset, y_center }
+        local x_center    = math.floor((self.width  - cover_w) / 2)
+        local y_center    = math.floor((self.height - cover_h) / 2)
+        overlap.overlap_offset = { x_center - math.floor(_SPINE_W / 2), y_center }
+
         local widget = OverlapGroup:new{ dimen = cell_dimen, overlap }
 
-        if self._underline_container[1] then
-            self._underline_container[1]:free()
-        end
+        if self._underline_container[1] then self._underline_container[1]:free() end
         self._underline_container[1] = widget
     end
 
-    -- ---------------------------------------------------------------------------
-    -- Builds and displays a placeholder cover for bookless folders (no direct
-    -- ebooks — only subfolders, or completely empty). Creates a white blitbuffer,
-    -- draws a folder icon SVG in the centre, adds the spine, the folder-name
-    -- label, and the item-count badge, then positions the group in the cell.
-    -- The method mirrors _setFolderCover's layout so both paths are visually
-    -- consistent (spine + FrameContainer border + OverlapGroup centring).
-    -- ---------------------------------------------------------------------------
-    function MosaicMenuItem:_setEmptyFolderCover()
+    -- Placeholder cover for bookless folders (only subfolders or empty).
+    -- Layout mirrors _setFolderCover for visual consistency.
+    function MosaicMenuItem:_setEmptyFolderCover(label_mode, show_name, label_style, label_pos)
         self._foldercover_processed = true
         local border    = Size.border.thin
         local max_img_w = self.width  - _SPINE_W - border * 2
         local max_img_h = self.height - border * 2
 
-        -- Compute cover dimensions — honour the 2:3 mode if active.
         local img_w, img_h
         if M.getCoverMode() == "2_3" then
             local ratio = 2 / 3
             if max_img_w / max_img_h > ratio then
-                img_h = max_img_h
-                img_w = math.floor(max_img_h * ratio)
+                img_h = max_img_h; img_w = math.floor(max_img_h * ratio)
             else
-                img_w = max_img_w
-                img_h = math.floor(max_img_w / ratio)
+                img_w = max_img_w; img_h = math.floor(max_img_w / ratio)
             end
         else
-            img_w = max_img_w
-            img_h = max_img_h
+            img_w = max_img_w; img_h = max_img_h
         end
 
-        -- Try to load the plugin's custom SVG icon; fall back gracefully if absent.
-        local _plugin_dir = debug.getinfo(1, "S").source:match("^@(.+/)[^/]+$") or "./"
-        local icon_path   = _plugin_dir .. "icons/custom.svg"
+        -- _ICON_PATH and _ICON_EXISTS are module-level constants (computed once at load).
         local icon_size   = math.floor(math.min(img_w, img_h) * 0.5)
-
-        local icon_widget
-        if lfs.attributes(icon_path, "mode") == "file" then
+        local icon_widget = nil
+        if _ICON_EXISTS then
             local ok_iw, iw = pcall(function()
                 return CenterContainer:new{
                     dimen = Geom:new{ w = img_w, h = img_h },
                     ImageWidget:new{
-                        file    = icon_path,
+                        file    = _ICON_PATH,
                         width   = icon_size,
                         height  = icon_size,
                         alpha   = true,
@@ -1730,7 +1656,6 @@ function M.install()
             if ok_iw then icon_widget = iw end
         end
 
-        -- White background canvas for the cover image area.
         local bg_canvas = FrameContainer:new{
             padding    = 0,
             bordersize = 0,
@@ -1741,70 +1666,68 @@ function M.install()
 
         local size         = Geom:new{ w = img_w, h = img_h }
         local image_widget = FrameContainer:new{ padding = 0, bordersize = border, bg_canvas }
-
-        local spine       = _buildSpine(size.h)
-        local cover_group = HorizontalGroup:new{ align = "center", spine, image_widget }
+        local spine        = _buildSpine(size.h)
+        local cover_group  = HorizontalGroup:new{ align = "center", spine, image_widget }
 
         local cover_w     = _SPINE_W + size.w + border * 2
         local cover_h     = size.h  + border * 2
         local cover_dimen = Geom:new{ w = cover_w, h = cover_h }
         local cell_dimen  = Geom:new{ w = self.width, h = self.height }
-        local cv_scale    = math.max(0.1, (math.floor((cover_h / _BASE_COVER_H) * 10) / 10))
+        local cv_scale    = math.max(0.1, math.floor((cover_h / _BASE_COVER_H) * 10) / 10)
 
-        local label_w            = size.w - _LATERAL_PAD * 2
-        local folder_name_widget = _buildLabel(self, label_w, size, border, cv_scale)
-        local nbitems_widget     = _buildBadge(self.mandatory, cover_dimen, cv_scale)
+        local folder_name_widget = _buildLabel(self, size.w - _LATERAL_PAD * 2,
+            size, border, cv_scale, label_mode, show_name, label_style, label_pos)
+        local nbitems_widget = _buildBadge(self.mandatory, cover_dimen, cv_scale)
 
         local overlap = OverlapGroup:new{ dimen = cover_dimen, cover_group }
         if folder_name_widget then overlap[#overlap + 1] = folder_name_widget end
         if nbitems_widget     then overlap[#overlap + 1] = nbitems_widget     end
 
-        local x_center     = math.floor((self.width  - cover_w) / 2)
-        local y_center     = math.floor((self.height - cover_h) / 2)
-        local spine_offset = -math.floor(_SPINE_W / 2)
-        overlap.overlap_offset = { x_center + spine_offset, y_center }
-        local widget = OverlapGroup:new{ dimen = cell_dimen, overlap }
+        local x_center = math.floor((self.width  - cover_w) / 2)
+        local y_center = math.floor((self.height - cover_h) / 2)
+        overlap.overlap_offset = { x_center - math.floor(_SPINE_W / 2), y_center }
 
-        if self._underline_container[1] then
-            self._underline_container[1]:free()
-        end
+        local widget = OverlapGroup:new{ dimen = cell_dimen, overlap }
+        if self._underline_container[1] then self._underline_container[1]:free() end
         self._underline_container[1] = widget
     end
 
+    -- Binary-search the largest font size that fits the folder name in the
+    -- available width without overflowing two lines. Result is cached in the
+    -- module-level bounded two-generation cache (keyed by text+width+max_fs) so
+    -- repeated renders after scroll/recycle skip all widget allocations.
+    -- Capitalises the first letter of each word.
     function MosaicMenuItem:_getFolderNameWidget(available_w, dir_max_font_size)
         if not self._fc_display_text then
             local text = self.text
             if text:match("/$") then text = text:sub(1, -2) end
-            text = text:gsub("(%S+)", function(w)
-                return w:sub(1,1):upper() .. w:sub(2)
-            end)
+            text = text:gsub("(%S+)", function(w) return w:sub(1,1):upper() .. w:sub(2) end)
             self._fc_display_text = BD.directory(text)
         end
-        local text = self._fc_display_text
+        local text      = self._fc_display_text
+        local max_fs    = dir_max_font_size or _BASE_DIR_FS
+        local cache_key = text .. "\0" .. available_w .. "\0" .. max_fs
 
-        -- Cache key: the binary searches depend on available_w and the
-        -- effective max font size. Both are stable for a given cell size
-        -- and label scale, so the result is safe to reuse across renders
-        -- of the same item without re-running the widget allocations.
-        local cache_key = available_w .. "\0" .. (dir_max_font_size or _BASE_DIR_FS)
-        if self._fc_font_size_cache
-            and self._fc_font_size_cache[cache_key] then
-            local dir_font_size = self._fc_font_size_cache[cache_key]
+        local cached_fs = _fsCacheGet(cache_key)
+        if cached_fs then
             return TextBoxWidget:new{
                 text      = text,
-                face      = Font:getFace("cfont", dir_font_size),
+                face      = Font:getFace("cfont", cached_fs),
                 width     = available_w,
                 alignment = "center",
                 bold      = true,
             }
         end
 
+        -- Pass 1: find the largest font where the longest word still fits.
+        -- Use font metrics directly (no widget allocation) when available;
+        -- fall back to a single TextWidget measurement otherwise.
         local longest_word = ""
         for word in text:gmatch("%S+") do
             if #word > #longest_word then longest_word = word end
         end
 
-        local dir_font_size = dir_max_font_size or _BASE_DIR_FS
+        local dir_font_size = max_fs
 
         if longest_word ~= "" then
             local lo, hi = 8, dir_font_size
@@ -1822,28 +1745,32 @@ function M.install()
             dir_font_size = lo
         end
 
+        -- Pass 2: find the largest font where the full text fits in two lines.
+        -- A TextBoxWidget allocation here is unavoidable (we need line wrapping),
+        -- but we keep the range tight thanks to Pass 1, minimising iterations.
+        -- pcall guards against exotic text/font combinations that can raise in TextBoxWidget.
         local lo, hi = 8, dir_font_size
         while lo < hi do
-            local mid = math.floor((lo + hi + 1) / 2)
-            local tbw = TextBoxWidget:new{
-                text      = text,
-                face      = Font:getFace("cfont", mid),
-                width     = available_w,
-                alignment = "center",
-                bold      = true,
-            }
-            local fits = tbw:getSize().h <= tbw:getLineHeight() * 2.2
-            tbw:free(true)
+            local mid  = math.floor((lo + hi + 1) / 2)
+            local fits = false
+            local ok, tbw = pcall(function()
+                return TextBoxWidget:new{
+                    text      = text,
+                    face      = Font:getFace("cfont", mid),
+                    width     = available_w,
+                    alignment = "center",
+                    bold      = true,
+                }
+            end)
+            if ok and tbw then
+                fits = tbw:getSize().h <= tbw:getLineHeight() * 2.2
+                tbw:free(true)
+            end
             if fits then lo = mid else hi = mid - 1 end
         end
         dir_font_size = lo
 
-        -- Store the result so subsequent renders of the same item skip
-        -- the binary searches entirely (no widget allocations at all).
-        if not self._fc_font_size_cache then
-            self._fc_font_size_cache = {}
-        end
-        self._fc_font_size_cache[cache_key] = dir_font_size
+        _fsCacheSet(cache_key, dir_font_size)
 
         return TextBoxWidget:new{
             text      = text,
@@ -1854,36 +1781,31 @@ function M.install()
         }
     end
 
-    -- onFocus: hide the underline when the setting is on (default on).
+    -- onFocus: apply the pre-computed underline color (no settings read in the hot path).
     MosaicMenuItem._simpleui_fc_orig_onFocus = MosaicMenuItem.onFocus
     function MosaicMenuItem:onFocus()
-        self._underline_container.color = M.getHideUnderline()
-            and Blitbuffer.COLOR_WHITE
-            or  Blitbuffer.COLOR_BLACK
+        self._underline_container.color = self._fc_underline_color
+            or (M.getHideUnderline() and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK)
         return true
     end
 
-    -- paintTo: draw book cover overlays after the original painting.
-    -- Folder covers are handled entirely through widget replacement in update/
-    -- _setFolderCover, so paintTo only needs to act on book items.
+    -- paintTo: draw book-cover overlays (pages badge, series index badge).
+    -- Folder covers are handled via widget replacement in _setFolderCover;
+    -- this function only acts on regular book items.
+    -- All badge geometry constants are pre-computed at module level.
     local orig_paintTo = MosaicMenuItem.paintTo
     MosaicMenuItem._simpleui_fc_orig_paintTo = orig_paintTo
 
     local function _round(v) return math.floor(v + 0.5) end
 
     function MosaicMenuItem:paintTo(bb, x, y)
-        local x = math.floor(x)
-        local y = math.floor(y)
-        if self._simpleui_fc_orig_paintTo then
-            self._simpleui_fc_orig_paintTo(self, bb, x, y)
-        end
+        x = math.floor(x)
+        y = math.floor(y)
+        orig_paintTo(self, bb, x, y)
 
-        -- Only act on book items (not dirs, not deleted).
         if self.is_directory or self.file_deleted then return end
 
-        -- Locate the cover frame placed by the original paintTo.
-        -- MosaicMenuItem widget tree: self[1] = _underline_container,
-        -- [1][1] = CenterContainer, [1][1][1] = FrameContainer (the cover).
+        -- Locate the cover FrameContainer in the widget tree.
         local target = self._cover_frame
             or (self[1] and self[1][1] and self[1][1][1])
         if not target or not target.dimen then return end
@@ -1893,145 +1815,64 @@ function M.install()
         local fx = x + _round((self.width  - fw) / 2)
         local fy = y + _round((self.height - fh) / 2)
 
-        -- ── Pages badge (bottom-left, white rounded rect, frame border) ──
-        if M.getOverlayPages() and self.status ~= "complete" then
-            local page_count = self._fc_pages
-            if not page_count and self.filepath then
-                local bi = BookInfoManager:getBookInfo(self.filepath, false)
-                if bi and bi.pages then page_count = bi.pages end
-            end
-            if page_count then
-                local font_sz   = Screen:scaleBySize(5)
-                local pad_h     = Screen:scaleBySize(2)
-                local pad_v     = Screen:scaleBySize(1)
-                local inset     = Screen:scaleBySize(3)
-                local ptw = TextWidget:new{
-                    text    = page_count .. " p.",
-                    face    = Font:getFace("cfont", font_sz),
-                    bold    = false,
-                    fgcolor = Blitbuffer.COLOR_BLACK,
-                }
-                local tsz    = ptw:getSize()
-                local rect_w = tsz.w + pad_h * 2
-                local rect_h = tsz.h + pad_v * 2
-                local corner  = Screen:scaleBySize(2)
-                local badge_widget = FrameContainer:new{
-                    dimen      = Geom:new{ w = rect_w, h = rect_h },
-                    bordersize = Size.border.thin,
-                    color      = Blitbuffer.COLOR_DARK_GRAY,
-                    background = Blitbuffer.COLOR_WHITE,
-                    radius     = corner,
-                    padding    = 0,
-                    CenterContainer:new{
-                        dimen = Geom:new{ w = rect_w, h = rect_h },
-                        ptw,
-                    },
-                }
-                -- Replicate the native bar geometry to anchor badge position.
-                -- mosaicmenu bar pos_y = y + self.height - ceil((self.height-target.height)/2)
-                --                        - corner_sz + bar_margin
-                -- In paintTo context fy = y + ceil((self.height - fh)/2), so:
-                --   bar_top = fy + fh - corner_sz + bar_margin
-                local bar_height = Screen:scaleBySize(8)
-                local corner_sz  = math.floor(math.min(self.width, self.height) / 8)
-                local bar_margin = math.floor((corner_sz - bar_height) / 2)
+        -- Geometry shared by both badges.
+        local corner_sz  = math.floor(math.min(self.width, self.height) / 8)
+        local bar_margin = math.floor((corner_sz - _BADGE_BAR_H) / 2)
 
-                -- X: badge left edge matches bar left edge
-                local badge_x = fx + math.max(bar_margin, inset)
-
-                -- Y: when bar hidden, centre badge on bar's Y; when bar shown, place badge above it.
+        -- ── Pages badge (bottom-left) ─────────────────────────────────────────
+        if self._fc_overlay_pages and self.status ~= "complete" then
+            local page_bb = self._fc_pages_bb
+            if page_bb then
+                local rect_w = page_bb:getWidth()
+                local rect_h = page_bb:getHeight()
                 local bar_top    = fy + fh - corner_sz + bar_margin
-                local bar_centre = bar_top + math.floor(bar_height / 2)
+                local bar_centre = bar_top + math.floor(_BADGE_BAR_H / 2)
+                local badge_x    = fx + math.max(bar_margin, _BADGE_INSET)
                 local badge_y
                 if self.show_progress_bar then
-                    local bar_gap = Screen:scaleBySize(4)
-                    badge_y = bar_top - bar_gap - rect_h
+                    badge_y = bar_top - _BADGE_BAR_GAP - rect_h
                 else
-                    -- shift badge up by the same amount used as left padding
-                    local bottom_pad = math.max(bar_margin, inset)
-                    badge_y = bar_centre - math.floor(rect_h / 2) - bottom_pad
+                    badge_y = bar_centre - math.floor(rect_h / 2)
+                            - math.max(bar_margin, _BADGE_INSET)
                 end
-                badge_widget:paintTo(bb, badge_x, badge_y)
-                badge_widget:free()
+                bb:blitFrom(page_bb, badge_x, badge_y, 0, 0, rect_w, rect_h)
             end
         end
 
-        -- ── Series index badge (top-left, same style as pages badge) ──
-        if M.getOverlaySeries() then
-            local series_index = self._fc_series_index
-            if not series_index and self.filepath then
-                local bi = BookInfoManager:getBookInfo(self.filepath, false)
-                if bi and bi.series and bi.series_index then
-                    series_index = bi.series_index
-                end
-            end
-            if series_index then
-                local font_sz  = Screen:scaleBySize(5)
-                local pad_h    = Screen:scaleBySize(2)
-                local pad_v    = Screen:scaleBySize(1)
-                local inset    = Screen:scaleBySize(3)
-                local stw = TextWidget:new{
-                    text    = "#" .. series_index,
-                    face    = Font:getFace("cfont", font_sz),
-                    bold    = false,
-                    fgcolor = Blitbuffer.COLOR_BLACK,
-                }
-                local tsz    = stw:getSize()
-                local rect_w = tsz.w + pad_h * 2
-                local rect_h = tsz.h + pad_v * 2
-                local corner = Screen:scaleBySize(2)
-                local corner_sz  = math.floor(math.min(self.width, self.height) / 8)
-                local bar_margin = math.floor(
-                    (corner_sz - Screen:scaleBySize(8)) / 2)
-                local sbadge = FrameContainer:new{
-                    dimen      = Geom:new{ w = rect_w, h = rect_h },
-                    bordersize = Size.border.thin,
-                    color      = Blitbuffer.COLOR_DARK_GRAY,
-                    background = Blitbuffer.COLOR_WHITE,
-                    radius     = corner,
-                    padding    = 0,
-                    CenterContainer:new{
-                        dimen = Geom:new{ w = rect_w, h = rect_h },
-                        stw,
-                    },
-                }
+        -- ── Series index badge (top-left) ─────────────────────────────────────
+        if self._fc_overlay_series then
+            local series_bb = self._fc_series_bb
+            if series_bb then
+                local rect_w = series_bb:getWidth()
+                local rect_h = series_bb:getHeight()
                 local badge_x
                 if BD.mirroredUILayout() then
-                    badge_x = fx + fw - math.max(bar_margin, inset) - rect_w
+                    badge_x = fx + fw - math.max(bar_margin, _BADGE_INSET) - rect_w
                 else
-                    badge_x = fx + math.max(bar_margin, inset)
+                    badge_x = fx + math.max(bar_margin, _BADGE_INSET)
                 end
-                local badge_y = fy + math.max(bar_margin, inset)
-                sbadge:paintTo(bb, badge_x, badge_y)
-                sbadge:free()
+                local badge_y = fy + math.max(bar_margin, _BADGE_INSET)
+                bb:blitFrom(series_bb, badge_x, badge_y, 0, 0, rect_w, rect_h)
             end
         end
     end
 
-    -- free: nothing extra to release (pages TextWidget freed inline in paintTo).
     local orig_free = MosaicMenuItem.free
     MosaicMenuItem._simpleui_fc_orig_free = orig_free
     function MosaicMenuItem:free()
+        if self._fc_pages_bb  then self._fc_pages_bb:free();  self._fc_pages_bb  = nil end
+        if self._fc_series_bb then self._fc_series_bb:free(); self._fc_series_bb = nil end
         if orig_free then orig_free(self) end
     end
 
-    -- Install the item cache (always active when FC is on).
     _installItemCache()
-
-    -- Install the series grouping hooks.
     _installSeriesGrouping()
-
     _installFileDialogButton(BookInfoManager)
 
     -- -----------------------------------------------------------------------
-    -- ListMenuItem patch — cover images for virtual folders in list_image_meta
+    -- ListMenuItem patch — cover images for virtual folders in list_image_meta.
     -- -----------------------------------------------------------------------
-    -- KOReader's ListMenuItem:update() treats any entry without is_file/file
-    -- as a plain directory (text + count only, no image).  Virtual folders
-    -- from the metabrowser (is_virtual_meta_leaf) and series-group folders
-    -- (is_series_group) carry a representative_filepath that we can use to
-    -- fetch a cover from BookInfoManager and render it exactly like a regular
-    -- file cover, but positioned as a squared thumbnail on the left.
+
     local ListMenuItem = _getListMenuItem()
     if ListMenuItem and not ListMenuItem._simpleui_lm_patched then
         ListMenuItem._simpleui_lm_patched     = true
@@ -2041,46 +1882,42 @@ function M.install()
         function ListMenuItem:update(...)
             orig_lm_update(self, ...)
 
-            -- Only act in cover-image mode and when the feature is enabled.
-            if not self.do_cover_image                      then return end
-            if not M.isEnabled()                            then return end
-            if self.menu and self.menu.no_refresh_covers    then return end
-            if self._foldercover_processed                  then return end
+            if not self.do_cover_image                   then return end
+            if not M.isEnabled()                         then return end
+            if self.menu and self.menu.no_refresh_covers then return end
+            if self._foldercover_processed               then return end
 
             local entry = self.entry
-            if not entry then return end
-            -- Only directories (not real book files).
-            if entry.is_file or entry.file then return end
+            if not entry or entry.is_file or entry.file then return end
 
             local cover_specs = self.menu and self.menu.cover_specs
             local dir_path    = entry.path
             if not dir_path then return end
 
-            -- ── Virtual meta-leaf (browsemeta) ──────────────────────────────
+            -- ── Virtual meta-leaf (browsemeta) ────────────────────────────────
             if entry.is_virtual_meta_leaf then
-                local repr_fp = entry.representative_filepath
-                local overrides   = _getCoverOverrides()
-                local override_fp = overrides[dir_path]
+                local repr_fp     = entry.representative_filepath
+                local override_fp = _getCoverOverrides()[dir_path]
                 if override_fp then repr_fp = override_fp end
                 if not repr_fp then return end
-                local bookinfo = BookInfoManager:getBookInfo(repr_fp, true)
-                if not bookinfo then return end
-                if not (bookinfo.has_cover and bookinfo.cover_fetched
-                        and not bookinfo.ignore_cover and bookinfo.cover_bb) then return end
-                if cover_specs and BookInfoManager.isCachedCoverInvalid(bookinfo, cover_specs) then return end
-                self:_setListFolderCover(bookinfo)
+                local bi = BookInfoManager:getBookInfo(repr_fp, true)
+                if not bi then return end
+                if not (bi.has_cover and bi.cover_fetched
+                        and not bi.ignore_cover and bi.cover_bb) then return end
+                if cover_specs and BookInfoManager.isCachedCoverInvalid(bi, cover_specs) then return end
+                self:_setListFolderCover(bi)
                 return
             end
 
-            -- ── Series group ────────────────────────────────────────────────
+            -- ── Series group ──────────────────────────────────────────────────
             if entry.is_series_group then
-                local sg_overrides   = _getCoverOverrides()
-                local sg_override_fp = sg_overrides[dir_path]
+                local sg_override_fp = _getCoverOverrides()[dir_path]
                 if sg_override_fp then
                     local bi = BookInfoManager:getBookInfo(sg_override_fp, true)
                     if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
                             and not bi.ignore_cover
-                            and not (cover_specs and BookInfoManager.isCachedCoverInvalid(bi, cover_specs))
+                            and not (cover_specs and
+                                BookInfoManager.isCachedCoverInvalid(bi, cover_specs))
                     then
                         self:_setListFolderCover(bi)
                         return
@@ -2102,13 +1939,13 @@ function M.install()
                         end
                     end
                 end
-                return  -- not processed yet; updateItems will retry
+                return
             end
 
-            -- ── Real folder ─────────────────────────────────────────────────
+            -- ── Real folder ───────────────────────────────────────────────────
+
             -- 1. User-chosen cover override.
-            local overrides   = _getCoverOverrides()
-            local override_fp = overrides[dir_path]
+            local override_fp = _getCoverOverrides()[dir_path]
             if override_fp then
                 local bi = BookInfoManager:getBookInfo(override_fp, true)
                 if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
@@ -2120,7 +1957,7 @@ function M.install()
                 end
             end
 
-            -- 2. Static .cover.* image file inside the folder.
+            -- 2. Static .cover.* image file.
             local cover_file = findCover(dir_path)
             if cover_file then
                 local ok, img = pcall(function()
@@ -2139,33 +1976,26 @@ function M.install()
                 end
             end
 
-            -- 3. First cached book cover inside the folder (synchronous check
-            --    against what BookInfoManager already has in its db — no I/O).
-            --    Result is cached per directory so that repeated updateItems
-            --    calls (e.g. every reader->HS cycle) skip the lfs.dir + per-file
-            --    lfs.attributes scan entirely after the first pass.
-            --    _lm_dir_cover_cache lives at module level and is invalidated
-            --    in the refreshPath patch together with _cover_file_cache.
-            local cached_lm = _lm_dir_cover_cache[dir_path]
+            -- 3. First cached book cover — result cached per directory to avoid
+            --    repeating the lfs.dir + per-file lfs.attributes walk on every
+            --    reader→HS cycle.
+            local cached_lm = _lmcGet(dir_path)
             if cached_lm == false then
-                -- Previously scanned, no cover found — skip to async retry.
+                -- confirmed miss — fall through to async retry
             elseif cached_lm ~= nil then
-                -- Hit: reuse cached bookinfo-like table.
                 self:_setListFolderCover(cached_lm)
                 return
             else
-                -- Miss: scan the directory now.
-                -- FileChooser is already required at module level.
                 local saved_filter = FileChooser.show_filter
                 FileChooser.show_filter = {}
                 local ok_dir, iter, dir_obj = pcall(lfs.dir, dir_path)
                 if ok_dir and iter then
                     for f in iter, dir_obj do
                         if f ~= "." and f ~= ".." then
-                            local fp = dir_path .. "/" .. f
+                            local fp   = dir_path .. "/" .. f
                             local attr = lfs.attributes(fp) or {}
                             if attr.mode == "file"
-                                    and not f:match("^%._")  -- skip macOS forks
+                                    and not f:match("^%._")
                                     and FileChooser:show_file(f, fp)
                             then
                                 local bi = BookInfoManager:getBookInfo(fp, true)
@@ -2175,17 +2005,15 @@ function M.install()
                                             BookInfoManager.isCachedCoverInvalid(bi, cover_specs))
                                 then
                                     FileChooser.show_filter = saved_filter
-                                    -- Cache a lightweight snapshot (only the fields
-                                    -- _setListFolderCover actually reads) to avoid
-                                    -- holding the full BookInfoManager entry alive.
-                                    _lm_dir_cover_cache[dir_path] = {
+                                    local entry = {
                                         cover_bb      = bi.cover_bb,
                                         cover_w       = bi.cover_w,
                                         cover_h       = bi.cover_h,
                                         has_cover     = true,
                                         cover_fetched = true,
                                     }
-                                    self:_setListFolderCover(_lm_dir_cover_cache[dir_path])
+                                    _lmcSet(dir_path, entry)
+                                    self:_setListFolderCover(entry)
                                     return
                                 end
                             end
@@ -2193,28 +2021,23 @@ function M.install()
                     end
                 end
                 FileChooser.show_filter = saved_filter
-                -- No cover found in this directory — record negative result.
-                _lm_dir_cover_cache[dir_path] = false
+                _lmcSet(dir_path, false)
             end
 
-            -- 4. Nothing cached yet — register for async retry so that when
-            --    BookInfoManager finishes extracting book covers in the background
-            --    this item gets another chance via items_update_action.
+            -- 4. Nothing yet — register for async retry when BookInfoManager
+            --    finishes extracting covers in the background.
             if self.menu and self.menu.items_to_update then
-                -- Avoid duplicate registrations.
-                local already = false
-                for _, it in ipairs(self.menu.items_to_update) do
-                    if it == self then already = true; break end
+                if not self.menu._fc_pending_set then
+                    self.menu._fc_pending_set = {}
                 end
-                if not already then
+                if not self.menu._fc_pending_set[self] then
+                    self.menu._fc_pending_set[self] = true
                     table.insert(self.menu.items_to_update, self)
                 end
             end
         end
 
-        -- Renders a cover thumbnail on the left, folder name + count on the right.
-        -- Mirrors the layout that ListMenuItem uses for known files with covers,
-        -- but substitutes the file metadata widgets with the directory text/count.
+        -- Renders a cover thumbnail on the left, folder name + item count on the right.
         function ListMenuItem:_setListFolderCover(bookinfo)
             self._foldercover_processed = true
 
@@ -2225,13 +2048,11 @@ function M.install()
             }
 
             local border_size = Size.border.thin
-            local img_size    = dimen.h  -- square thumbnail = item height
+            local img_size    = dimen.h
             local max_img_w   = img_size - 2 * border_size
-            local max_img_h   = max_img_w
 
-            -- Scale the blitbuffer to fit the square thumbnail area.
             local _, _, scale_factor = BookInfoManager.getCachedCoverSize(
-                bookinfo.cover_w, bookinfo.cover_h, max_img_w, max_img_h)
+                bookinfo.cover_w, bookinfo.cover_h, max_img_w, max_img_w)
             local wimage = ImageWidget:new{
                 image        = bookinfo.cover_bb,
                 scale_factor = scale_factor,
@@ -2242,33 +2063,28 @@ function M.install()
             local wleft = CenterContainer:new{
                 dimen = Geom:new{ w = img_size, h = dimen.h },
                 FrameContainer:new{
-                    width     = image_size.w + 2 * border_size,
-                    height    = image_size.h + 2 * border_size,
-                    margin    = 0,
-                    padding   = 0,
+                    width      = image_size.w + 2 * border_size,
+                    height     = image_size.h + 2 * border_size,
+                    margin     = 0,
+                    padding    = 0,
                     bordersize = border_size,
                     wimage,
                 },
             }
 
-            -- Right side: folder name (bold) + item count.
-            -- Use the menu's own font_size so the virtual-folder title renders
-            -- at the same size as normal directory names in the same list view.
-            -- The previous hardcoded formula produced ~24px which was visibly
-            -- larger than the standard directory font (~20px).
-            local pad       = Screen:scaleBySize(10)
+            local pad       = _LATERAL_PAD  -- already Screen:scaleBySize(10) at module level
             local main_w    = dimen.w - img_size - pad * 2
             local font_size = (self.menu and self.menu.font_size) or 20
             local info_size = math.max(10, font_size - 4)
 
             local wname = TextBoxWidget:new{
-                text                         = BD.directory(self.text),
-                face                         = Font:getFace("cfont", font_size),
-                width                        = main_w,
-                alignment                    = "left",
-                bold                         = true,
-                height                       = dimen.h,
-                height_adjust                = true,
+                text                          = BD.directory(self.text),
+                face                          = Font:getFace("cfont", font_size),
+                width                         = main_w,
+                alignment                     = "left",
+                bold                          = true,
+                height                        = dimen.h,
+                height_adjust                 = true,
                 height_overflow_show_ellipsis = true,
             }
             local wcount = TextWidget:new{
@@ -2280,16 +2096,14 @@ function M.install()
                 dimen = Geom:new{ w = main_w, h = dimen.h },
                 VerticalGroup:new{
                     wname,
-                    VerticalSpan:new{ width = Screen:scaleBySize(2) },
+                    VerticalSpan:new{ width = _EDGE_MARGIN * 2 },  -- ~scaleBySize(2)
                     wcount,
                 },
             }
 
             local widget = OverlapGroup:new{
                 dimen = dimen:copy(),
-                -- Cover thumbnail flush-left
                 wleft,
-                -- Name + count, padded from the thumbnail
                 LeftContainer:new{
                     dimen = dimen:copy(),
                     HorizontalGroup:new{
@@ -2299,10 +2113,7 @@ function M.install()
                 },
             }
 
-            -- Replace the underline-container contents.
-            if self._underline_container[1] then
-                self._underline_container[1]:free()
-            end
+            if self._underline_container[1] then self._underline_container[1]:free() end
             self._underline_container[1] = VerticalGroup:new{
                 VerticalSpan:new{ width = underline_h },
                 widget,
@@ -2311,10 +2122,15 @@ function M.install()
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- Uninstall — restores all patched methods and releases module-level caches.
+-- ---------------------------------------------------------------------------
+
 function M.uninstall()
-    local MosaicMenuItem, _ = _getMosaicMenuItemAndPatch()
+    local MosaicMenuItem = _getMosaicMenuItemAndPatch()
     if not MosaicMenuItem then return end
     if not MosaicMenuItem._simpleui_fc_patched then return end
+
     if MosaicMenuItem._simpleui_fc_orig_update then
         MosaicMenuItem.update = MosaicMenuItem._simpleui_fc_orig_update
         MosaicMenuItem._simpleui_fc_orig_update = nil
@@ -2345,23 +2161,30 @@ function M.uninstall()
     MosaicMenuItem._setFolderCover      = nil
     MosaicMenuItem._getFolderNameWidget = nil
     MosaicMenuItem._simpleui_fc_patched = nil
+
     _uninstallItemCache()
     _uninstallSeriesGrouping()
     _uninstallFileDialogButton()
-    -- Release module-level caches so GC can reclaim memory after uninstall.
-    for k in pairs(_cover_file_cache)   do _cover_file_cache[k]   = nil end
-    for k in pairs(_lm_dir_cover_cache) do _lm_dir_cover_cache[k] = nil end
+
+    for k in pairs(_cover_file_cache)        do _cover_file_cache[k]        = nil end
+    for k in pairs(_cfc_b)                  do _cfc_b[k]                   = nil end
+    _cfc_cnt = 0
+    for k in pairs(_lm_dir_cover_cache)     do _lm_dir_cover_cache[k]     = nil end
+    for k in pairs(_lmc_b)                  do _lmc_b[k]                   = nil end
+    _lmc_cnt = 0
+    for k in pairs(_fs_cache_a)             do _fs_cache_a[k]              = nil end
+    for k in pairs(_fs_cache_b)             do _fs_cache_b[k]              = nil end
+    _fs_cache_a_cnt = 0
     _overrides_cache = nil
 
-    -- Uninstall ListMenuItem patch.
     local ListMenuItem = _getListMenuItem()
     if ListMenuItem and ListMenuItem._simpleui_lm_patched then
         if ListMenuItem._simpleui_lm_orig_update then
             ListMenuItem.update = ListMenuItem._simpleui_lm_orig_update
             ListMenuItem._simpleui_lm_orig_update = nil
         end
-        ListMenuItem._setListFolderCover    = nil
-        ListMenuItem._simpleui_lm_patched   = nil
+        ListMenuItem._setListFolderCover  = nil
+        ListMenuItem._simpleui_lm_patched = nil
     end
 end
 
