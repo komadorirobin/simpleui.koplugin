@@ -2466,9 +2466,19 @@ function HomescreenWidget:onShow()
             overlap.overlap_offset = old.overlap_offset
         end
         self._navbar_container[1] = overlap
-        -- Populate the first page.
-        self:_updatePage(true)
+        -- Paint the skeleton (navbar + empty white body) immediately so the
+        -- user sees the homescreen frame without waiting for the slow IO below.
+        -- On cold-cache startups, prefetchBooks() (DocSettings.open per book)
+        -- and SP.get() (SQLite queries) block the event loop for hundreds of
+        -- milliseconds each, causing a frozen white screen.  Deferring
+        -- _updatePage() to the next tick lets the OS flush this frame first.
         UIManager:setDirty(self, "ui")
+        local self_ref = self
+        UIManager:scheduleIn(0, function()
+            if not self_ref._navbar_container then return end
+            self_ref:_updatePage(true)
+            UIManager:setDirty(self_ref, "ui")
+        end)
         -- Start the clock timer only once the layout exists — firing against a nil
         -- _navbar_container would be a no-op at best, a crash at worst.
         -- Only module_clock's chain is started here; _scheduleClockRefresh ran a
