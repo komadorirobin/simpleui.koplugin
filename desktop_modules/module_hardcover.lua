@@ -139,91 +139,6 @@ local function _isCacheStale()
 end
 
 -- ---------------------------------------------------------------------------
--- HTTP fetch  (ssl.https → socket.https → curl fallback)
--- ---------------------------------------------------------------------------
-
-local function _doPost(api_key, payload_str)
-    local headers = {
-        ["Content-Type"]   = "application/json",
-        ["Authorization"]  = "Bearer " .. api_key,
-        ["Content-Length"] = tostring(#payload_str),
-    }
-
-    -- ── Try ssl.https (luasec) ──────────────────────────────────────────────
-    local ok_https, https = pcall(require, "ssl.https")
-    local ok_ltn,   ltn12 = pcall(require, "ltn12")
-    if ok_https and ok_ltn and https and ltn12 then
-        local resp = {}
-        local ok2, b, code = pcall(function()
-            return https.request({
-                url     = API_URL,
-                method  = "POST",
-                headers = headers,
-                source  = ltn12.source.string(payload_str),
-                sink    = ltn12.sink.table(resp),
-            })
-        end)
-        local body = table.concat(resp)
-        if ok2 and body ~= "" then
-            return body
-        end
-        logger.warn("simpleui hardcover: ssl.https failed (code=" .. tostring(code) .. ")")
-    end
-
-    -- ── Try http (plain) as last Lua resort (uncommon but some builds) ───────
-    local ok_http, http = pcall(require, "socket.http")
-    if ok_http and ok_ltn and http and ltn12 then
-        -- Hardcover forces HTTPS, skip plain HTTP attempt silently.
-    end
-
-    -- ── Fallback: curl ──────────────────────────────────────────────────────
-    -- Sanitize key to safe subset (API tokens are hex/base64url).
-    local safe_key = api_key:gsub("[^%w%-%_%.~%+%/=]", "")
-    if safe_key == "" then return nil end
-
-    local dir      = "/tmp/simpleui_hc"
-    local p_file   = dir .. "/query.json"
-    local out_file = dir .. "/resp.json"
-    local err_file = dir .. "/err.txt"
-
-    os.execute("mkdir -p '" .. dir .. "'")
-    local fp = io.open(p_file, "w")
-    if not fp then return nil end
-    fp:write(payload_str)
-    fp:close()
-
-    -- Use inline -H with sanitized key; -H @file requires curl ≥ 7.55.
-    local cmd = "curl -s -m 20 -X POST"
-        .. " -H 'Content-Type: application/json'"
-        .. " -H 'Authorization: Bearer " .. safe_key .. "'"
-        .. " --data-binary @'" .. p_file .. "'"
-        .. " -o '" .. out_file .. "'"
-        .. " 2>'" .. err_file .. "'"
-        .. " '" .. API_URL .. "'"
-
-    local ret = os.execute(cmd)
-    -- In LuaJIT/5.1 os.execute returns exit code (0 = success).
-    -- In Lua 5.2+ it returns true/nil.  Accept both.
-    local ok_curl = (ret == 0 or ret == true)
-    if not ok_curl then
-        local ef = io.open(err_file, "r")
-        if ef then
-            logger.warn("simpleui hardcover: curl failed: " .. ef:read("*a"):sub(1, 120))
-            ef:close()
-        else
-            logger.warn("simpleui hardcover: curl failed with code " .. tostring(ret))
-        end
-        return nil
-    end
-
-    local g = io.open(out_file, "r")
-    if not g then return nil end
-    local body = g:read("*a")
-    g:close()
-    return body ~= "" and body or nil
-end
-
--- ---------------------------------------------------------------------------
 -- Goal parsing and selection
 -- ---------------------------------------------------------------------------
 
@@ -280,19 +195,13 @@ local function _selectGoal(goals)
     return rest[1]
 end
 
--- Fetch from API, parse, select best goal, save to cache.
-local function _fetchAndCache(api_key)
-    local j = _getJson()
-    if not j then
-        logger.warn("simpleui hardcover: no JSON library available")
-        return nil
-    end
-    local payload = '{"query":"{ me { goals { id goal metric start_date end_date progress description archived } } }"}'
-    local body = _doPost(api_key, payload)
-    if not body then
-        logger.warn("simpleui hardcover: HTTP fetch failed")
-        return nil
-    end
+-- ---------------------------------------------------------------------------
+-- HTTP fetch  (ssl.https → curl async fallback)
+-- ---------------------------------------------------------------------------
+
+-- Internal: parse + cache a raw JSON body string.
+-- Returns the selected goal on success, nil on failure.
+local function _processBody(j, body)
     local ok, resp = pcall(j.decode, body)
     if not ok or type(resp) ~= "table" then
         logger.warn("simpleui hardcover: JSON parse failed: " .. tostring(body):sub(1, 120))
@@ -300,14 +209,117 @@ local function _fetchAndCache(api_key)
     end
     local goals = _parseGoals(resp)
     if not goals then
-        -- Log for debugging; first 200 chars of response
         logger.info("simpleui hardcover: no goals in response: " .. tostring(body):sub(1, 200))
         return nil
     end
     local goal = _selectGoal(goals)
-    if not goal then return nil end
-    _saveCache(goal)
+    if goal then _saveCache(goal) end
     return goal
+end
+
+-- Async fetch: tries ssl.https first (sync with timeout, fast on good
+-- connections), then falls back to a background curl process that never
+-- blocks the UI thread.
+-- on_done(goal_or_nil) is called exactly once when the result is ready.
+local function _fetchAsync(api_key, on_done)
+    local j = _getJson()
+    if not j then on_done(nil); return end
+
+    local payload = '{"query":"{ me { goals { id goal metric start_date end_date progress description archived } } }"}'
+    local headers = {
+        ["Content-Type"]   = "application/json",
+        ["Authorization"]  = "Bearer " .. api_key,
+        ["Content-Length"] = tostring(#payload),
+    }
+
+    -- ── Try ssl.https (luasec) — blocks ≤ 8 s then returns ─────────────────
+    local ok_https, https = pcall(require, "ssl.https")
+    local ok_ltn,   ltn12 = pcall(require, "ltn12")
+    if ok_https and ok_ltn and https and ltn12 then
+        local resp = {}
+        local ok2, b, code = pcall(function()
+            -- socket.tcp() with settimeout caps both connect and read time.
+            local ok_sock, socket = pcall(require, "socket")
+            local create_fn
+            if ok_sock and socket then
+                create_fn = function()
+                    local sock = socket.tcp()
+                    sock:settimeout(8)
+                    return sock
+                end
+            end
+            return https.request({
+                url     = API_URL,
+                method  = "POST",
+                headers = headers,
+                source  = ltn12.source.string(payload),
+                sink    = ltn12.sink.table(resp),
+                create  = create_fn,
+            })
+        end)
+        local body = table.concat(resp)
+        if ok2 and body ~= "" then
+            on_done(_processBody(j, body))
+            return
+        end
+        logger.warn("simpleui hardcover: ssl.https failed (code=" .. tostring(code) .. ")")
+    end
+
+    -- ── Async curl fallback — never blocks the UI thread ────────────────────
+    -- Sanitize key to safe subset (API tokens are hex/base64url).
+    local safe_key = api_key:gsub("[^%w%-%_%.~%+%/=]", "")
+    if safe_key == "" then on_done(nil); return end
+
+    local dir       = "/tmp/simpleui_hc"
+    local p_file    = dir .. "/query.json"
+    local out_file  = dir .. "/resp.json"
+    local done_file = dir .. "/resp.done"
+
+    os.execute("mkdir -p '" .. dir .. "'")
+    -- Remove stale files so we can detect completion reliably.
+    os.remove(out_file)
+    os.remove(done_file)
+
+    local fp = io.open(p_file, "w")
+    if not fp then on_done(nil); return end
+    fp:write(payload)
+    fp:close()
+
+    -- Spawn curl in the background; touch done_file on success so the
+    -- poll loop knows the output file is complete.
+    local cmd = "curl -s --connect-timeout 5 -m 10 -X POST"
+        .. " -H 'Content-Type: application/json'"
+        .. " -H 'Authorization: Bearer " .. safe_key .. "'"
+        .. " --data-binary @'" .. p_file .. "'"
+        .. " -o '" .. out_file .. "'"
+        .. " 2>/dev/null"
+        .. " && touch '" .. done_file .. "'"
+        .. " &"  -- ← run in background; os.execute returns immediately
+    os.execute(cmd)
+
+    -- Poll every second for up to 15 s.
+    local UIManager = require("ui/uimanager")
+    local attempts  = 0
+    local function _poll()
+        attempts = attempts + 1
+        local df = io.open(done_file, "r")
+        if df then
+            df:close()
+            local g = io.open(out_file, "r")
+            if g then
+                local body = g:read("*a"); g:close()
+                on_done(_processBody(j, body))
+                return
+            end
+        end
+        if attempts < 15 then
+            UIManager:scheduleIn(1.0, _poll)
+        else
+            logger.warn("simpleui hardcover: async curl timed out after 15 polls")
+            on_done(nil)
+        end
+    end
+    UIManager:scheduleIn(1.0, _poll)
 end
 
 -- ---------------------------------------------------------------------------
@@ -630,12 +642,9 @@ function M.ensureFresh()
     local api_key = _getApiKey()
     if api_key == "" or _fetch_pending or not _isCacheStale() then return end
     _fetch_pending = true
-    local UIManager = require("ui/uimanager")
-    UIManager:scheduleIn(1.0, function()
+    _fetchAsync(api_key, function(goal)
         _fetch_pending = false
-        if _getApiKey() == "" then return end
-        local ok, result = pcall(_fetchAndCache, api_key)
-        if ok and result then
+        if goal then
             _last_error = nil
         else
             local retry_delay_secs = math.max(300, (_getCacheTtlMin() - 5) * 60)
@@ -824,10 +833,8 @@ function M.getMenuItems(ctx_menu)
             G_reader_settings:saveSetting(SK.cache_time, 0)
             if not _fetch_pending then
                 _fetch_pending = true
-                local UIManager = require("ui/uimanager")
-                UIManager:scheduleIn(0.1, function()
+                _fetchAsync(api_key, function(goal)
                     _fetch_pending = false
-                    local ok, result = pcall(_fetchAndCache, api_key)
                     if refresh then refresh() end
                 end)
             end
