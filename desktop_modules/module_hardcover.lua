@@ -22,6 +22,7 @@ local HorizontalSpan  = require("ui/widget/horizontalspan")
 local LineWidget      = require("ui/widget/linewidget")
 local OverlapGroup    = require("ui/widget/overlapgroup")
 local RightContainer  = require("ui/widget/container/rightcontainer")
+local TextBoxWidget   = require("ui/widget/textboxwidget")
 local TextWidget      = require("ui/widget/textwidget")
 local VerticalGroup   = require("ui/widget/verticalgroup")
 local VerticalSpan    = require("ui/widget/verticalspan")
@@ -30,6 +31,7 @@ local UI     = require("sui_core")
 local Config = require("sui_config")
 
 local PAD          = UI.PAD
+local PAD2         = UI.PAD2
 local CLR_TEXT_SUB = UI.CLR_TEXT_SUB
 
 -- ---------------------------------------------------------------------------
@@ -52,6 +54,35 @@ local _CLR_OK        = Blitbuffer.gray(0.50)     -- softer for on-track / ahead
 
 local API_URL            = "https://api.hardcover.app/v1/graphql"
 local CACHE_TTL_DEFAULT  = 60    -- minutes
+
+-- ---------------------------------------------------------------------------
+-- Internal section label — replaces the SimpleUI M.label mechanism so the
+-- label is built at the correct (possibly bento-reduced) width `w` instead
+-- of at full screen width.  This makes the module compatible with the
+-- LeviiStar bento-grid patch, which cannot resize externally-created labels.
+-- ---------------------------------------------------------------------------
+
+local _SECTION_LABEL_FS = Screen:scaleBySize(11)
+
+local function _buildLabel(w)
+    local scale   = Config.getLabelScale()
+    local fs      = math.max(8, math.floor(_SECTION_LABEL_FS * scale))
+    local label_h = math.max(8, math.floor(Screen:scaleBySize(16) * scale))
+    return FrameContainer:new{
+        bordersize     = 0,
+        padding        = 0,
+        padding_left   = PAD,
+        padding_right  = PAD,
+        padding_bottom = PAD2,
+        TextWidget:new{
+            text   = _("Hardcover"),
+            face   = Font:getFace("smallinfofont", fs),
+            bold   = true,
+            max_width = w - PAD * 2,
+            height    = label_h,
+        },
+    }
+end
 
 -- ---------------------------------------------------------------------------
 -- Settings keys
@@ -238,31 +269,31 @@ local function _fetchAsync(api_key, on_done)
     if ok_https and ok_ltn and https and ltn12 then
         local resp = {}
         local ok2, b, code = pcall(function()
-            -- socket.tcp() with settimeout caps both connect and read time.
-            local ok_sock, socket = pcall(require, "socket")
-            local create_fn
-            if ok_sock and socket then
-                create_fn = function()
-                    local sock = socket.tcp()
-                    sock:settimeout(8)
-                    return sock
-                end
-            end
+            -- NOTE: do NOT pass a custom `create` function — luasec on Android
+            -- rejects it with "create function not permitted".
             return https.request({
                 url     = API_URL,
                 method  = "POST",
                 headers = headers,
                 source  = ltn12.source.string(payload),
                 sink    = ltn12.sink.table(resp),
-                create  = create_fn,
             })
         end)
         local body = table.concat(resp)
         if ok2 and body ~= "" then
-            on_done(_processBody(j, body))
+            local result = _processBody(j, body)
+            if result then
+                on_done(result)
+                return
+            end
+            -- Body received but no valid goal — log first 200 chars and fall through.
+            logger.warn("simpleui hardcover: ssl.https got body but no goal (code="
+                .. tostring(code) .. "): " .. body:sub(1, 200))
+            on_done(nil)
             return
         end
-        logger.warn("simpleui hardcover: ssl.https failed (code=" .. tostring(code) .. ")")
+        logger.warn("simpleui hardcover: ssl.https failed (ok2=" .. tostring(ok2)
+            .. " code=" .. tostring(code) .. " body_len=" .. tostring(#table.concat(resp)) .. ")")
     end
 
     -- ── Async curl fallback — never blocks the UI thread ────────────────────
@@ -270,7 +301,11 @@ local function _fetchAsync(api_key, on_done)
     local safe_key = api_key:gsub("[^%w%-%_%.~%+%/=]", "")
     if safe_key == "" then on_done(nil); return end
 
-    local dir       = "/tmp/simpleui_hc"
+    -- Use KOReader's own data directory — /tmp does not exist on Android.
+    local ok_ds, DataStorage = pcall(require, "datastorage")
+    local base_dir = (ok_ds and DataStorage and DataStorage.getDataDir())
+        or "/storage/emulated/0/koreader"
+    local dir       = base_dir .. "/simpleui_hc"
     local p_file    = dir .. "/query.json"
     local out_file  = dir .. "/resp.json"
     local done_file = dir .. "/resp.done"
@@ -474,45 +509,58 @@ local function _buildRow(w, goal)
     local status, is_warn = _statusText(goal)
 
     -- Build parts: title, bar, pct, count, optional status
-    local BAR_W    = math.floor(w * 0.12)
-    local SEP      = HorizontalSpan:new{ width = Screen:scaleBySize(5) }
-    local DOT      = TextWidget:new{ text = " · ", face = face, fgcolor = CLR_TEXT_SUB }
+    -- Allocate widths so the HorizontalGroup never exceeds `w`.
+    -- Fixed parts: sep(5) + bar + span(4) + dot(~20) = ~29 + BAR_W
+    -- Variable: title + pct + count + optional status.
+    local BAR_W      = math.floor(w * 0.12)
+    local SEP_W      = Screen:scaleBySize(5)
+    local SPAN_W     = Screen:scaleBySize(4)
+    local DOT_W      = Screen:scaleBySize(20)  -- approximate " · " width
+    local fixed_w    = SEP_W + BAR_W + SPAN_W + DOT_W
+    local title_max  = math.floor(w * 0.32)
+    local pct_max    = math.floor(w * 0.09)
+    -- Remaining budget for count (and optional status).
+    local remain     = math.max(0, w - fixed_w - title_max - pct_max - DOT_W)
+    local count_max  = status and math.floor(remain * 0.55) or remain
+    local status_max = status and math.max(0, remain - count_max - DOT_W) or 0
 
     local title_w  = TextWidget:new{
         text      = title,
         face      = Font:getFace("cfont", math.max(7, math.floor(_BASE_ROW_FS * ts))),
         bold      = true,
         fgcolor   = Blitbuffer.COLOR_BLACK,
-        max_width = math.floor(w * 0.35),
+        max_width = title_max,
     }
 
     local count_str = string.format("%d / %d %s", progress, goal.goal or 0, unit)
 
     local row = HorizontalGroup:new{ align = "center" }
     row[#row+1] = title_w
-    row[#row+1] = SEP
+    row[#row+1] = HorizontalSpan:new{ width = SEP_W }
     row[#row+1] = _buildBar(BAR_W, bar_h, pct)
-    row[#row+1] = HorizontalSpan:new{ width = Screen:scaleBySize(4) }
-    row[#row+1] = TextWidget:new{ text = pct_str,   face = face, fgcolor = Blitbuffer.COLOR_BLACK }
+    row[#row+1] = HorizontalSpan:new{ width = SPAN_W }
+    row[#row+1] = TextWidget:new{ text = pct_str,   face = face, fgcolor = Blitbuffer.COLOR_BLACK,
+                                  max_width = pct_max }
     row[#row+1] = TextWidget:new{ text = " · ",     face = face, fgcolor = CLR_TEXT_SUB }
-    row[#row+1] = TextWidget:new{ text = count_str, face = face, fgcolor = CLR_TEXT_SUB }
-    if status then
+    row[#row+1] = TextWidget:new{ text = count_str, face = face, fgcolor = CLR_TEXT_SUB,
+                                  max_width = count_max }
+    if status and status_max > 0 then
         row[#row+1] = TextWidget:new{ text = " · ", face = face, fgcolor = CLR_TEXT_SUB }
         row[#row+1] = TextWidget:new{
-            text    = status,
-            face    = face,
-            fgcolor = is_warn and Blitbuffer.COLOR_BLACK or CLR_TEXT_SUB,
+            text      = status,
+            face      = face,
+            fgcolor   = is_warn and Blitbuffer.COLOR_BLACK or CLR_TEXT_SUB,
+            max_width = status_max,
         }
     end
 
-    local CenterContainer = require("ui/widget/container/centercontainer")
+    -- Do NOT use CenterContainer here: if row exceeds `w`, CenterContainer
+    -- would compute a negative x-offset, pushing content off-screen to the left.
+    -- Left-align inside the FrameContainer instead.
     return FrameContainer:new{
         bordersize = 0, padding = 0,
         dimen      = Geom:new{ w = w, h = row_h },
-        CenterContainer:new{
-            dimen = Geom:new{ w = w, h = row_h },
-            row,
-        },
+        row,
     }
 end
 
@@ -542,52 +590,55 @@ local function _buildCard(w, goal)
 
     local rows = VerticalGroup:new{ align = "left" }
 
-    -- ── Row 1: Title (left) + Percentage (right) ──────────────────────────
-    local pct_widget   = TextWidget:new{ text = pct_str,  face = face_title }
-    local pct_w        = pct_widget:getSize().w
-    local title_widget = TextWidget:new{
-        text      = title,
-        face      = face_title,
-        bold      = true,
-        max_width = inner_w - pct_w - Screen:scaleBySize(4),
+    -- ── Row 1: Title (full width, wraps if needed) ────────────────────────
+    rows[#rows + 1] = TextBoxWidget:new{
+        text  = title,
+        face  = face_title,
+        bold  = true,
+        width = inner_w,
     }
-    local filler_w = math.max(0, inner_w - title_widget:getSize().w - pct_w)
-    local title_row = HorizontalGroup:new{
+    rows[#rows + 1] = VerticalSpan:new{ width = Screen:scaleBySize(4) }
+
+    -- ── Row 2: Progress bar + percentage ─────────────────────────────────
+    local pct_widget = TextWidget:new{ text = pct_str, face = face_body,
+                                       fgcolor = CLR_TEXT_SUB }
+    local pct_w      = pct_widget:getSize().w
+    local bar_w      = math.max(0, inner_w - pct_w - Screen:scaleBySize(4))
+    local bar_row    = HorizontalGroup:new{
         align = "center",
-        title_widget,
-        HorizontalSpan:new{ width = filler_w },
+        _buildBar(bar_w, bar_h, pct),
+        HorizontalSpan:new{ width = Screen:scaleBySize(4) },
         pct_widget,
     }
-    rows[#rows + 1] = title_row
-    rows[#rows + 1] = VerticalSpan:new{ width = Screen:scaleBySize(6) }
-
-    -- ── Row 2: Progress bar ───────────────────────────────────────────────
-    rows[#rows + 1] = _buildBar(inner_w, bar_h, pct)
+    rows[#rows + 1] = bar_row
     rows[#rows + 1] = VerticalSpan:new{ width = Screen:scaleBySize(5) }
 
     -- ── Row 3: "X av Y böcker" ────────────────────────────────────────────
-    rows[#rows + 1] = TextWidget:new{
+    rows[#rows + 1] = TextBoxWidget:new{
         text    = prog_str,
         face    = face_body,
         fgcolor = CLR_TEXT_SUB,
+        width   = inner_w,
     }
 
     -- ── Row 4: Status (optional) ──────────────────────────────────────────
     if status then
         rows[#rows + 1] = VerticalSpan:new{ width = Screen:scaleBySize(3) }
-        rows[#rows + 1] = TextWidget:new{
+        rows[#rows + 1] = TextBoxWidget:new{
             text    = status,
             face    = face_small,
             fgcolor = is_warn and _CLR_WARN or _CLR_OK,
+            width   = inner_w,
         }
     end
 
     -- ── Row 5: Date range ─────────────────────────────────────────────────
     rows[#rows + 1] = VerticalSpan:new{ width = Screen:scaleBySize(3) }
-    rows[#rows + 1] = TextWidget:new{
+    rows[#rows + 1] = TextBoxWidget:new{
         text    = date_str,
         face    = face_small,
         fgcolor = CLR_TEXT_SUB,
+        width   = inner_w,
     }
 
     return FrameContainer:new{
@@ -631,7 +682,7 @@ local M = {}
 
 M.id          = "hardcover"
 M.name        = _("Hardcover")
-M.label       = _("Hardcover")
+M.label       = nil      -- label is rendered internally at bento-safe width
 M.enabled_key = "hardcover"
 M.default_on  = false
 M._getCached  = _getCached   -- exposed for module_reading_stats
@@ -690,8 +741,17 @@ function _doBuild(w, ctx)
         widget = _buildPlaceholder(w, _("Hardcover: hämtar data…"))
     end
 
-    -- Update M.label so homescreen shows/hides the section title correctly
-    Config.applyLabelToggle(M, _("Hardcover"))
+    -- Wrap with internal label if the user has it enabled.
+    -- We do NOT use Config.applyLabelToggle / M.label because SimpleUI would
+    -- then call sectionLabel(mod.label, inner_w) with the *full* screen width,
+    -- which breaks the LeviiStar bento-grid patch.  Building the label here
+    -- ensures it is always sized to `w` (the bento-reduced width).
+    if not Config.isLabelHidden("hardcover") then
+        local vg = VerticalGroup:new{ align = "left" }
+        vg[1] = _buildLabel(w)
+        vg[2] = widget
+        widget = vg
+    end
 
     M.ensureFresh()
 
@@ -830,14 +890,32 @@ function M.getMenuItems(ctx_menu)
         callback = function()
             local api_key = _getApiKey()
             if api_key == "" then return end
+            -- Force-reset the pending guard so a manual refresh always fires,
+            -- even if a background fetch got stuck.
+            _fetch_pending = false
             G_reader_settings:saveSetting(SK.cache_time, 0)
-            if not _fetch_pending then
-                _fetch_pending = true
-                _fetchAsync(api_key, function(goal)
-                    _fetch_pending = false
-                    if refresh then refresh() end
-                end)
-            end
+            _fetch_pending = true
+            local UIManager  = require("ui/uimanager")
+            local Notification = require("ui/widget/notification")
+            UIManager:show(Notification:new{
+                text    = _("Hardcover: hämtar data…"),
+                timeout = 3,
+            })
+            _fetchAsync(api_key, function(goal)
+                _fetch_pending = false
+                if goal then
+                    UIManager:show(Notification:new{
+                        text    = _("Hardcover: uppdaterad!"),
+                        timeout = 3,
+                    })
+                else
+                    UIManager:show(Notification:new{
+                        text    = _("Hardcover: kunde inte hämta data."),
+                        timeout = 5,
+                    })
+                end
+                _refreshHomescreen()
+            end)
         end,
         keep_menu_open = false,
     }
