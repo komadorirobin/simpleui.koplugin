@@ -268,15 +268,14 @@ function SimpleUIPlugin:init()
             if G_reader_settings:nilOrTrue("navbar_topbar_enabled") then
                 Topbar.scheduleRefresh(self, 0)
             end
-            -- Pre-load ALL desktop modules during boot idle time so the first
-            -- Homescreen open has no perceptible freeze. scheduleIn(2) runs
-            -- after the FileManager UI is fully painted and stable.
-            -- Registry.list() triggers _load() which pcall-requires all 9
-            -- module_*.lua files — they land in package.loaded and subsequent
-            -- require() calls are free table lookups, not disk I/O.
-            UIManager:scheduleIn(2, function()
-                local ok, reg = pcall(require, "desktop_modules/moduleregistry")
-                if ok and reg then pcall(reg.list) end
+            -- Warm only the lightweight registry module after boot.  Calling
+            -- Registry.list() here used to require every homescreen module two
+            -- seconds after startup, which moves first-open cost into KOReader's
+            -- startup window and is very noticeable on slower devices.
+            UIManager:scheduleIn(8, function()
+                -- Keep this require-only: module files stay lazy until the
+                -- homescreen actually needs them.
+                pcall(require, "desktop_modules/moduleregistry")
             end)
         end
     end)
@@ -313,7 +312,7 @@ function SimpleUIPlugin:onTeardown()
         self._topbar_timer = nil
     end
     Patches.teardownAll(self)
-    I18n.uninstall()
+    I18n.reset()
     -- Give modules with internal upvalue caches a chance to nil them before
     -- their package.loaded entry is cleared — ensures the GC can collect the
     -- old tables immediately rather than waiting for the upvalue to be rebound.

@@ -85,6 +85,10 @@ local function getSource(pfx)
     return G_reader_settings:readSetting(pfx .. SETTING_SOURCE) or "recent"
 end
 
+local function getSourceLabel(source)
+    return source == "tbr" and _("To Be Read") or _("Recent Books")
+end
+
 local function getTitlePos(pfx)
     return G_reader_settings:readSetting(pfx .. SETTING_TITLE_POS) or "below"
 end
@@ -348,6 +352,7 @@ end
 function M.build(w, ctx)
     local pfx    = ctx.pfx
     local source = getSource(pfx)
+    Config.applyLabelToggle(M, getSourceLabel(source))
 
     logger.dbg("coverdeck: build source=" .. tostring(source) 
         .. " current_fp=" .. tostring(ctx.current_fp) 
@@ -786,6 +791,7 @@ function M.getMenuItems(ctx_menu)
 
     local menu = {}
     for _i, item in ipairs(scale_items) do menu[#menu+1] = item end
+    menu[#menu+1] = Config.makeLabelToggleItem("coverdeck", getSourceLabel(getSource(pfx)), refresh, _lc)
     menu[#menu+1] = source_item
     menu[#menu+1] = title_pos_item
     menu[#menu+1] = items_item

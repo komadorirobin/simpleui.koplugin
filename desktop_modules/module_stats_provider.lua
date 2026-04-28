@@ -222,7 +222,7 @@ local function countMarkedReadBoth(year_str)
     local ReadHistory = package.loaded["readhistory"]
     if not ReadHistory or not ReadHistory.hist then return books_year, books_total end
 
-    -- Borrow _cacheGet/_cachePut from module_books_shared via package.loaded.
+    -- Borrow _cacheGet/_cachePut and _fileExistsCheck from module_books_shared.
     -- module_books_shared is always loaded before the provider runs (it's
     -- required by _buildCtx via prefetchBooks). We access its internal cache
     -- functions by going through the module's exported invalidateSidecarCache
@@ -260,52 +260,61 @@ local function countMarkedReadBoth(year_str)
     for i = 1, limit do
         local entry = ReadHistory.hist[i]
         local fp    = entry and entry.file
-        if fp and lfs.attributes(fp, "mode") == "file" then
-            local summary
-            -- Fast path: reuse the sidecar cache warmed by prefetchBooks().
-            -- Cache hit costs 1 lfs.attributes (mtime check); miss costs DS.open.
-            if SH then
-                local cached = SH._cacheGet and SH._cacheGet(fp)
-                if cached then
-                    summary = cached.summary
+        if fp then
+            local file_exists = false
+            if SH and SH._fileExistsCheck then
+                file_exists = SH._fileExistsCheck(fp)
+            else
+                file_exists = lfs.attributes(fp, "mode") == "file"
+            end
+if file_exists then
+                local summary
+                -- Fast path: reuse the sidecar cache warmed by prefetchBooks().
+                -- Cache hit costs 1 lfs.attributes (mtime check); miss costs DS.open.
+                if SH then
+                    local cached = SH._cacheGet and SH._cacheGet(fp)
+                    if cached then
+                        summary = cached.summary
+                    else
+                        local ok_open, ds = pcall(function() return DocSettings:open(fp) end)
+                        if ok_open and ds then
+                            summary = ds:readSetting("summary")
+                            -- Populate the shared cache so subsequent renders skip DS.open.
+                            if SH._cachePut then
+                                local data = {
+                                    percent              = ds:readSetting("percent_finished") or 0,
+                                    title                = (ds:readSetting("doc_props") or {}).title,
+                                    authors              = (ds:readSetting("doc_props") or {}).authors,
+                                    doc_pages            = ds:readSetting("doc_pages"),
+                                    partial_md5_checksum = ds:readSetting("partial_md5_checksum"),
+                                    stat_pages           = (ds:readSetting("stats") or {}).pages,
+                                    stat_total_time      = (ds:readSetting("stats") or {}).total_time_in_sec,
+                                    summary              = summary,
+                                }
+                                SH._cachePut(fp, ds.source_candidate, data)
+                            end
+                            pcall(function() ds:close() end)
+                        end
+                    end
                 else
+                    -- Fallback: SH not yet loaded — open directly.
                     local ok_open, ds = pcall(function() return DocSettings:open(fp) end)
                     if ok_open and ds then
                         summary = ds:readSetting("summary")
-                        -- Populate the shared cache so subsequent renders skip DS.open.
-                        if SH._cachePut then
-                            local data = {
-                                percent              = ds:readSetting("percent_finished") or 0,
-                                title                = (ds:readSetting("doc_props") or {}).title,
-                                authors              = (ds:readSetting("doc_props") or {}).authors,
-                                doc_pages            = ds:readSetting("doc_pages"),
-                                partial_md5_checksum = ds:readSetting("partial_md5_checksum"),
-                                stat_pages           = (ds:readSetting("stats") or {}).pages,
-                                stat_total_time      = (ds:readSetting("stats") or {}).total_time_in_sec,
-                                summary              = summary,
-                            }
-                            SH._cachePut(fp, ds.source_candidate, data)
-                        end
                         pcall(function() ds:close() end)
                     end
                 end
-            else
-                -- Fallback: SH not yet loaded — open directly.
-                local ok_open, ds = pcall(function() return DocSettings:open(fp) end)
-                if ok_open and ds then
-                    summary = ds:readSetting("summary")
-                    pcall(function() ds:close() end)
-                end
-            end
 
-            if type(summary) == "table" and summary.status == "complete" then
-                books_total = books_total + 1
-                if modifiedInYear(summary) then
-                    books_year = books_year + 1
+                if type(summary) == "table" and summary.status == "complete" then
+                    books_total = books_total + 1
+                    if modifiedInYear(summary) then
+                        books_year = books_year + 1
+                    end
                 end
             end
         end
     end
+
     return books_year, books_total
 end
 

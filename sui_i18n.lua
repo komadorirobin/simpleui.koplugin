@@ -30,6 +30,7 @@
 --   3. Done — no code changes needed.
 
 local logger = require("logger")
+local _native_gettext = nil
 
 -- Locate the plugin directory from this file's path.
 local _dir = (debug.getinfo(1, "S").source:match("^@(.+/)") or "./")
@@ -246,9 +247,11 @@ local function translate(msgid)
             return entry[0] or entry[1] or msgid
         end
     end
-    -- Read-only access to native gettext — no writes, no state mutation.
-    local ok, gt = pcall(require, "gettext")
-    if ok and gt then return gt(msgid) end
+    if not _native_gettext then
+        local ok, gt = pcall(require, "gettext")
+        if ok and gt then _native_gettext = gt end
+    end
+    if _native_gettext then return _native_gettext(msgid) end
     return msgid
 end
 
@@ -269,14 +272,15 @@ local function ngettext(msgid, msgid_plural, n)
             return entry
         end
     end
-    -- Fall through to native gettext.
-    local ok, gt = pcall(require, "gettext")
-    if ok and gt then
-        if type(gt) == "table" and type(gt.ngettext) == "function" then
-            return gt.ngettext(msgid, msgid_plural, n)
+    if not _native_gettext then
+        local ok, gt = pcall(require, "gettext")
+        if ok and gt then _native_gettext = gt end
+    end
+    if _native_gettext then
+        if type(_native_gettext.ngettext) == "function" then
+            return _native_gettext.ngettext(msgid, msgid_plural, n)
         end
-        local fallback = (n == 1) and msgid or msgid_plural
-        return gt(fallback)
+        return _native_gettext((n == 1) and msgid or msgid_plural)
     end
     return (n == 1) and msgid or msgid_plural
 end
@@ -287,6 +291,7 @@ end
 local function reset()
     _translations = nil
     _loaded       = false
+    _native_gettext = nil
     logger.info("simpleui i18n: translation cache cleared")
 end
 

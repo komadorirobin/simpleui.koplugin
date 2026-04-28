@@ -1033,11 +1033,11 @@ function M.openStatsDB()
     if not _indexes_created then
         local idx_ok = pcall(function()
             conn:exec("CREATE INDEX IF NOT EXISTS idx_simpleui_book_md5 ON book(md5);")
-            conn:exec("CREATE INDEX IF NOT EXISTS idx_simpleui_pagestat_book ON page_stat(id_book);")
+            conn:exec("CREATE INDEX IF NOT EXISTS idx_simpleui_pagestat_data_book ON page_stat_data(id_book);")
             -- Covers the WHERE start_time >= ? filter in fetchTimeSeries (day_buckets CTE)
             -- and the dated CTE in fetchStreak. Without this index both queries do a full
-            -- table scan of page_stat on every cold-cache render.
-            conn:exec("CREATE INDEX IF NOT EXISTS idx_simpleui_pagestat_time ON page_stat(start_time);")
+            -- table scan of page_stat_data on every cold-cache render.
+            conn:exec("CREATE INDEX IF NOT EXISTS idx_simpleui_pagestat_data_time ON page_stat_data(start_time);")
         end)
         if idx_ok then _indexes_created = true end
     end

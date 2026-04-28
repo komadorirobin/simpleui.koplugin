@@ -33,17 +33,24 @@ local M = {}
 -- AND the given path is the configured home folder.  In that case the Back
 -- button must be hidden even though no is_go_up item exists in the list.
 -- ---------------------------------------------------------------------------
-local function _isLockedAtHome(path)
-    if not G_reader_settings:isTrue("lock_home_folder") then return false end
-    if not path then return false end
-    local home = G_reader_settings:readSetting("home_dir")
-    if not home then return false end
-    local ffiUtil = require("ffi/util")
-    local ok_p, p = pcall(ffiUtil.realpath, path)
-    local ok_h, h = pcall(ffiUtil.realpath, home)
-    p = (ok_p and p or path):gsub("/$", "")
-    h = (ok_h and h or home):gsub("/$", "")
-    return p == h
+local _isLockedAtHome
+do
+    local cached_home_realpath = nil
+    function _isLockedAtHome(path)
+        if not G_reader_settings:isTrue("lock_home_folder") then return false end
+        if not path then return false end
+        local home = G_reader_settings:readSetting("home_dir")
+        if not home then return false end
+        if not cached_home_realpath then
+            local ffiUtil = require("ffi/util")
+            local ok, h = pcall(ffiUtil.realpath, home)
+            cached_home_realpath = ok and h and h:gsub("/$", "") or home:gsub("/$", "")
+        end
+        local ffiUtil = require("ffi/util")
+        local ok_p, p = pcall(ffiUtil.realpath, path)
+        p = (ok_p and p or path):gsub("/$", "")
+        return p == cached_home_realpath
+    end
 end
 
 -- ---------------------------------------------------------------------------

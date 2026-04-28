@@ -60,8 +60,29 @@ local _BOOK_EXTS = {
     doc = true, docx = true, rtf = true, txt = true,
 }
 
---- Recursively scan `dir` for book files, collecting path + mtime.
-local function collectBooks(dir, files)
+local _scan_cache = nil
+local _scan_cache_home = nil
+local _scan_cache_limit = nil
+local _scan_cache_time = 0
+local SCAN_CACHE_TTL = 60
+
+local function addTopBook(files, limit, path, mtime)
+    local item = { path = path, mtime = mtime or 0 }
+    local pos = #files + 1
+    for i = 1, #files do
+        if item.mtime > files[i].mtime then
+            pos = i
+            break
+        end
+    end
+    table.insert(files, pos, item)
+    if #files > limit then
+        files[#files] = nil
+    end
+end
+
+--- Recursively scan `dir` for book files, keeping only the newest entries.
+local function collectBooks(dir, files, limit)
     local ok, iter, dir_obj = pcall(lfs.dir, dir)
     if not ok then return end
     for f in iter, dir_obj do
@@ -72,10 +93,10 @@ local function collectBooks(dir, files)
                 if attr.mode == "file" then
                     local ext = f:match("%.([^%.]+)$")
                     if ext and _BOOK_EXTS[ext:lower()] then
-                        files[#files + 1] = { path = path, mtime = attr.modification }
+                        addTopBook(files, limit, path, attr.modification)
                     end
                 elseif attr.mode == "directory" then
-                    collectBooks(path, files)
+                    collectBooks(path, files, limit)
                 end
             end
         end
@@ -88,14 +109,29 @@ local function scanNewBooks(limit)
     local home = G_reader_settings:readSetting("home_dir")
     if not home then return {} end
 
+    local now = os.time()
+    if _scan_cache
+            and _scan_cache_home == home
+            and _scan_cache_limit >= limit
+            and (now - _scan_cache_time) < SCAN_CACHE_TTL then
+        local cached = {}
+        for i = 1, math.min(limit, #_scan_cache) do
+            cached[i] = _scan_cache[i]
+        end
+        return cached
+    end
+
     local files = {}
-    collectBooks(home, files)
-    table.sort(files, function(a, b) return a.mtime > b.mtime end)
+    collectBooks(home, files, limit)
 
     local result = {}
     for i = 1, math.min(limit, #files) do
         result[i] = files[i].path
     end
+    _scan_cache = result
+    _scan_cache_home = home
+    _scan_cache_limit = limit
+    _scan_cache_time = now
     return result
 end
 

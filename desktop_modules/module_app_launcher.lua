@@ -75,6 +75,9 @@ local function _fetchIcon(pkg, sz)
         end
 
         local activity  = android_mod.app.activity.clazz
+        if ffi.cast("uintptr_t", ffi.cast("void*", activity)) == 0 then
+            error("activity.clazz is null — aborting icon fetch for " .. pkg)
+        end
         local ActClass  = env[0].GetObjectClass(env, activity)
 
         -- getPackageManager()
@@ -351,6 +354,9 @@ local function _launchApp(pkg, label, action)
         -- The Activity instance (global JNI ref, safe across threads).
         local activity = android_mod.app.activity.clazz
         logger.dbg("module_app_launcher: got activity clazz")
+        if ffi.cast("uintptr_t", ffi.cast("void*", activity)) == 0 then
+            error("activity.clazz is null — aborting JNI launch for " .. pkg)
+        end
 
         -- Activity class
         local ActivityClass = env[0].GetObjectClass(env, activity)

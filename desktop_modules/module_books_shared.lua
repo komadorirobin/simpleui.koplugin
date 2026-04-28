@@ -272,6 +272,28 @@ local function getDocSettings()
 end
 
 -- ---------------------------------------------------------------------------
+-- File existence cache — invalidated by mtime, lives for the process lifetime.
+-- Avoids repeated lfs.attributes("mode") syscalls on every homescreen show.
+-- ---------------------------------------------------------------------------
+local _file_exists_cache = {}
+
+local function _fileExistsCheck(fp)
+    local e = _file_exists_cache[fp]
+    if e then
+        local mtime = lfs.attributes(fp, "modification")
+        if mtime and mtime == e.mtime then
+            return true
+        end
+    end
+    local mode = lfs.attributes(fp, "mode")
+    if mode == "file" then
+        _file_exists_cache[fp] = { mtime = lfs.attributes(fp, "modification") }
+        return true
+    end
+    return false
+end
+
+-- ---------------------------------------------------------------------------
 -- Sidecar metadata cache — invalidated by mtime, lives for the process lifetime.
 --
 -- Each entry: { sidecar_path, mtime, preferred_loc, data={...} }
@@ -454,7 +476,7 @@ function SH.prefetchBooks(show_currently, show_recent, max_recent, show_finished
     for i = 1, #(ReadHistory.hist or {}) do
         local entry = ReadHistory.hist[i]
         local fp = entry and entry.file
-        if fp and lfs.attributes(fp, "mode") == "file" then
+        if fp and _fileExistsCheck(fp) then
             if i == 1 and show_currently then
                 -- Claim as currently-reading book.
                 state.current_fp = fp
@@ -567,5 +589,7 @@ end
 -- Sidecar helpers
 -- ---------------------------------------------------------------------------
 
+
+SH._fileExistsCheck = _fileExistsCheck
 
 return SH
