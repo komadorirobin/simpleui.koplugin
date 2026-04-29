@@ -342,6 +342,45 @@ msgstr "På"
 msgid "Off"
 msgstr "Av"
 
+msgid "Image"
+msgstr "Bild"
+
+msgid "Image folder"
+msgstr "Bildmapp"
+
+msgid "Select an image folder."
+msgstr "Välj en bildmapp."
+
+msgid "No images found."
+msgstr "Inga bilder hittades."
+
+msgid "Image not available."
+msgstr "Bilden är inte tillgänglig."
+
+msgid "Height"
+msgstr "Höjd"
+
+msgid "Height reserved for the image."
+msgstr "Höjd reserverad för bilden."
+
+msgid "Width"
+msgstr "Bredd"
+
+msgid "Width of the image area."
+msgstr "Bredd på bildytan."
+
+msgid "Rotation"
+msgstr "Rotation"
+
+msgid "Hourly"
+msgstr "Varje timme"
+
+msgid "Daily"
+msgstr "Dagligen"
+
+msgid "Weekly"
+msgstr "Veckovis"
+
 msgid "Default"
 msgstr "Standard"
 
@@ -1278,4 +1317,3 @@ msgstr "Kort"
 
 msgid "Row"
 msgstr "Rad"
-

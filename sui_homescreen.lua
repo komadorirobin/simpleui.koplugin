@@ -79,7 +79,7 @@ local _DOT_COLOR_INACTIVE = Blitbuffer.gray(0.55)  -- precomputed, reused every 
 
 -- Modules that render cover thumbnails — used by _updatePage to set the
 -- dithering hint. Defined at file level: constant, never recreated per page-turn.
-local _COVER_MOD_IDS = { collections=true, recent=true, currently=true, new_books=true, coverdeck=true }
+local _COVER_MOD_IDS = { collections=true, recent=true, currently=true, new_books=true, coverdeck=true, image=true }
 
 -- ---------------------------------------------------------------------------
 -- DotWidget — defined once at file level to avoid per-call class allocation.
@@ -2496,6 +2496,10 @@ function HomescreenWidget:onSuspend()
         UIManager:unschedule(self._cover_poll_timer)
         self._cover_poll_timer = nil
     end
+    if self._image_module_timer then
+        UIManager:unschedule(self._image_module_timer)
+        self._image_module_timer = nil
+    end
     -- Cancel the module_clock timer (the only clock chain remaining after
     -- removing the redundant _scheduleClockRefresh internal chain).
     local ClockMod = Registry.get("clock")
@@ -2571,6 +2575,10 @@ function HomescreenWidget:onCloseWidget()
     if self._cover_poll_timer then
         UIManager:unschedule(self._cover_poll_timer)
         self._cover_poll_timer = nil
+    end
+    if self._image_module_timer then
+        UIManager:unschedule(self._image_module_timer)
+        self._image_module_timer = nil
     end
     -- Invalidate the _refresh debounce token so the scheduled 0.15s callback
     -- is a no-op if it fires after close (it checks the token before acting).

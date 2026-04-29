@@ -295,6 +295,7 @@ local _PLUGIN_MODULES = {
     "desktop_modules/module_books_shared",
     "desktop_modules/module_clock",
     "desktop_modules/module_collections",
+    "desktop_modules/module_image",
     "desktop_modules/module_currently",
     "desktop_modules/module_quick_actions",
     "desktop_modules/module_quote",

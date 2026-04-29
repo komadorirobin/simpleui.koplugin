@@ -42,6 +42,7 @@ local MODULES = {
     { require_mod = "desktop_modules/module_currently"     },
     { require_mod = "desktop_modules/module_recent"        },
     { require_mod = "desktop_modules/module_coverdeck"     },
+    { require_mod = "desktop_modules/module_image"         },
     { require_mod = "desktop_modules/module_new_books"     },
     { require_mod = "desktop_modules/module_tbr"           },
     { require_mod = "desktop_modules/module_collections"   },
