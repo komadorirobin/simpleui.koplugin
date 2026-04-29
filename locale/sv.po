@@ -348,6 +348,24 @@ msgstr "Bild"
 msgid "Image folder"
 msgstr "Bildmapp"
 
+msgid "Use current library folder"
+msgstr "Använd aktuell biblioteksmapp"
+
+msgid "Enter path"
+msgstr "Ange sökväg"
+
+msgid "Clear"
+msgstr "Rensa"
+
+msgid "Enter an absolute folder path."
+msgstr "Ange en absolut mappsökväg."
+
+msgid "Open the target folder in the library first."
+msgstr "Öppna målmappen i biblioteket först."
+
+msgid "Folder not found."
+msgstr "Mappen hittades inte."
+
 msgid "Select an image folder."
 msgstr "Välj en bildmapp."
 

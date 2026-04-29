@@ -75,6 +75,13 @@ local function normalizeStartPath(path)
     return nil
 end
 
+local function getCurrentLibraryFolder()
+    local FM = package.loaded["apps/filemanager/filemanager"]
+    local fm = FM and FM.instance
+    local path = fm and fm.file_chooser and fm.file_chooser.path
+    return normalizeStartPath(path)
+end
+
 local function scanImages(dir)
     if dir == "" or lfs.attributes(dir, "mode") ~= "directory" then
         return {}
@@ -241,30 +248,58 @@ function M.getMenuItems(ctx_menu)
     local refresh = ctx_menu.refresh
     local _lc     = ctx_menu._ or function(s) return s end
 
-    local function chooseFolder()
-        local ok_pc, PathChooser = pcall(require, "ui/widget/pathchooser")
-        if not ok_pc or not PathChooser then return end
-        local start_path = normalizeStartPath(getFolder(pfx))
-            or normalizeStartPath(G_reader_settings:readSetting("lastdir"))
-            or normalizeStartPath(G_reader_settings:readSetting("home_dir"))
-            or "/"
-        -- Open the chooser after the module menu has fully closed. Keeping the
-        -- menu alive underneath PathChooser leaves KOReader in a bad input state
-        -- on some devices and can make the file browser appear frozen.
-        UIManager:scheduleIn(0.1, function()
-            UIManager:show(PathChooser:new{
-                covers_fullscreen = true,
-                select_directory  = true,
-                select_file       = false,
-                show_files        = false,
-                path              = start_path,
-                onConfirm         = function(path)
-                    G_reader_settings:saveSetting(_key(pfx, SETTING_DIR), path:gsub("/$", ""))
-                    M.reset()
-                    UIManager:scheduleIn(0, refresh)
-                end,
+    local function saveFolder(path)
+        G_reader_settings:saveSetting(_key(pfx, SETTING_DIR), path and path:gsub("/$", "") or "")
+        M.reset()
+        refresh()
+    end
+
+    local function chooseCurrentFolder()
+        local InfoMessage = require("ui/widget/infomessage")
+        local path = getCurrentLibraryFolder()
+        if not path then
+            UIManager:show(InfoMessage:new{
+                text = _lc("Open the target folder in the library first."),
+                timeout = 3,
             })
-        end)
+            return
+        end
+        saveFolder(path)
+    end
+
+    local function enterFolderPath()
+        local InputDialog = require("ui/widget/inputdialog")
+        local InfoMessage = require("ui/widget/infomessage")
+        local dlg
+        dlg = InputDialog:new{
+            title       = _lc("Image folder"),
+            input       = getFolder(pfx),
+            description = _lc("Enter an absolute folder path."),
+            buttons = {{
+                {
+                    text     = _lc("Cancel"),
+                    callback = function() UIManager:close(dlg) end,
+                },
+                {
+                    text             = _lc("Set"),
+                    is_enter_default = true,
+                    callback         = function()
+                        local raw = dlg:getInputText()
+                        local path = normalizeStartPath(raw)
+                        if not path then
+                            UIManager:show(InfoMessage:new{
+                                text = _lc("Folder not found."),
+                                timeout = 3,
+                            })
+                            return
+                        end
+                        UIManager:close(dlg)
+                        saveFolder(path)
+                    end,
+                },
+            }},
+        }
+        UIManager:show(dlg)
     end
 
     local function spinItem(text, title, info, get, set, min, max, step, unit, default)
@@ -310,7 +345,20 @@ function M.getMenuItems(ctx_menu)
                 return folder ~= "" and (_lc("Image folder") .. " - " .. (folder:match("([^/]+)$") or folder))
                     or _lc("Image folder")
             end,
-            callback       = chooseFolder,
+            sub_item_table = {
+                {
+                    text = _lc("Use current library folder"),
+                    callback = chooseCurrentFolder,
+                },
+                {
+                    text = _lc("Enter path"),
+                    callback = enterFolderPath,
+                },
+                {
+                    text = _lc("Clear"),
+                    callback = function() saveFolder("") end,
+                },
+            },
         },
         spinItem(
             function() return _lc("Height") .. " - " .. tostring(getHeightPx(pfx)) .. " px" end,
