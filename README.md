@@ -11,7 +11,6 @@ This repository tracks upstream SimpleUI and currently includes the upstream **1
 - **App Launcher module** — an Android-focused launcher row for opening selected external apps from the Home Screen
 - **Cover Deck section label toggle** — Cover Deck can show a dynamic section title based on source (`Recent Books` or `To Be Read`)
 - **Home Screen performance work** — additional fork-side optimisations around startup, stats/index usage, and expensive Home Screen rebuild paths
-- **Image folder selection changes** — the image module uses a simpler folder-selection flow based on the current library folder or a manually entered path, instead of KOReader's directory chooser
 
 If you are comparing this fork with the original project, those are the main user-facing differences.
 
