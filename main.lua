@@ -277,6 +277,13 @@ function SimpleUIPlugin:init()
                 -- homescreen actually needs them.
                 pcall(require, "desktop_modules/moduleregistry")
             end)
+            -- Silent automatic update check — 24 h throttle.
+            -- scheduleIn(3) ensures it runs after the first paint is stable
+            -- and does not compete with the module preload above.
+            UIManager:scheduleIn(3, function()
+                local ok, Updater = pcall(require, "sui_updater")
+                if ok and Updater then Updater.scheduleAutoCheck() end
+            end)
         end
     end)
     if not ok then logger.err("simpleui: init failed:", tostring(err)) end
