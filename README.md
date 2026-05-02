@@ -2,6 +2,19 @@
 
 A clean, distraction-free UI plugin for KOReader that transforms your reading experience. SimpleUI adds a **dedicated Home Screen**, a customisable bottom navigation bar, a top status bar, and a reworked library title bar, giving you instant access to your library, history, collections, and reading stats without navigating through nested menus.
 
+## This fork vs. upstream
+
+This repository tracks upstream SimpleUI and currently includes the upstream **1.4.1** changes, plus a few fork-specific additions and tweaks:
+
+- **Hardcover module** — a Home Screen module that shows your active `hardcover.app` reading goal, with configurable layout and background refresh
+- **Image module** — a Home Screen module that displays images from a chosen folder, with configurable size and timed rotation
+- **App Launcher module** — an Android-focused launcher row for opening selected external apps from the Home Screen
+- **Cover Deck section label toggle** — Cover Deck can show a dynamic section title based on source (`Recent Books` or `To Be Read`)
+- **Home Screen performance work** — additional fork-side optimisations around startup, stats/index usage, and expensive Home Screen rebuild paths
+- **Image folder selection changes** — the image module uses a simpler folder-selection flow based on the current library folder or a manually entered path, instead of KOReader's directory chooser
+
+If you are comparing this fork with the original project, those are the main user-facing differences.
+
 <div style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 10px; max-width: 1000px; justify-content: center;">
 <img src="https://github.com/user-attachments/assets/4ea92760-c2bf-488b-9f5a-1f663157c97f" width="240" height="324" alt="simpleUI1" style="object-fit: contain;" />
 <img src="https://github.com/user-attachments/assets/a1a7a2c7-6c0f-484e-b6fa-c78474661480" width="240" height="324" alt="simpleUI2" style="object-fit: contain;" />
