@@ -1231,6 +1231,15 @@ msgstr "Definições"
 #: sui_menu.lua:1857
 msgid "Settings on Long Tap"
 msgstr "Definições com Toque Longo"
+#: sui_menu.lua:2035
+msgid "Settings Tab"
+msgstr "Separador de Definições"
+#: sui_menu.lua:2036
+msgid "Show or hide the dedicated Simple UI tab in the menu bar.\nWhen hidden, Simple UI settings remain accessible via the main menu.\nTakes effect after a restart."
+msgstr "Mostrar ou ocultar o separador dedicado do Simple UI na barra de menus.\nQuando oculto, as definições do Simple UI continuam acessíveis pelo menu principal.\nTem efeito após reiniciar."
+#: sui_menu.lua:2047
+msgid "The Simple UI settings tab will be %s after restart.\n\nRestart now?"
+msgstr "O separador de definições do Simple UI ficará %s após reiniciar.\n\nReiniciar agora?"
 #: desktop_modules/module_clock.lua:494
 msgid "Show Battery"
 msgstr "Mostrar Bateria"

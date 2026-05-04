@@ -5,6 +5,15 @@
 --   • Browse by Author  — groups all books under a base folder by author
 --   • Browse by Series  — groups all books under a base folder by series
 --
+-- This module supersedes the former sui_metabrowser.lua (an overlay-based
+-- FileChooser subclass that used a slow file-scan fallback).  All behaviour
+-- from that module has been absorbed here:
+--   • doc_props (title/authors/series/series_index) are now forwarded on
+--     every file_list item so CoverBrowser renderers display correct metadata.
+--   • mandatory text is contextual: author-mode shows series+index per book;
+--     series-mode shows the author name (trimmed to "First et al." for multi).
+--   • Series ordering uses numeric series_index via _sortFiles (unchanged).
+--
 -- Implementation overview
 -- -----------------------
 -- Virtual paths encode the browse state in a fake filesystem path that the
@@ -514,6 +523,7 @@ local function _getVirtualList(fc, path, collate)
             _sortFiles(cached, dim_key)
             _matching_files_cache[path] = cached
         end
+        local is_author_dim = (dim_key == "author")
         for _, row in ipairs(cached) do
             local fullpath = row[1]
             local fname    = row[2]
@@ -521,7 +531,37 @@ local function _getVirtualList(fc, path, collate)
             -- build each list item, and it doubles as a stale-entry filter.
             local attr = lfs.attributes(fullpath)
             if attr and attr.mode == "file" and fc:show_file(fname, fullpath) then
-                files[#files + 1] = fc:getListItem(path, fname, fullpath, attr, collate)
+                local item = fc:getListItem(path, fname, fullpath, attr, collate)
+                -- Forward metadata from the SQL row so CoverBrowser and list-view
+                -- renderers can display title/author/series without re-reading
+                -- the sidecar. Mirrors what sui_metabrowser did via _buildBookItems.
+                if row.title or row.authors or row.series then
+                    item.doc_props = {
+                        display_title = row.title,
+                        authors       = row.authors,
+                        series        = row.series,
+                        series_index  = row.series_index,
+                    }
+                end
+                -- Contextual mandatory: in author-mode show series+index;
+                -- in series-mode show author. Falls back to abbreviated path.
+                if collate then
+                    if is_author_dim then
+                        if row.series and row.series ~= "" then
+                            local m = row.series
+                            if row.series_index then
+                                m = m .. " #" .. tostring(row.series_index)
+                            end
+                            item.mandatory = m
+                        end
+                    else
+                        if row.authors and row.authors ~= "" then
+                            -- Trim multi-author to first author + "et al."
+                            item.mandatory = row.authors:gsub("\n.*", " et al.")
+                        end
+                    end
+                end
+                files[#files + 1] = item
             end
         end
         return dirs, files

@@ -383,91 +383,22 @@ end
 -- Shows a preview dialog for a validated Nerd Font icon.
 -- on_confirm(sentinel) applies the icon; on_back() reopens the input dialog.
 local function _showNerdIconPreview(sentinel, on_confirm, on_back)
-    local Font            = require("ui/font")
-    local BB              = require("ffi/blitbuffer")
-    local TextWidget      = require("ui/widget/textwidget")
-    local FrameContainer  = require("ui/widget/container/framecontainer")
-    local CenterContainer = require("ui/widget/container/centercontainer")
-    local InputContainer  = require("ui/widget/container/inputcontainer")
-    local GestureRange    = require("ui/gesturerange")
-    local VerticalGroup   = require("ui/widget/verticalgroup")
-    local VerticalSpan    = require("ui/widget/verticalspan")
-    local ButtonTable     = require("ui/widget/buttontable")
-    local Geom            = require("ui/geometry")
+    local ConfirmBox = require("ui/widget/confirmbox")
+    local nerd_char  = Config.nerdIconChar(sentinel)
+    local hex        = sentinel:match("nerd:(.+)")
 
-    local nerd_char = Config.nerdIconChar(sentinel)
-    local hex       = sentinel:match("nerd:(.+)")
-
-    local preview_dlg
-    local function _close() UIManager:close(preview_dlg) end
-
-    local btn_table = ButtonTable:new{
-        width   = Screen:scaleBySize(280),
-        buttons = {{
-            {
-                text     = _("Cancel"),
-                -- on_back=nil means the InputDialog is still on the stack;
-                -- closing the preview is enough to return to it.
-                callback = function()
-                    _close()
-                    if on_back then on_back() end
-                end,
-            },
-            {
-                text     = _("Confirm"),
-                callback = function() _close() ; on_confirm(sentinel) end,
-            },
-        }},
-    }
-
-    local content = FrameContainer:new{
-        background = BB.COLOR_WHITE,
-        bordersize = Screen:scaleBySize(1),
-        radius     = Screen:scaleBySize(8),
-        padding    = Screen:scaleBySize(20),
-        VerticalGroup:new{
-            align = "center",
-            CenterContainer:new{
-                dimen = Geom:new{ w = Screen:scaleBySize(280), h = Screen:scaleBySize(110) },
-                TextWidget:new{
-                    text    = nerd_char,
-                    face    = Font:getFace("symbols", Screen:scaleBySize(80)),
-                    fgcolor = BB.COLOR_BLACK,
-                },
-            },
-            VerticalSpan:new{ width = Screen:scaleBySize(6) },
-            CenterContainer:new{
-                dimen = Geom:new{ w = Screen:scaleBySize(280), h = Screen:scaleBySize(26) },
-                TextWidget:new{
-                    text    = ("U+%s"):format(hex),
-                    face    = Font:getFace("cfont", Screen:scaleBySize(15)),
-                    fgcolor = BB.COLOR_BLACK,
-                },
-            },
-            VerticalSpan:new{ width = Screen:scaleBySize(16) },
-            btn_table,
-        },
-    }
-
-    -- Wrap in an InputContainer that intercepts all taps over the full screen.
-    -- This prevents taps on the preview buttons from leaking to the InputDialog
-    -- below (which has is_always_active=true and would close itself on outside taps).
-    local full = Geom:new{ w = Screen:getWidth(), h = Screen:getHeight() }
-    local inner = CenterContainer:new{ dimen = full, content }
-    preview_dlg = InputContainer:new{
-        dimen             = full,
-        covers_fullscreen = true,
-        modal             = true,
-        inner,
-    }
-    -- Consume all tap/touch events so they never reach always_active widgets below.
-    preview_dlg.ges_events = {
-        TapAny = { GestureRange:new{ ges = "tap",   range = full } },
-        HoldAny= { GestureRange:new{ ges = "hold",  range = full } },
-    }
-    function preview_dlg:onTapAny()  return true end
-    function preview_dlg:onHoldAny() return true end
-    UIManager:show(preview_dlg)
+    -- ConfirmBox is a proper FocusManager subclass: Left/Right/Press/Back all
+    -- work out of the box and it correctly resets the device text-input state
+    -- that InputDialog left behind (which was preventing key events from reaching
+    -- our previous custom FocusManager overlay).
+    UIManager:show(ConfirmBox:new{
+        text        = ("U+%s  %s"):format(hex, nerd_char) .. "\n\n" ..
+                      _("Use this Nerd Font icon?"),
+        ok_text     = _("Confirm"),
+        cancel_text = _("Cancel"),
+        ok_callback = function() on_confirm(sentinel) end,
+        cancel_callback = function() if on_back then on_back() end end,
+    })
 end
 
 -- Opens an InputDialog for entering a Nerd Font hex codepoint.

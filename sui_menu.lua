@@ -32,34 +32,86 @@ local Bottombar = require("sui_bottombar")
 
 return function(SimpleUIPlugin)
 
--- Register the plugin icon into KOReader's icon cache once per installer call
--- (guarded by the icons_path["simpleui_settings"] nil-check so it is a no-op
--- on subsequent reloads within the same session).
--- Moved here from module-level so it only runs when the menu is first opened,
--- not at plugin startup.
+-- Secondary icon registration: runs when sui_menu is first loaded (lazy fallback).
+-- The primary registration happens eagerly in main.lua:init() with absolute-path
+-- resolution and DataStorage copy.  This block is kept as a belt-and-suspenders
+-- fallback for cases where sui_menu is loaded without a prior main.lua init
+-- (e.g. unit tests, or future refactoring).
+--
+-- Fixes vs. the original three-strategy approach:
+--   * plugin_root is resolved to an absolute path via lfs.currentdir() when
+--     debug.getinfo returns a relative source path (happens on some devices).
+--   * ICONS_PATH and ICONS_DIRS are collected in a SINGLE upvalue scan instead
+--     of two sequential loops, matching the Zen UI implementation.
+--   * Strategy 3 (iw.init patch) is retained for hardened builds where upvalue
+--     access is unavailable.
 do
     local src = debug.getinfo(1, "S").source or ""
     local plugin_root = (src:sub(1,1) == "@") and src:sub(2):match("^(.*)/[^/]+$") or nil
+    -- Resolve relative paths to absolute (fix for devices where debug.getinfo
+    -- returns e.g. "plugins/simpleui.koplugin/sui_menu.lua" instead of an
+    -- absolute path).
+    if plugin_root and plugin_root:sub(1, 1) ~= "/" then
+        local ok_lfs2, lfs2 = pcall(require, "libs/libkoreader-lfs")
+        local cwd = ok_lfs2 and lfs2 and lfs2.currentdir()
+        if cwd then plugin_root = cwd .. "/" .. plugin_root end
+    end
     if plugin_root then
         local lfs_ok, lfs = pcall(require, "libs/libkoreader-lfs")
         local iw_ok,  iw  = pcall(require, "ui/widget/iconwidget")
         if lfs_ok and iw_ok and iw then
+            local icon_file = plugin_root .. "/icons/settings.svg"
+            local icon_exists = lfs.attributes(icon_file, "mode") == "file"
+
             local iw_init = rawget(iw, "init")
+
+            local injected_path = false
+            local injected_dir  = false
+
             if type(iw_init) == "function" then
-                local icons_path
+                -- Single scan: collect both ICONS_PATH and ICONS_DIRS together.
+                local icons_path, icons_dirs
                 for i = 1, 64 do
                     local uname, uval = debug.getupvalue(iw_init, i)
                     if uname == nil then break end
                     if uname == "ICONS_PATH" and type(uval) == "table" then
-                        icons_path = uval; break
+                        icons_path = uval
+                    elseif uname == "ICONS_DIRS" and type(uval) == "table" then
+                        icons_dirs = uval
                     end
+                    if icons_path and icons_dirs then break end
                 end
-                if icons_path and not icons_path["simpleui_settings"] then
-                    local p = plugin_root .. "/icons/settings.svg"
-                    if lfs.attributes(p, "mode") == "file" then
-                        icons_path["simpleui_settings"] = p
+                if icons_path then
+                    if icon_exists and not icons_path["simpleui_settings"] then
+                        icons_path["simpleui_settings"] = icon_file
                     end
+                    injected_path = true
                 end
+                if icons_dirs then
+                    local icons_subdir = plugin_root .. "/icons"
+                    local already = false
+                    for _, d in ipairs(icons_dirs) do
+                        if d == icons_subdir then already = true; break end
+                    end
+                    if not already then
+                        table.insert(icons_dirs, 1, icons_subdir)
+                    end
+                    injected_dir = true
+                end
+            end
+
+            -- Strategy 3: if upvalue injection was unavailable (hardened builds),
+            -- patch IconWidget.init so icon="simpleui_settings" resolves directly.
+            if not injected_path and not injected_dir and icon_exists then
+                local orig_init = iw.init
+                iw.init = function(self_iw)
+                    if self_iw.icon == "simpleui_settings" and not self_iw.file and not self_iw.image then
+                        self_iw.file = icon_file
+                        return
+                    end
+                    if type(orig_init) == "function" then orig_init(self_iw) end
+                end
+                logger.info("simpleui: icon registered via IconWidget.init patch (fallback)")
             end
         end
     end
@@ -1968,6 +2020,29 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                 sub_item_table = {
                     { text = _("Status Bar"), sub_item_table_func = makeTopbarMenu   },
                     { text = _("Title Bar"),  sub_item_table_func = makeTitleBarMenu },
+                    {
+                        text       = _("Settings Tab"),
+                        help_text  = _("Show or hide the dedicated Simple UI tab in the menu bar.\nWhen hidden, Simple UI settings remain accessible via the main menu.\nTakes effect after a restart."),
+                        checked_func = function()
+                            return G_reader_settings:nilOrTrue("simpleui_settings_tab_enabled")
+                        end,
+                        keep_menu_open = true,
+                        callback = function()
+                            local on = G_reader_settings:nilOrTrue("simpleui_settings_tab_enabled")
+                            G_reader_settings:saveSetting("simpleui_settings_tab_enabled", not on)
+                            UIManager:show(ConfirmBox():new{
+                                text = string.format(
+                                    _("The Simple UI settings tab will be %s after restart.\n\nRestart now?"),
+                                    on and _("hidden") or _("shown")
+                                ),
+                                ok_text = _("Restart"), cancel_text = _("Later"),
+                                ok_callback = function()
+                                    G_reader_settings:flush()
+                                    UIManager:restartKOReader()
+                                end,
+                            })
+                        end,
+                    },
                 },
             },
             { text = _("Home Screen"), sub_item_table_func = makeHomescreenMenu },

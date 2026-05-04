@@ -83,6 +83,96 @@ function SimpleUIPlugin:init()
         self.ui.menu:registerToMainMenu(self)
 
         -- -------------------------------------------------------------------
+        -- Icon registration: register the settings tab icon into KOReader's
+        -- icon system at plugin init time (eager, not lazy).
+        --
+        -- This mirrors the approach used by Zen UI (common/inject_icons.lua):
+        --   1. Resolve plugin_root to an ABSOLUTE path.  On some KOReader
+        --      builds/devices debug.getinfo returns a relative source path
+        --      (e.g. "plugins/simpleui.koplugin/main.lua"); without the
+        --      lfs.currentdir() fix, every subsequent lfs.attributes() call
+        --      fails silently and all three icon-injection strategies in
+        --      sui_menu.lua are skipped, leaving the tab icon blank.
+        --   2. Copy the SVG to DataStorage/icons/ (persistent, survives
+        --      between sessions).  KOReader's ICONS_DIRS always includes
+        --      that directory, so the icon resolves even if the runtime
+        --      upvalue injection below fails (e.g. hardened builds).
+        --   3. Inject the resolved path into IconWidget's ICONS_PATH and
+        --      ICONS_DIRS upvalue caches so the icon is immediately available
+        --      in the current session without needing a restart.
+        --      Unlike sui_menu.lua's three-strategy approach, both caches are
+        --      populated in a single upvalue scan (matching Zen UI's method).
+        -- -------------------------------------------------------------------
+        do
+            -- Step 1: resolve plugin_root to an absolute path.
+            local src = debug.getinfo(1, "S").source or ""
+            local plugin_root = (src:sub(1, 1) == "@") and src:sub(2):match("^(.*)/[^/]+$") or nil
+            if plugin_root and plugin_root:sub(1, 1) ~= "/" then
+                local ok_lfs2, lfs2 = pcall(require, "libs/libkoreader-lfs")
+                local cwd = ok_lfs2 and lfs2 and lfs2.currentdir()
+                if cwd then plugin_root = cwd .. "/" .. plugin_root end
+            end
+
+            if plugin_root then
+                local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
+                if ok_lfs and lfs then
+                    local icon_src = plugin_root .. "/icons/settings.svg"
+                    if lfs.attributes(icon_src, "mode") == "file" then
+
+                        -- Step 2: copy to DataStorage/icons/simpleui_settings.svg
+                        -- so ICONS_DIRS disk lookup works even without upvalue injection.
+                        pcall(function()
+                            local DataStorage = require("datastorage")
+                            local ffiutil     = require("ffi/util")
+                            local user_dir    = DataStorage:getDataDir() .. "/icons"
+                            if lfs.attributes(user_dir, "mode") ~= "directory" then
+                                lfs.mkdir(user_dir)
+                            end
+                            local dst = user_dir .. "/simpleui_settings.svg"
+                            if lfs.attributes(dst, "mode") ~= "file" then
+                                ffiutil.copyFile(icon_src, dst)
+                            end
+                        end)
+
+                        -- Step 3: inject into IconWidget's runtime upvalue caches.
+                        -- Scan once, collect both ICONS_PATH and ICONS_DIRS together.
+                        pcall(function()
+                            local iw      = require("ui/widget/iconwidget")
+                            local iw_init = rawget(iw, "init")
+                            if type(iw_init) ~= "function" then return end
+                            local icons_path, icons_dirs
+                            for i = 1, 64 do
+                                local uname, uval = debug.getupvalue(iw_init, i)
+                                if uname == nil then break end
+                                if uname == "ICONS_PATH" and type(uval) == "table" then
+                                    icons_path = uval
+                                elseif uname == "ICONS_DIRS" and type(uval) == "table" then
+                                    icons_dirs = uval
+                                end
+                                if icons_path and icons_dirs then break end
+                            end
+                            if icons_path and not icons_path["simpleui_settings"] then
+                                icons_path["simpleui_settings"] = icon_src
+                            end
+                            if icons_dirs then
+                                local icons_subdir = plugin_root .. "/icons"
+                                local already = false
+                                for _, d in ipairs(icons_dirs) do
+                                    if d == icons_subdir then already = true; break end
+                                end
+                                if not already then
+                                    table.insert(icons_dirs, 1, icons_subdir)
+                                end
+                            end
+                        end)
+
+                    end
+                end
+            end
+        end
+        -- -------------------------------------------------------------------
+
+        -- -------------------------------------------------------------------
         -- Tab injection: add a dedicated "Simple UI" tab to the KOReader menu
         -- bar (both FileManager and Reader), positioned right after the
         -- QuickSettings tab.  We patch setUpdateItemTable on the menu class
@@ -138,6 +228,8 @@ function SimpleUIPlugin:init()
                 local orig_sut = menu_class.setUpdateItemTable
                 menu_class.setUpdateItemTable = function(m_self)
                     orig_sut(m_self)
+                    -- Respect the user's choice: default on (nilOrTrue), skip if explicitly false.
+                    if not G_reader_settings:nilOrTrue("simpleui_settings_tab_enabled") then return end
                     if type(m_self.tab_item_table) ~= "table" then return end
                     local build_fn = rawget(SimpleUIPlugin, "buildTabItems")
                     if type(build_fn) ~= "function" then return end
