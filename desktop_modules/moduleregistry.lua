@@ -51,6 +51,7 @@ local MODULES = {
     { require_mod = "desktop_modules/module_app_launcher"  },
     { require_mod = "desktop_modules/module_hardcover"     },
     { require_mod = "desktop_modules/module_quick_actions" },
+    { require_mod = "desktop_modules/module_action_list"   },
 }
 
 local _loaded        = nil

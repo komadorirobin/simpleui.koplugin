@@ -43,6 +43,7 @@ local _hs_boot_done = false
 -- Makes UIManager.show defer the FM paint until the homescreen is on top,
 -- eliminating the visible flash between reader and homescreen.
 local _hs_pending_after_reader = false
+local _hs_pending_prev_action   = nil   -- real previous tab before active_action was set to "homescreen"
 
 -- Cached value of the "start_with" setting. Updated whenever the user changes
 -- the setting so UIManager.show / close avoid repeated settings reads.
@@ -365,7 +366,10 @@ function M.patchFileManagerClass(plugin)
         -- On the very first boot, schedule the homescreen auto-open for onShow.
         if not _hs_boot_done then
             _hs_boot_done = true
-            if isStartWithHS() and tabInTabs("homescreen", tabs) then
+            -- Note: we intentionally do NOT require the "homescreen" tab to be
+            -- present in the navbar. "Start with Home Screen" is a launch
+            -- behaviour, independent of whether the user has kept the tab.
+            if isStartWithHS() then
                 plugin.active_action      = "homescreen"
                 fm_self._hs_autoopen_pending = true
             end
@@ -447,6 +451,11 @@ function M.patchFileManagerClass(plugin)
                 end
             end
             if not this._navbar_container then return end
+            -- Skip the bar rebuild when navigate() set _navbar_tab_nav_in_progress:
+            -- navigate() will call replaceBar immediately after this returns, so
+            -- rebuilding here produces a redundant buildBarWidget + setDirty that
+            -- slows down every injected-widget → FM tab transition.
+            if this._navbar_tab_nav_in_progress then return end
             local t = Config.loadTabConfig()
             plugin:_registerTouchZones(this)
             Bottombar.replaceBar(this, Bottombar.buildBarWidget(plugin.active_action, t), t)
@@ -667,6 +676,29 @@ function M.patchStartWithMenu()
         local sub    = result.sub_item_table
         if type(sub) ~= "table" then return result end
 
+        -- Wrap every native item's callback to clear _start_with_hs when a
+        -- native option is selected. Without this, selecting e.g. "file browser"
+        -- writes the setting directly but leaves _start_with_hs=true, causing
+        -- the HS to keep opening on boot even after the user switched away.
+        for _, item in ipairs(sub) do
+            if item.radio and type(item.callback) == "function" then
+                local orig_cb    = item.callback
+                local orig_check = item.checked_func
+                item.callback = function()
+                    _start_with_hs = false
+                    orig_cb()
+                end
+                -- Also read the setting directly so checked_func stays in sync
+                -- even when _start_with_hs cache and the persisted setting drift.
+                if orig_check then
+                    item.checked_func = function()
+                        if _start_with_hs then return false end
+                        return orig_check()
+                    end
+                end
+            end
+        end
+
         -- Resolve gettext once so the loop and the menu entry share the same string.
         local hs_text = _("Home Screen")
 
@@ -678,7 +710,11 @@ function M.patchStartWithMenu()
         if not found then
             table.insert(sub, math.max(1, #sub), {
                 text         = hs_text,
-                checked_func = function() return isStartWithHS() end,
+                -- Read the setting directly as ground truth; fall back to the
+                -- cache only when the setting hasn't been written yet.
+                checked_func = function()
+                    return G_reader_settings:readSetting("start_with") == "homescreen_simpleui"
+                end,
                 callback = function()
                     G_reader_settings:saveSetting("start_with", "homescreen_simpleui")
                     _start_with_hs = true
@@ -690,7 +726,7 @@ function M.patchStartWithMenu()
         -- Update the parent item label when Home Screen is the active choice.
         local orig_text_func = result.text_func
         result.text_func = function()
-            if isStartWithHS() then
+            if G_reader_settings:readSetting("start_with") == "homescreen_simpleui" then
                 return _("Start with") .. ": " .. _("Home Screen")
             end
             return orig_text_func and orig_text_func() or _("Start with")
@@ -1227,15 +1263,19 @@ function M.patchUIManagerShow(plugin)
             end)()
             if HS and not HS._instance then
                 if not plugin._goalTapCallback then plugin:addToMainMenu({}) end
-                local tabs        = Config.loadTabConfig()
-                local prev_action = plugin.active_action
-                Bottombar.setActiveAndRefreshFM(plugin, "homescreen", tabs)
+                -- active_action was already set to "homescreen" in UIManager.close
+                -- (when _hs_pending_after_reader was flagged), so no replaceBar or setDirty
+                -- needed here — the FM is covered by the HS and its paint is never visible.
+                -- Use the stashed pre-change value so _navbar_prev_action records the real
+                -- tab that was active before the reader was opened (e.g. "home"), not
+                -- "homescreen" which active_action was changed to.
+                local prev_action = _hs_pending_prev_action or plugin.active_action
+                _hs_pending_prev_action = nil
                 HS.show(
                     function(aid) plugin:_navigate(aid, plugin.ui, Config.loadTabConfig(), false) end,
                     plugin._goalTapCallback
                 )
-                -- Fix _navbar_prev_action: setActiveAndRefreshFM already set it
-                -- to "homescreen"; overwrite with the real previous tab so
+                -- Fix _navbar_prev_action: overwrite with the real previous tab so
                 -- Back closes to the correct tab.
                 local hs_inst = HS._instance
                 if hs_inst then hs_inst._navbar_prev_action = prev_action end
@@ -1296,7 +1336,15 @@ function M.patchUIManagerShow(plugin)
         elseif widget.name == "history" and tabs_set["history"] then
             effective_action = Bottombar.setActiveAndRefreshFM(plugin, "history", tabs)
         elseif widget.name == "homescreen" and tabs_set["homescreen"] then
-            effective_action = Bottombar.setActiveAndRefreshFM(plugin, "homescreen", tabs)
+            -- Skip the FM bar rebuild + setDirty when active_action is already
+            -- "homescreen" (e.g. set in UIManager.close before the reader closed).
+            -- setupLayout already built the correct bar; rebuilding it here and
+            -- calling setDirty(FM) is redundant since the FM is covered by the HS.
+            if plugin.active_action ~= "homescreen" then
+                effective_action = Bottombar.setActiveAndRefreshFM(plugin, "homescreen", tabs)
+            else
+                effective_action = "homescreen"
+            end
         elseif widget.name == "coll_list"
                or (widget.name == "collections" and not Config.isFavoritesWidget(widget)) then
             if tabs_set["collections"] then
@@ -1422,7 +1470,11 @@ function M.patchUIManagerShow(plugin)
             M.setFMPathBase("", plugin.ui)
         end
 
-        UIManager:setDirty(widget[1], "ui")
+        -- For the homescreen, onShow will call setDirty(self) covering the full
+        -- screen immediately after orig_show returns — skip the redundant partial dirty.
+        if widget.name ~= "homescreen" then
+            UIManager:setDirty(widget[1], "ui")
+        end
 
         -- Schedule a navpager arrow update for the next event-loop tick.
         -- Snapshot has_prev/has_next now to avoid races with a second
@@ -1649,6 +1701,18 @@ function M.patchUIManagerClose(plugin)
                         local return_to_folder = G_reader_settings:isTrue("navbar_hs_return_to_book_folder")
                         if not return_to_folder then
                             _hs_pending_after_reader = true
+                            -- Stash the real previous tab so the _hs_pending handler can
+                            -- set it on hs_inst._navbar_prev_action correctly, even after
+                            -- active_action is changed to "homescreen" below.
+                            _hs_pending_prev_action = plugin.active_action
+                            -- Pre-set active_action so that when UIManager.show(HS) runs
+                            -- the inject-path guard sees "homescreen" and skips the redundant
+                            -- setActiveAndRefreshFM + setDirty(FM) — the FM is covered by HS
+                            -- and its bar will be corrected by _restoreTabInFM when HS closes.
+                            local _ao2 = { bookmark_browser=true, wifi_toggle=true, frontlight=true, power=true }
+                            if not _ao2[plugin.active_action] then
+                                plugin.active_action = "homescreen"
+                            end
                             -- Lazy refresh: the user is looking at the HS, not the FM
                             -- file list. Deferring refreshPath() until the HS closes
                             -- eliminates I/O contention with the HS widget build and
@@ -1961,7 +2025,8 @@ end
 -- showHSAfterResume
 -- Opens the homescreen after the device wakes from suspend.
 -- Runs only when "Start with Homescreen" is active, the reader is closed,
--- the homescreen tab exists, and the homescreen is not already visible.
+-- and the homescreen is not already visible. The homescreen tab does NOT
+-- need to be present in the navbar for this to fire.
 -- Called from SimpleUIPlugin:onResume() in main.lua.
 -- ---------------------------------------------------------------------------
 
@@ -1972,7 +2037,9 @@ function M.showHSAfterResume(plugin)
     if RUI and RUI.instance then return end
 
     local tabs = Config.loadTabConfig()
-    if not tabInTabs("homescreen", tabs) then return end
+    -- Note: we intentionally do NOT require the "homescreen" tab to be in
+    -- the navbar. "Start with Home Screen" is a launch behaviour that should
+    -- work regardless of whether the user keeps the tab visible.
 
     local HS = liveHS()
     if HS and HS._instance then
@@ -2158,6 +2225,138 @@ function M.uninstallButtonBoundsDebug(plugin)
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- Reader-close helpers for gesture actions
+-- ---------------------------------------------------------------------------
+
+-- Close the reader and open the Homescreen afterwards, exactly as if
+-- "Start with Homescreen" were active, regardless of the actual setting.
+-- Safe to call when the reader is NOT open (no-op in that case).
+function M.closeReaderToHomescreen(plugin)
+    local RUI = package.loaded["apps/reader/readerui"]
+    if not (RUI and RUI.instance) then return end
+    local readerui = RUI.instance
+
+    local file = readerui.document and readerui.document.file
+
+    -- Set lazy_refresh so the FM file-list scan is deferred until the HS
+    -- closes, matching the native path's I/O optimisation.
+    local fm_pre = liveFM()
+    if fm_pre then fm_pre._sui_lazy_refresh_path = true end
+
+    -- Stash the current tab so the HS Back button returns to the right place.
+    local prev_action = plugin.active_action
+
+    -- Mark this close as gesture-triggered so onCloseDocument can distinguish
+    -- it from a menu-triggered close.  The flag is set here, immediately before
+    -- onClose(), and consumed (read + cleared) in onCloseDocument.
+    -- No KOReader internals are patched — this is entirely within our own code.
+    plugin._closing_via_gesture = true
+
+    if isStartWithHS() then
+        -- "Start with Homescreen" is active: mark tearing_down so the patched
+        -- UIManager.close does NOT set _hs_pending_after_reader (that path relies
+        -- on UIManager:show firing, which never happens when FM.instance already
+        -- exists — showFileManager just calls changeToPath instead). We open the
+        -- HS ourselves via scheduleIn below, same as the !isStartWithHS() path.
+        readerui.tearing_down = true
+    end
+
+    readerui:onClose()
+    readerui:showFileManager(file)
+
+    -- After the FM is on the stack, open the HS on top.
+    -- This handles both cases: when "Start with Homescreen" is active and when
+    -- it is not. When active, FM.instance already exists so UIManager:show is
+    -- never called and the _hs_pending_after_reader hook never fires — we must
+    -- open the HS directly. When not active, the UIManager patches gate on
+    -- isStartWithHS() so they would never open it either.
+    UIManager:scheduleIn(0, function()
+        if UIManager._exit_code ~= nil then return end
+        local RUI2 = package.loaded["apps/reader/readerui"]
+        if RUI2 and RUI2.instance then return end
+        local HS = liveHS() or (function()
+            local ok, m = pcall(require, "sui_homescreen"); return ok and m
+        end)()
+        if not HS or HS._instance then return end
+        local fm_ref = liveFM()
+        -- Abort if another fullscreen widget is already on top of the FM.
+        if fm_ref then
+            for _, entry in ipairs(UI.getWindowStack()) do
+                local w = entry.widget
+                if w and w ~= fm_ref and w.covers_fullscreen then return end
+            end
+        end
+        -- Close any orphaned non-fullscreen popups before showing the HS.
+        local to_close = {}
+        for _, entry in ipairs(UI.getWindowStack()) do
+            local w = entry.widget
+            if w and w ~= fm_ref and not w.covers_fullscreen then
+                to_close[#to_close + 1] = w
+            end
+        end
+        for _, w in ipairs(to_close) do UIManager:close(w) end
+
+        local tabs = Config.loadTabConfig()
+        Bottombar.setActiveAndRefreshFM(plugin, "homescreen", tabs)
+        if not plugin._goalTapCallback then plugin:addToMainMenu({}) end
+        HS.show(
+            function(aid) plugin:_navigate(aid, plugin.ui, tabs, false) end,
+            plugin._goalTapCallback
+        )
+        local hs_inst = HS._instance
+        if hs_inst then hs_inst._navbar_prev_action = prev_action end
+    end)
+end
+
+-- Close the reader and return to the Library (FM at home_dir) with no
+-- Homescreen appearing on top — equivalent to the user closing the reader
+-- when "return to book folder" / "Start with Homescreen" are both off.
+-- Safe to call when the reader is NOT open (no-op in that case).
+function M.closeReaderToLibrary(plugin)
+    local RUI = package.loaded["apps/reader/readerui"]
+    if not (RUI and RUI.instance) then return end
+    local readerui = RUI.instance
+
+    -- _navbar_closing_intentionally on the widget makes the patched
+    -- UIManager.close skip the entire HS re-open block (see the guard at the
+    -- top of that block). This is the same flag used by tab-navigation to
+    -- suppress the HS when closing overlays intentionally.
+    readerui._navbar_closing_intentionally = true
+
+    local file = readerui.document and readerui.document.file
+    plugin._closing_via_gesture = true
+    readerui:onClose()
+    -- onClose() calls UIManager:close(self.dialog) which runs synchronously,
+    -- so the flag has already been consumed. No need to clear it.
+    readerui:showFileManager(file)
+
+    -- After the FM appears, navigate to home_dir and rebuild the navbar.
+    UIManager:scheduleIn(0, function()
+        local fm_ref = liveFM()
+        if not fm_ref then return end
+        local home = G_reader_settings:readSetting("home_dir")
+        local lfs  = require("libs/libkoreader-lfs")
+        if not home or lfs.attributes(home, "mode") ~= "directory" then
+            home = require("device").home_dir
+        end
+        if home and fm_ref.file_chooser then
+            fm_ref._navbar_suppress_path_change = true
+            fm_ref.file_chooser:changeToPath(home)
+            fm_ref._navbar_suppress_path_change = nil
+            if fm_ref.updateTitleBarPath then
+                pcall(function() fm_ref:updateTitleBarPath(home, true) end)
+            end
+        elseif fm_ref.file_chooser then
+            fm_ref.file_chooser:refreshPath()
+        end
+        local tabs = Config.loadTabConfig()
+        plugin.active_action = "home"
+        Bottombar.replaceBar(fm_ref, Bottombar.buildBarWidget("home", tabs), tabs)
+        UIManager:setDirty(fm_ref, "ui")
+    end)
+end
+
 function M.installAll(plugin)
     M.patchFileManagerClass(plugin)
     M.patchStartWithMenu()
@@ -2331,10 +2530,20 @@ function M.teardownAll(plugin)
 
     M.uninstallButtonBoundsDebug(plugin)
 
+    -- Clear transient close-path flag.
+    plugin._closing_via_gesture = nil
+
     -- Reset module-level state so a re-enable cycle starts clean.
+    -- Transient flags are cleared unconditionally.
+    -- _start_with_hs is re-read from the persisted setting instead of being
+    -- forced to false: if the user does disable→enable in the same session,
+    -- package.loaded keeps this module alive so the top-level initialiser
+    -- never runs again, and hardcoding false would leave isStartWithHS() wrong
+    -- for the rest of the session.
     _hs_boot_done             = false
     _hs_pending_after_reader  = false
-    _start_with_hs            = nil
+    _hs_pending_prev_action   = nil
+    _start_with_hs            = G_reader_settings:readSetting("start_with", "filemanager") == "homescreen_simpleui"
     _navpager_rebuild_pending = false
 
     -- Clear lazy-refresh flag on the FM instance, if any.

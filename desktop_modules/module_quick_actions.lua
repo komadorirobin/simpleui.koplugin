@@ -27,6 +27,9 @@ local QA              = require("sui_quickactions")
 local UI  = require("sui_core")
 local PAD = UI.PAD
 local LABEL_H = UI.LABEL_H
+local CLR_TEXT_SUB = UI.CLR_TEXT_SUB
+
+local _BASE_PH_FS = Screen:scaleBySize(11)
 
 local _CLR_BAR_FG  = Blitbuffer.gray(0.75)
 local _CLR_FLAT_BG = Blitbuffer.gray(0.08)
@@ -74,9 +77,26 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Core widget builder (shared by all slots)
+-- mode: "default" | "flat" | "bare"
+--   default — white background, grey border, frame_pad padding
+--   flat    — dark background, no border, frame_pad padding
+--   bare    — no background, no border, no padding (icon fills frame_sz)
 -- ---------------------------------------------------------------------------
-local function buildQAWidget(w, action_ids, show_labels, on_tap_fn, d, flat)
-    if not action_ids or #action_ids == 0 then return nil end
+local function buildQAWidget(w, action_ids, show_labels, on_tap_fn, d, mode)
+    local ph_fs = math.max(8, math.floor(_BASE_PH_FS * (d.frame_sz / (_BASE_ICON_SZ + _BASE_FRAME_PAD * 2))))
+    local function _placeholder()
+        return CenterContainer:new{
+            dimen = Geom:new{ w = w, h = d.frame_sz },
+            TextWidget:new{
+                text    = _("No actions configured"),
+                face    = Font:getFace("smallinfofont", ph_fs),
+                fgcolor = CLR_TEXT_SUB,
+                width   = w - PAD * 2,
+            },
+        }
+    end
+
+    if not action_ids or #action_ids == 0 then return _placeholder() end
 
     local valid_ids = {}
     local cqa_valid = getCustomQAValid()
@@ -88,14 +108,16 @@ local function buildQAWidget(w, action_ids, show_labels, on_tap_fn, d, flat)
         end
         -- unknown IDs (neither a live custom QA nor a known built-in) are silently dropped
     end
-    if #valid_ids == 0 then return nil end
-
-    local n        = math.min(#valid_ids, 6)
+    if #valid_ids == 0 then return _placeholder() end
+    local n        = #valid_ids
     local inner_w  = w - PAD * 2
     local lbl_h    = show_labels and d.lbl_h or 0
     local lbl_sp   = show_labels and d.lbl_sp or 0
     local gap      = n <= 1 and 0 or math.floor((inner_w - n * d.frame_sz) / (n - 1))
     local left_off = n == 1 and math.floor((inner_w - d.frame_sz) / 2) or 0
+
+    -- In bare mode the icon keeps the same size as the other modes (no padding/border around it).
+    local is_bare = mode == "bare"
 
     local row = HorizontalGroup:new{ align = "top" }
 
@@ -103,14 +125,16 @@ local function buildQAWidget(w, action_ids, show_labels, on_tap_fn, d, flat)
         local aid   = valid_ids[i]
         local entry = getEntry(aid)
 
+        local icon_sz_used = d.icon_sz
+
         local icon_widget
         local nerd_char = Config.nerdIconChar(entry.icon)
         if nerd_char then
             icon_widget = CenterContainer:new{
-                dimen = Geom:new{ w = d.icon_sz, h = d.icon_sz },
+                dimen = Geom:new{ w = icon_sz_used, h = icon_sz_used },
                 TextWidget:new{
                     text    = nerd_char,
-                    face    = Font:getFace("symbols", math.floor(d.icon_sz * 0.6)),
+                    face    = Font:getFace("symbols", math.floor(icon_sz_used * 0.6)),
                     fgcolor = Blitbuffer.COLOR_BLACK,
                     padding = 0,
                 },
@@ -118,19 +142,19 @@ local function buildQAWidget(w, action_ids, show_labels, on_tap_fn, d, flat)
         else
             icon_widget = ImageWidget:new{
                 file    = entry.icon,
-                width   = d.icon_sz,
-                height  = d.icon_sz,
+                width   = icon_sz_used,
+                height  = icon_sz_used,
                 is_icon = true,
                 alpha   = true,
             }
         end
 
         local icon_frame = FrameContainer:new{
-            bordersize = flat and 0 or 1,
-            color      = flat and nil or _CLR_BAR_FG,
-            background = flat and _CLR_FLAT_BG or Blitbuffer.COLOR_WHITE,
-            radius     = d.corner_r,
-            padding    = d.frame_pad,
+            bordersize = (mode == "default") and 1 or 0,
+            color      = (mode == "default") and _CLR_BAR_FG or nil,
+            background = (mode == "flat") and _CLR_FLAT_BG or nil,
+            radius     = is_bare and 0 or d.corner_r,
+            padding    = is_bare and 0 or d.frame_pad,
             icon_widget,
         }
 
@@ -188,10 +212,11 @@ end
 local function makeSlot(slot)
     -- Keys built at call-time using ctx.pfx — works for any page prefix.
     local slot_suffix = "quick_actions_" .. slot
-    local TYPE_KEY    = slot_suffix .. "_type"  -- "default" | "flat"
+    local TYPE_KEY    = slot_suffix .. "_type"  -- "default" | "flat" | "bare"
 
-    local function isFlat(pfx)
-        return G_reader_settings:readSetting(pfx .. TYPE_KEY) == "flat"
+    -- Returns the current type string; defaults to "default" when unset.
+    local function getType(pfx)
+        return G_reader_settings:readSetting(pfx .. TYPE_KEY) or "default"
     end
 
     local S = {}
@@ -365,7 +390,7 @@ local function makeSlot(slot)
         -- Apply independent label text scale.
         local lbl_scale = Config.getItemLabelScale(S.id, ctx.pfx)
         d.lbl_fs = math.max(6, math.floor(d.lbl_fs * lbl_scale))
-        return buildQAWidget(w, qa_ids, show_labels, ctx.on_qa_tap, d, isFlat(ctx.pfx))
+        return buildQAWidget(w, qa_ids, show_labels, ctx.on_qa_tap, d, getType(ctx.pfx))
     end
 
     function S.getHeight(ctx)
@@ -403,13 +428,16 @@ local function makeSlot(slot)
         })
         items[#items + 1] = {
             text_func = function()
-                local t = isFlat(pfx) and _lc("Flat") or _lc("Default")
-                return _lc("Type") .. " — " .. t
+                local mode = getType(pfx)
+                local label = mode == "flat" and _lc("Flat")
+                           or mode == "bare" and _lc("Bare")
+                           or _lc("Default")
+                return _lc("Type") .. " — " .. label
             end,
             sub_item_table = {
                 {
                     text           = _lc("Default"),
-                    checked_func   = function() return not isFlat(pfx) end,
+                    checked_func   = function() return getType(pfx) == "default" end,
                     keep_menu_open = true,
                     callback       = function()
                         G_reader_settings:saveSetting(pfx .. TYPE_KEY, "default")
@@ -418,10 +446,19 @@ local function makeSlot(slot)
                 },
                 {
                     text           = _lc("Flat"),
-                    checked_func   = function() return isFlat(pfx) end,
+                    checked_func   = function() return getType(pfx) == "flat" end,
                     keep_menu_open = true,
                     callback       = function()
                         G_reader_settings:saveSetting(pfx .. TYPE_KEY, "flat")
+                        refresh()
+                    end,
+                },
+                {
+                    text           = _lc("Bare"),
+                    checked_func   = function() return getType(pfx) == "bare" end,
+                    keep_menu_open = true,
+                    callback       = function()
+                        G_reader_settings:saveSetting(pfx .. TYPE_KEY, "bare")
                         refresh()
                     end,
                 },

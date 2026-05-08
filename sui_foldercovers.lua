@@ -48,10 +48,11 @@ local SK = {
     overlay_pages   = "simpleui_fc_overlay_pages",
     overlay_series  = "simpleui_fc_overlay_series",
     series_grouping = "simpleui_fc_series_grouping",
-    item_cache      = "simpleui_fc_item_cache",
     subfolder_cover = "simpleui_fc_subfolder_cover",
     recursive_cover = "simpleui_fc_recursive_cover",
     label_scale     = "simpleui_fc_label_scale",
+    folder_style    = "simpleui_fc_folder_style",
+    hide_spine      = "simpleui_fc_hide_spine",
 }
 
 -- ---------------------------------------------------------------------------
@@ -115,10 +116,6 @@ function M.setOverlaySeries(v) _setFlag(SK.overlay_series, v)                   
 function M.getSeriesGrouping()  return G_reader_settings:isTrue(SK.series_grouping)                end
 function M.setSeriesGrouping(v) _setFlag(SK.series_grouping, v)                                    end
 
--- 2000-entry two-generation item cache for FileChooser:getListItem() (default on).
-function M.getItemCache()  return G_reader_settings:readSetting(SK.item_cache) ~= false            end
-function M.setItemCache(v) _setFlag(SK.item_cache, v)                                              end
-
 -- Placeholder cover for folders with no direct ebooks (default off).
 function M.getSubfolderCover()  return G_reader_settings:isTrue(SK.subfolder_cover)                end
 function M.setSubfolderCover(v) _setFlag(SK.subfolder_cover, v)                                    end
@@ -126,6 +123,19 @@ function M.setSubfolderCover(v) _setFlag(SK.subfolder_cover, v)                 
 -- Scan up to 3 subfolder levels for a cached cover (default off).
 function M.getRecursiveCover()  return G_reader_settings:isTrue(SK.recursive_cover)                end
 function M.setRecursiveCover(v) _setFlag(SK.recursive_cover, v)                                    end
+
+-- Folder cover display style: "single" (default, selectable cover), "quad" (2×2 grid),
+-- or "auto" (single when <4 books, quad when ≥4 books).
+function M.getFolderStyle()    return G_reader_settings:readSetting(SK.folder_style) or "single"   end
+function M.setFolderStyle(v)   G_reader_settings:saveSetting(SK.folder_style, v)                   end
+
+-- _resolveStyle is defined further below (after _entriesWithNoFilter and
+-- _collectCoversRecursive are in scope).
+local _resolveStyle
+
+-- Hide the book spine decoration on folder covers (default: spine shown).
+function M.getHideSpine()  return G_reader_settings:isTrue(SK.hide_spine)  end
+function M.setHideSpine(v) G_reader_settings:saveSetting(SK.hide_spine, v) end
 
 -- Folder label text scale: integer %, clamped to [50, 200], default 100.
 local _FC_SCALE_MIN  = 50
@@ -354,13 +364,16 @@ end
 -- Recursive cover search: scans dir_path up to max_depth levels for any
 -- cached book cover. Returns { data, w, h } or nil.
 -- ---------------------------------------------------------------------------
-local function _findCoverRecursive(menu, dir_path, depth, max_depth, BookInfoManager)
-    if depth > max_depth then return nil end
+-- Collect up to `needed` covers from dir_path recursively (files first, then
+-- subdirs). Returns an array that may be shorter than needed if not enough
+-- covers are cached yet.
+local function _collectCoversRecursive(menu, dir_path, depth, max_depth, needed, BookInfoManager)
+    if depth > max_depth or needed <= 0 then return {} end
 
     local entries = _entriesWithNoFilter(menu, dir_path)
-    if not entries then return nil end
+    if not entries then return {} end
 
-    -- Single pass: try files immediately, accumulate subdirs for later.
+    local covers  = {}
     local subdirs = {}
     for _, entry in ipairs(entries) do
         if entry.is_file or entry.file then
@@ -369,19 +382,87 @@ local function _findCoverRecursive(menu, dir_path, depth, max_depth, BookInfoMan
                     and not bi.ignore_cover
                     and not BookInfoManager.isCachedCoverInvalid(bi, menu.cover_specs)
             then
-                return { data = bi.cover_bb, w = bi.cover_w, h = bi.cover_h }
+                covers[#covers + 1] = { data = bi.cover_bb, w = bi.cover_w, h = bi.cover_h }
+                if #covers >= needed then return covers end
             end
         else
-            subdirs[#subdirs + 1] = entry
+            if not entry.is_go_up then
+                subdirs[#subdirs + 1] = entry
+            end
         end
     end
 
+    -- Still need more — recurse into subdirectories.
     for _, entry in ipairs(subdirs) do
-        local found = _findCoverRecursive(menu, entry.path, depth + 1, max_depth, BookInfoManager)
-        if found then return found end
+        if #covers >= needed then break end
+        local sub = _collectCoversRecursive(
+            menu, entry.path, depth + 1, max_depth, needed - #covers, BookInfoManager)
+        for _, c in ipairs(sub) do
+            covers[#covers + 1] = c
+            if #covers >= needed then break end
+        end
     end
 
-    return nil
+    return covers
+end
+
+-- Compatibility shim: find exactly one cover recursively (used by the
+-- single-cover bookless-folder path).
+local function _findCoverRecursive(menu, dir_path, depth, max_depth, BookInfoManager)
+    local found = _collectCoversRecursive(menu, dir_path, depth, max_depth, 1, BookInfoManager)
+    return found[1]
+end
+
+-- ---------------------------------------------------------------------------
+-- Resolve the effective folder style for a specific folder.
+-- "auto" mode counts the books and returns "quad" (≥4 books) or "single" (<4).
+-- All other modes are returned as-is.
+-- The optional `entry` argument is used to detect virtual folder types whose
+-- synthetic paths cannot be scanned via _entriesWithNoFilter.
+-- ---------------------------------------------------------------------------
+_resolveStyle = function(menu, dir_path, entry)
+    local style = M.getFolderStyle()
+    if style ~= "auto" then return style end
+    if not menu or not dir_path then return "single" end
+
+    -- ── Series-group virtual folder ───────────────────────────────────────
+    -- Series group items have a synthetic path (base_dir..series_name) that
+    -- is neither a real filesystem directory nor a browsemeta virtual path.
+    -- _entriesWithNoFilter → genItemTableFromPath would return nothing for
+    -- them, so we count directly from the cache that was populated during
+    -- series-grouping injection.
+    local is_sg = (entry and entry.is_series_group) or (_sg_items_cache[dir_path] ~= nil)
+    if is_sg then
+        local items = (entry and entry.series_items) or _sg_items_cache[dir_path]
+        if items and #items >= 4 then return "quad" end
+        return "single"
+    end
+
+    -- Count books directly inside the folder.
+    local entries = _entriesWithNoFilter(menu, dir_path)
+    if not entries then return "single" end
+    local book_count = 0
+    for _, e in ipairs(entries) do
+        if e.is_file or e.file then
+            book_count = book_count + 1
+            if book_count >= 4 then return "quad" end
+        end
+    end
+    -- If recursive cover is enabled, also count books from subfolders.
+    if book_count < 4 and M.getRecursiveCover() then
+        local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
+        if ok_bim and BookInfoManager then
+            for _, e in ipairs(entries) do
+                if not (e.is_file or e.file) and not e.is_go_up then
+                    local sub = _collectCoversRecursive(
+                        menu, e.path, 1, 3, 4 - book_count, BookInfoManager)
+                    book_count = book_count + #sub
+                    if book_count >= 4 then return "quad" end
+                end
+            end
+        end
+    end
+    return "single"
 end
 
 -- ---------------------------------------------------------------------------
@@ -407,6 +488,85 @@ end
 -- ---------------------------------------------------------------------------
 -- Cover picker dialogs
 -- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- _createCollectionFromSeriesGroup(vpath, series_name)
+--
+-- Called when the user long-presses a series-group folder in the folder-covers
+-- browser and selects "Create collection".
+--
+-- Behaviour mirrors _createCollectionFromVirtualFolder in sui_browsemeta.lua:
+--   • Pre-fills the InputDialog with the series name so the user can edit it.
+--   • Reads the book paths from _sg_items_cache[vpath].
+--   • Calls ReadCollection:addCollection + addItem for every book, then writes.
+--   • Shows an InfoMessage with the final count.
+-- ---------------------------------------------------------------------------
+local function _createCollectionFromSeriesGroup(vpath, series_name)
+    local UIManager   = require("ui/uimanager")
+    local InfoMessage = require("ui/widget/infomessage")
+    local InputDialog = require("ui/widget/inputdialog")
+    local T           = require("ffi/util").template
+
+    local series_items = _sg_items_cache[vpath]
+    if not series_items or #series_items == 0 then
+        UIManager:show(InfoMessage:new{
+            text    = _("No books found in this series."),
+            timeout = 2,
+        })
+        return
+    end
+
+    local RC = require("readcollection")
+
+    local input_dialog
+    input_dialog = InputDialog:new{
+        title   = _("New collection name"),
+        input   = series_name or "",
+        buttons = {{
+            {
+                text = _("Cancel"),
+                id   = "close",
+                callback = function()
+                    UIManager:close(input_dialog)
+                end,
+            },
+            {
+                text = _("Create"),
+                callback = function()
+                    local name = input_dialog:getInputText()
+                    if name == "" then return end
+                    UIManager:close(input_dialog)
+
+                    if RC.coll[name] then
+                        UIManager:show(InfoMessage:new{
+                            text = T(_("Collection already exists: %1"), name),
+                        })
+                        return
+                    end
+
+                    RC:addCollection(name)
+                    local count = 0
+                    for _, item in ipairs(series_items) do
+                        local fp = item.path
+                        if fp and not RC.coll[name][fp] then
+                            RC:addItem(fp, name)
+                            count = count + 1
+                        end
+                    end
+                    RC:write({ [name] = true })
+
+                    UIManager:show(InfoMessage:new{
+                        text    = T(_("Collection \"%1\" created with %2 books."),
+                                    name, count),
+                        timeout = 3,
+                    })
+                end,
+            },
+        }},
+    }
+    UIManager:show(input_dialog)
+    input_dialog:onShowKeyboard()
+end
 
 local function _openSeriesGroupCoverPicker(vpath, menu, BookInfoManager)
     local UIManager    = require("ui/uimanager")
@@ -525,12 +685,11 @@ local function _installFileDialogButton(BookInfoManager)
     local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
     if not ok_fm or not FileManager then return end
 
+    -- Button 1: cover picker (hidden in quad mode for series/virtual folders).
     FileManager:addFileDialogButtons("simpleui_fc_cover",
         function(file, is_file, _book_props)
             if is_file then return nil end
             if not M.isEnabled() then return nil end
-
-            local is_virtual_series = _sg_items_cache[file] ~= nil
 
             local fc         = FileManager.instance and FileManager.instance.file_chooser
             local item_entry = nil
@@ -539,14 +698,33 @@ local function _installFileDialogButton(BookInfoManager)
                     if it.path == file then item_entry = it; break end
                 end
             end
-            local is_virtual_meta = item_entry and item_entry.is_virtual_meta_leaf
+
+            -- A series group is identified either by the item flag (authoritative)
+            -- or by the _sg_items_cache entry (populated when series grouping is on).
+            local is_virtual_series = (item_entry and item_entry.is_series_group)
+                                   or (_sg_items_cache[file] ~= nil)
+            local is_virtual_meta   = item_entry and item_entry.is_virtual_meta_leaf
 
             local label
+            -- Resolve effective style for this folder (handles "auto" mode).
+            local effective_style = _resolveStyle(fc, file, item_entry)
             if is_virtual_series then
+                -- In quad mode, individual cover selection is not available
+                -- for series folders (the quad grid always auto-selects covers).
+                -- In Detailed list with cover view the picker remains available.
+                local in_list_view = fc and fc.display_mode_type == "list"
+                if effective_style == "quad" and not in_list_view then return nil end
                 label = _("Set series cover…")
             elseif is_virtual_meta then
+                -- Same rule applies to virtual meta folders.
+                local in_list_view = fc and fc.display_mode_type == "list"
+                if effective_style == "quad" and not in_list_view then return nil end
                 label = _("Set virtual folder cover…")
             else
+                -- In quad mode, cover selection is not available for the mosaic view.
+                -- In Detailed list with cover view the picker is always available.
+                local in_list_view = fc and fc.display_mode_type == "list"
+                if effective_style == "quad" and not in_list_view then return nil end
                 label = _("Set folder cover…")
             end
 
@@ -570,122 +748,157 @@ local function _installFileDialogButton(BookInfoManager)
             }}
         end
     )
+
+    -- Button 2: "Create collection" for series-group folders.
+    -- Available in all view modes (including quad/4-grid where the cover
+    -- picker is suppressed), mirroring the behaviour of virtual meta folders.
+    FileManager:addFileDialogButtons("simpleui_fc_series_collection",
+        function(file, is_file, _book_props)
+            if is_file then return nil end
+            if not M.isEnabled() then return nil end
+            if not M.getSeriesGrouping() then return nil end
+
+            local fc         = FileManager.instance and FileManager.instance.file_chooser
+            local item_entry = nil
+            if fc and fc.item_table then
+                for _, it in ipairs(fc.item_table) do
+                    if it.path == file then item_entry = it; break end
+                end
+            end
+
+            local is_virtual_series = (item_entry and item_entry.is_series_group)
+                                   or (_sg_items_cache[file] ~= nil)
+            if not is_virtual_series then return nil end
+
+            local series_name = (item_entry and item_entry.text) or ""
+
+            return {{
+                text = _("Create collection"),
+                callback = function()
+                    local UIManager = require("ui/uimanager")
+                    if fc and fc.file_dialog then UIManager:close(fc.file_dialog) end
+                    _createCollectionFromSeriesGroup(file, series_name)
+                end,
+            }}
+        end
+    )
 end
 
 local function _uninstallFileDialogButton()
     local ok_fm, FileManager = pcall(require, "apps/filemanager/filemanager")
     if not ok_fm or not FileManager then return end
     FileManager:removeFileDialogButtons("simpleui_fc_cover")
+    FileManager:removeFileDialogButtons("simpleui_fc_series_collection")
 end
 
 -- ---------------------------------------------------------------------------
--- Item cache — two-generation cache for FileChooser:getListItem().
+-- Item-table cache — single-entry cache for FileChooser:genItemTableFromPath.
 --
--- Strategy: two fixed-size buckets (_cache_a and _cache_b), each capped at
--- _CACHE_MAX entries. New entries always go into _cache_a. When _cache_a is
--- full, it is promoted to _cache_b (discarding the old _cache_b) and a fresh
--- _cache_a is started. A lookup checks _cache_a first, then _cache_b.
+-- Strategy: cache the complete sorted item table for the current directory.
+-- The cache key encodes path + directory mtime + all settings that affect
+-- the list (collate, filter, show_hidden). On a cache hit the entire
+-- lfs.dir scan, sort, and per-item getListItem() calls are skipped.
 --
--- This avoids the flush-everything problem of a single-bucket cache: the
--- working set stays hot in _cache_a while _cache_b acts as a fallback for
--- items that did not fit in the current generation. Effective capacity is
--- 2 * _CACHE_MAX entries with a smooth eviction pattern.
+-- A single lfs.attributes() call per navigation is the only overhead.
+-- Memory cost: one table reference — the same object FileChooser already
+-- holds, not a copy.
+--
+-- Invalidation:
+--   • Directory changed   → automatic (mtime or path differ in the key).
+--   • Closing a book      → _itc_invalidate() in refreshPath.
+--   • Status/prop change  → _itc_invalidate() via setBookInfoCacheProperty.
+--   • access-time collate → cache disabled (mtime never reflects reads).
+--   • _dummy calls        → bypassed (used by cover-collection helpers).
 -- ---------------------------------------------------------------------------
 
-local _CACHE_MAX    = 1000
-local _cache_a      = {}
-local _cache_b      = {}
-local _cache_a_count = 0
-local _orig_getListItem = FileChooser.getListItem
-
-local function _cacheGet(key)
-    return _cache_a[key] or _cache_b[key]
-end
-
-local function _cacheSet(key, value)
-    if _cache_a_count >= _CACHE_MAX then
-        _cache_b      = _cache_a
-        _cache_a      = {}
-        _cache_a_count = 0
-    end
-    _cache_a[key]  = value
-    _cache_a_count = _cache_a_count + 1
-end
+-- Single cache entry: {key=string, t=item_table} or nil.
+local _itc = nil
 
 local _orig_setBookInfoCacheProperty = nil
+local _orig_genItemTableFromPath     = nil
+
+local function _itc_invalidate()
+    _itc = nil
+end
+
+local function _itc_key(path, fc)
+    local mtime      = lfs.attributes(path, "modification") or 0
+    local filter_raw = fc.show_filter and fc.show_filter.status
+    local filter_str
+    if type(filter_raw) == "table" then
+        local parts = {}
+        for k, v in pairs(filter_raw) do
+            if v then parts[#parts + 1] = tostring(k) end
+        end
+        table.sort(parts)
+        filter_str = table.concat(parts, "\1")
+    else
+        filter_str = tostring(filter_raw or "")
+    end
+    return path .. "\0" .. mtime .. "\0"
+        .. (G_reader_settings:readSetting("collate") or "strcoll") .. "\0"
+        .. tostring(G_reader_settings:isTrue("collate_mixed"))     .. "\0"
+        .. tostring(G_reader_settings:isTrue("reverse_collate"))   .. "\0"
+        .. tostring(fc.show_hidden or false) .. "\0"
+        .. filter_str
+end
 
 local function _installItemCache()
     if FileChooser._simpleui_fc_cache_patched then return end
     FileChooser._simpleui_fc_cache_patched = true
 
-    -- Patch BookList.setBookInfoCacheProperty so that any status/property change
-    -- (e.g. marking a book read in the FM) immediately evicts that file's entry
-    -- from our item cache. Without this, the cached item carries stale sort_percent/
-    -- percent_finished values and the book stays in the wrong position after a
-    -- status change until the next full cache flush.
+    -- Invalidate on any book status/property change (e.g. marking read).
+    -- The sort position depends on percent_finished, so stale items would
+    -- appear in the wrong place until the next directory change.
     local ok_bl, BookList = pcall(require, "ui/widget/booklist")
     if ok_bl and BookList and BookList.setBookInfoCacheProperty then
         _orig_setBookInfoCacheProperty = BookList.setBookInfoCacheProperty
         BookList.setBookInfoCacheProperty = function(file, prop_name, prop_value)
-            -- Evict all cache entries for this file before delegating.
-            -- The key encodes fullpath as the third NUL-separated field, so a
-            -- substring search is sufficient and exact.
-            if file then
-                local needle = "\0" .. file .. "\0"
-                local removed = 0
-                for k in pairs(_cache_a) do
-                    if k:find(needle, 1, true) then
-                        _cache_a[k] = nil
-                        removed = removed + 1
-                    end
-                end
-                _cache_a_count = math.max(0, _cache_a_count - removed)
-                for k in pairs(_cache_b) do
-                    if k:find(needle, 1, true) then _cache_b[k] = nil end
-                end
-            end
+            _itc_invalidate()
             return _orig_setBookInfoCacheProperty(file, prop_name, prop_value)
         end
     end
 
-    FileChooser.getListItem = function(fc, dirpath, f, fullpath, attributes, collate)
-        if not M.getItemCache() then
-            return _orig_getListItem(fc, dirpath, f, fullpath, attributes, collate)
+    _orig_genItemTableFromPath = FileChooser.genItemTableFromPath
+
+    FileChooser.genItemTableFromPath = function(fc, path)
+        -- Bypass for non-FM instances (PathChooser, dialogs) and for
+        -- _dummy=true calls used by cover-collection helpers.
+        if fc._dummy or fc.name ~= "filemanager" then
+            return _orig_genItemTableFromPath(fc, path)
         end
 
-        -- Build a cache key that captures everything that affects the item shape.
-        local filter_raw = fc.show_filter and fc.show_filter.status or ""
-        local filter
-        if type(filter_raw) == "table" then
-            local parts = {}
-            for k, v in pairs(filter_raw) do
-                if v then parts[#parts + 1] = tostring(k) end
-            end
-            table.sort(parts)
-            filter = table.concat(parts, "\1")
+        -- access-time collate: directory mtime doesn't change when books are
+        -- read, so the key would never change. Disable the cache for this mode.
+        if (G_reader_settings:readSetting("collate") or "strcoll") == "access" then
+            _itc = nil
+            return _orig_genItemTableFromPath(fc, path)
+        end
+
+        local key = _itc_key(path, fc)
+        if _itc and _itc.key == key then
+            return _itc.t
+        end
+
+        local result = _orig_genItemTableFromPath(fc, path)
+
+        -- Do not cache virtual series-grouping views: their synthetic path
+        -- has no reliable mtime, so stale data would never be evicted.
+        if not (result and result._sg_is_series_view) then
+            _itc = { key = key, t = result }
         else
-            filter = tostring(filter_raw)
+            _itc = nil
         end
-        local collate_id = (collate and (collate.id or collate.text)) or ""
 
-        local key = tostring(dirpath) .. "\0" .. tostring(f) .. "\0"
-                 .. tostring(fullpath) .. "\0" .. filter .. "\0"
-                 .. tostring(collate_id)
-
-        local cached = _cacheGet(key)
-        if cached then return cached end
-
-        local item = _orig_getListItem(fc, dirpath, f, fullpath, attributes, collate)
-        _cacheSet(key, item)
-        return item
+        return result
     end
 end
 
 local function _uninstallItemCache()
     if not FileChooser._simpleui_fc_cache_patched then return end
-    FileChooser.getListItem = _orig_getListItem
+    FileChooser.genItemTableFromPath  = _orig_genItemTableFromPath
+    _orig_genItemTableFromPath        = nil
     FileChooser._simpleui_fc_cache_patched = nil
-    -- Restore BookList patch if we installed it.
     if _orig_setBookInfoCacheProperty then
         local ok_bl, BookList = pcall(require, "ui/widget/booklist")
         if ok_bl and BookList then
@@ -693,15 +906,11 @@ local function _uninstallItemCache()
         end
         _orig_setBookInfoCacheProperty = nil
     end
-    _cache_a = {}
-    _cache_b = {}
-    _cache_a_count = 0
+    _itc = nil
 end
 
 function M.invalidateCache()
-    _cache_a = {}
-    _cache_b = {}
-    _cache_a_count = 0
+    _itc = nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -954,10 +1163,51 @@ local function _installSeriesGrouping()
     FileChooser.onMenuHold = function(fc, item)
         if item and item.is_series_group and M.getSeriesGrouping() then
             if not M.isEnabled() then return true end
-            local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
-            if ok_bim and BookInfoManager then
-                _openSeriesGroupCoverPicker(item.path, fc, BookInfoManager)
+            local UIManager    = require("ui/uimanager")
+            local ButtonDialog = require("ui/widget/buttondialog")
+
+            -- In quad mode the cover picker is disabled (the quad grid always
+            -- auto-selects covers). Exception: Detailed list with folder view.
+            -- "Create collection" is always available regardless of view mode.
+            local in_list_view    = fc and fc.display_mode_type == "list"
+            local cover_available = not (
+                _resolveStyle(fc, item.path, item) == "quad" and not in_list_view
+            )
+
+            local series_name = item.text
+            local vpath       = item.path
+            local dialog
+
+            local buttons = {}
+
+            if cover_available then
+                buttons[#buttons + 1] = {{
+                    text     = _("Series cover"),
+                    callback = function()
+                        UIManager:close(dialog)
+                        local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
+                        if ok_bim and BookInfoManager then
+                            _openSeriesGroupCoverPicker(vpath, fc, BookInfoManager)
+                        end
+                    end,
+                }}
             end
+
+            buttons[#buttons + 1] = {{
+                text     = _("Create collection"),
+                callback = function()
+                    UIManager:close(dialog)
+                    _createCollectionFromSeriesGroup(vpath, series_name)
+                end,
+            }}
+
+            buttons[#buttons + 1] = {{
+                text     = _("Cancel"),
+                callback = function() UIManager:close(dialog) end,
+            }}
+
+            dialog = ButtonDialog:new{ buttons = buttons }
+            UIManager:show(dialog)
             return true
         end
         return _sg_orig_onMenuHold(fc, item)
@@ -1004,32 +1254,10 @@ local function _installSeriesGrouping()
     -- After refreshPath (e.g. closing a book) re-enter the virtual folder
     -- if one was active.
     FileChooser.refreshPath = function(fc)
-        -- Selective item-cache invalidation: only discard the entry for the
-        -- book that was just closed. The cache key encodes fullpath as the
-        -- third NUL-separated field, so a needle search is exact.
-        -- G_reader_settings["lastfile"] is written by readhistory:addItem()
-        -- when the book opens, so it is always the path of the closed book.
-        -- Fall back to a full flush when the path is unavailable.
-        local last_book = G_reader_settings:readSetting("lastfile")
-        if last_book then
-            local needle = "\0" .. last_book .. "\0"
-            local removed = 0
-            for k in pairs(_cache_a) do
-                if k:find(needle, 1, true) then
-                    _cache_a[k] = nil
-                    removed = removed + 1
-                end
-            end
-            _cache_a_count = math.max(0, _cache_a_count - removed)
-            for k in pairs(_cache_b) do
-                if k:find(needle, 1, true) then _cache_b[k] = nil end
-            end
-        else
-            -- Unknown what changed — full flush (safe fallback).
-            _cache_a       = {}
-            _cache_b       = {}
-            _cache_a_count = 0
-        end
+        -- The item table is stale after closing a book (percent_finished,
+        -- bold state, sort position may have changed). Drop the cache so
+        -- the next genItemTableFromPath rebuilds cleanly.
+        _itc_invalidate()
 
         -- Only flush disk-level cover caches when the library was actually
         -- visited (files may have been added/removed). Preserving them on a
@@ -1139,8 +1367,9 @@ end
 -- Folder-name label overlaid on the cover image. Returns nil when disabled.
 -- label_style, label_position, and show_name are passed in pre-read by the
 -- caller (_setFolderCover) so this function makes zero settings reads.
+-- spine_w: actual spine width in pixels (0 when spine is hidden).
 local function _buildLabel(item, available_w, size, border, cv_scale,
-                            label_mode, show_name, label_style, label_pos)
+                            label_mode, show_name, label_style, label_pos, spine_w)
     if label_mode ~= "overlay" then return nil end
     if not show_name            then return nil end
 
@@ -1183,7 +1412,7 @@ local function _buildLabel(item, available_w, size, border, cv_scale,
         }
     end
 
-    name_og.overlap_offset = { _SPINE_W, 0 }
+    name_og.overlap_offset = { spine_w or _SPINE_W, 0 }
     return name_og
 end
 
@@ -1241,6 +1470,155 @@ local function _buildBadge(mandatory, cover_dimen, cv_scale)
             overlap_align = "center",
         }
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- Quad-cover builder — 2×2 grid of book covers for a folder cell.
+-- Returns the OverlapGroup widget ready to assign to _underline_container[1],
+-- or nil when no covers are available (caller falls through to empty cover).
+-- img_list: array of up to 4 { data=bb, w=n, h=n } or { file=path, w=n, h=n }
+-- max_img_w, max_img_h: usable area for the cover block (excluding spine).
+-- ---------------------------------------------------------------------------
+local function _buildQuadCover(item, img_list, max_img_w, max_img_h,
+                                label_mode, show_name, label_style, label_pos,
+                                cv_scale)
+    local border    = Size.border.thin
+    local sep       = math.max(1, Screen:scaleBySize(1))
+
+    -- Compute the portrait block dimensions (always 2:3).
+    local ratio = 2 / 3
+    local img_w, img_h
+    if max_img_w / max_img_h > ratio then
+        img_h = max_img_h; img_w = math.floor(max_img_h * ratio)
+    else
+        img_w = max_img_w; img_h = math.floor(max_img_w / ratio)
+    end
+
+    -- Each quadrant.
+    local half_w  = math.floor((img_w - sep) / 2)
+    local half_w2 = img_w - sep - half_w
+    local half_h  = math.floor((img_h - sep) / 2)
+    local half_h2 = img_h - sep - half_h
+    local cell_dims = {
+        { w = half_w,  h = half_h  },
+        { w = half_w2, h = half_h  },
+        { w = half_w,  h = half_h2 },
+        { w = half_w2, h = half_h2 },
+    }
+
+    local cells = {}
+    for i = 1, 4 do
+        local c  = img_list[i]
+        local cd = cell_dims[i]
+        if c then
+            local img_opts = { width = cd.w, height = cd.h }
+            if c.file  then img_opts.file  = c.file  end
+            if c.data  then img_opts.image = c.data  end
+            cells[i] = CenterContainer:new{
+                dimen = Geom:new{ w = cd.w, h = cd.h },
+                ImageWidget:new(img_opts),
+            }
+        else
+            -- Empty slot: white fill so the separator lines remain visible.
+            -- A child widget is required so FrameContainer:getSize() doesn't
+            -- crash trying to index a nil value (framecontainer.lua:55).
+            cells[i] = CenterContainer:new{
+                dimen = Geom:new{ w = cd.w, h = cd.h },
+                VerticalSpan:new{ width = 1 },
+            }
+        end
+    end
+
+    local sep_color = Blitbuffer.COLOR_LIGHT_GRAY
+    local grid = FrameContainer:new{
+        padding    = 0,
+        bordersize = border,
+        VerticalGroup:new{
+            HorizontalGroup:new{
+                cells[1],
+                LineWidget:new{ background = sep_color,
+                    dimen = Geom:new{ w = sep, h = half_h } },
+                cells[2],
+            },
+            LineWidget:new{ background = sep_color,
+                dimen = Geom:new{ w = img_w, h = sep } },
+            HorizontalGroup:new{
+                cells[3],
+                LineWidget:new{ background = sep_color,
+                    dimen = Geom:new{ w = sep, h = half_h2 } },
+                cells[4],
+            },
+        },
+    }
+
+    local size        = Geom:new{ w = img_w, h = img_h }
+    local spine       = not M.getHideSpine() and _buildSpine(img_h) or nil
+    local spine_w     = spine and _SPINE_W or 0
+    local cover_group = spine
+        and HorizontalGroup:new{ align = "center", spine, grid }
+        or  HorizontalGroup:new{ align = "center", grid }
+
+    local cover_w    = spine_w + img_w + border * 2
+    local cover_h    = img_h    + border * 2
+    local cover_dimen = Geom:new{ w = cover_w, h = cover_h }
+    local cell_dimen  = Geom:new{ w = item.width, h = item.height }
+
+    local folder_name_widget = _buildLabel(item, img_w - _LATERAL_PAD * 2,
+        size, border, cv_scale, label_mode, show_name, label_style, label_pos, spine_w)
+    local nbitems_widget = _buildBadge(item.mandatory, cover_dimen, cv_scale)
+
+    local overlap = OverlapGroup:new{ dimen = cover_dimen, cover_group }
+    if folder_name_widget then overlap[#overlap + 1] = folder_name_widget end
+    if nbitems_widget     then overlap[#overlap + 1] = nbitems_widget     end
+
+    local x_center = math.floor((item.width  - cover_w) / 2)
+    local y_center = math.floor((item.height - cover_h) / 2)
+    overlap.overlap_offset = { x_center - math.floor(spine_w / 2), y_center }
+
+    local widget = OverlapGroup:new{ dimen = cell_dimen, overlap }
+    return widget
+end
+
+-- ---------------------------------------------------------------------------
+-- Collect up to `max_count` cached book covers from `dir_path`.
+-- Uses the existing _entriesWithNoFilter + recursive helper.
+-- Returns array of { data=bb, w=n, h=n }.
+-- ---------------------------------------------------------------------------
+local function _collectCovers(menu, dir_path, max_count, BookInfoManager)
+    local covers  = {}
+    local entries = _entriesWithNoFilter(menu, dir_path)
+    if not entries then return covers end
+
+    for _, entry in ipairs(entries) do
+        if entry.is_file or entry.file then
+            if #covers >= max_count then break end
+            local bi = BookInfoManager:getBookInfo(entry.path, true)
+            if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                    and not bi.ignore_cover
+            then
+                covers[#covers + 1] = { data = bi.cover_bb, w = bi.cover_w, h = bi.cover_h }
+            end
+        end
+    end
+
+    -- If we still need covers and recursive mode is on, search subfolders.
+    -- Use _collectCoversRecursive so a single subfolder can contribute more
+    -- than one cover (needed to fill all 4 quadrants from a deeply nested tree).
+    if #covers < max_count and M.getRecursiveCover() then
+        for _, entry in ipairs(entries) do
+            if not (entry.is_file or entry.file) and not entry.is_go_up then
+                if #covers >= max_count then break end
+                local sub = _collectCoversRecursive(
+                    menu, entry.path, 1, 3, max_count - #covers, BookInfoManager)
+                for _, c in ipairs(sub) do
+                    covers[#covers + 1] = c
+                    if #covers >= max_count then break end
+                end
+            end
+        end
+    end
+
+    return covers
 end
 
 -- ---------------------------------------------------------------------------
@@ -1346,21 +1724,25 @@ function M.install()
                     fgcolor = Blitbuffer.COLOR_BLACK,
                 }
                 local tsz    = ptw:getSize()
-                local rect_w = tsz.w + _BADGE_PAD_H * 2
-                local rect_h = tsz.h + _BADGE_PAD_V * 2
+                local border = Size.border.thin
+                -- inner = text + padding; buf includes border on all four sides
+                local inner_w = tsz.w + _BADGE_PAD_H * 2
+                local inner_h = tsz.h + _BADGE_PAD_V * 2
+                local buf_w   = inner_w + border * 2
+                local buf_h   = inner_h + border * 2
                 local bw = FrameContainer:new{
-                    dimen      = Geom:new{ w = rect_w, h = rect_h },
-                    bordersize = Size.border.thin,
+                    dimen      = Geom:new{ w = buf_w, h = buf_h },
+                    bordersize = border,
                     color      = Blitbuffer.COLOR_DARK_GRAY,
                     background = Blitbuffer.COLOR_WHITE,
                     radius     = _BADGE_CORNER,
                     padding    = 0,
                     CenterContainer:new{
-                        dimen = Geom:new{ w = rect_w, h = rect_h },
+                        dimen = Geom:new{ w = inner_w, h = inner_h },
                         ptw,
                     },
                 }
-                local ok_buf, buf = pcall(Blitbuffer.new, rect_w, rect_h, Blitbuffer.TYPE_BB8A)
+                local ok_buf, buf = pcall(Blitbuffer.new, buf_w, buf_h, Blitbuffer.TYPE_BB8A)
                 if ok_buf and buf then
                     buf:fill(Blitbuffer.COLOR_WHITE)
                     bw:paintTo(buf, 0, 0)
@@ -1377,21 +1759,24 @@ function M.install()
                     fgcolor = Blitbuffer.COLOR_BLACK,
                 }
                 local tsz    = stw:getSize()
-                local rect_w = tsz.w + _BADGE_PAD_H * 2
-                local rect_h = tsz.h + _BADGE_PAD_V * 2
+                local border = Size.border.thin
+                local inner_w = tsz.w + _BADGE_PAD_H * 2
+                local inner_h = tsz.h + _BADGE_PAD_V * 2
+                local buf_w   = inner_w + border * 2
+                local buf_h   = inner_h + border * 2
                 local bw = FrameContainer:new{
-                    dimen      = Geom:new{ w = rect_w, h = rect_h },
-                    bordersize = Size.border.thin,
+                    dimen      = Geom:new{ w = buf_w, h = buf_h },
+                    bordersize = border,
                     color      = Blitbuffer.COLOR_DARK_GRAY,
                     background = Blitbuffer.COLOR_WHITE,
                     radius     = _BADGE_CORNER,
                     padding    = 0,
                     CenterContainer:new{
-                        dimen = Geom:new{ w = rect_w, h = rect_h },
+                        dimen = Geom:new{ w = inner_w, h = inner_h },
                         stw,
                     },
                 }
-                local ok_buf, buf = pcall(Blitbuffer.new, rect_w, rect_h, Blitbuffer.TYPE_BB8A)
+                local ok_buf, buf = pcall(Blitbuffer.new, buf_w, buf_h, Blitbuffer.TYPE_BB8A)
                 if ok_buf and buf then
                     buf:fill(Blitbuffer.COLOR_WHITE)
                     bw:paintTo(buf, 0, 0)
@@ -1431,16 +1816,20 @@ function M.install()
 
         -- Read all display settings once here so the build helpers make zero
         -- individual settings reads per cell.
-        local label_mode  = M.getLabelMode()
-        local show_name   = M.getShowName()
-        local label_style = M.getLabelStyle()
-        local label_pos   = M.getLabelPosition()
+        local label_mode   = M.getLabelMode()
+        local show_name    = M.getShowName()
+        local label_style  = M.getLabelStyle()
+        local label_pos    = M.getLabelPosition()
+        local folder_style = _resolveStyle(self.menu, dir_path, self.entry)   -- "single" | "quad" (resolved)
 
         -- ── Series group cover ────────────────────────────────────────────────
+        -- Series group cover — respects folder_style (single or quad).
         if self.entry.is_series_group then
             if self._foldercover_processed then return end
 
-            local sg_override_fp = _getCoverOverrides()[dir_path]
+            -- A user-chosen override renders as a single cover image only in single mode.
+            -- In quad mode the override is ignored so the grid is always shown.
+            local sg_override_fp = folder_style ~= "quad" and _getCoverOverrides()[dir_path]
             if sg_override_fp then
                 local bi = BookInfoManager:getBookInfo(sg_override_fp, true)
                 if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
@@ -1455,6 +1844,54 @@ function M.install()
             end
 
             local items = self.entry.series_items or _sg_items_cache[dir_path]
+
+            -- ── Quad mode: build a 2x2 grid from up to 4 series book covers ──
+            if folder_style == "quad" and items then
+                local covers = {}
+                for _, book_entry in ipairs(items) do
+                    if book_entry.path then
+                        local bi = BookInfoManager:getBookInfo(book_entry.path, true)
+                        if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                                and not bi.ignore_cover
+                                and not BookInfoManager.isCachedCoverInvalid(bi, self.menu.cover_specs)
+                        then
+                            covers[#covers + 1] = { data = bi.cover_bb, w = bi.cover_w, h = bi.cover_h }
+                            if #covers >= 4 then break end
+                        end
+                    end
+                end
+                if #covers > 0 then
+                    local border    = Size.border.thin
+                    local spine_w   = not M.getHideSpine() and _SPINE_W or 0
+                    local max_img_w = self.width  - spine_w - border * 2
+                    local max_img_h = self.height - border * 2
+                    local cv_scale  = math.max(0.1, math.floor(
+                        (max_img_h / _BASE_COVER_H) * 10) / 10)
+                    local widget = _buildQuadCover(self, covers, max_img_w, max_img_h,
+                        label_mode, show_name, label_style, label_pos, cv_scale)
+                    if widget then
+                        self._foldercover_processed = true
+                        if self._underline_container[1] then
+                            self._underline_container[1]:free()
+                        end
+                        self._underline_container[1] = widget
+                        return
+                    end
+                end
+                -- No covers ready yet — register for async retry.
+                if self.menu and self.menu.items_to_update then
+                    if not self.menu._fc_pending_set then
+                        self.menu._fc_pending_set = {}
+                    end
+                    if not self.menu._fc_pending_set[self] then
+                        self.menu._fc_pending_set[self] = true
+                        table.insert(self.menu.items_to_update, self)
+                    end
+                end
+                return
+            end
+
+            -- ── Single mode: first available cover from the series ────────────
             if items then
                 for _, book_entry in ipairs(items) do
                     if book_entry.path then
@@ -1474,7 +1911,62 @@ function M.install()
             return
         end
 
-        -- ── User-chosen cover override ────────────────────────────────────────
+        -- ── Quad (2×2 grid) mode ──────────────────────────────────────────────
+        if folder_style == "quad" then
+            -- Static .cover.* file takes precedence even in quad mode (single image).
+            local cover_file = findCover(dir_path)
+            if cover_file then
+                local ok, w, h = pcall(function()
+                    local tmp = ImageWidget:new{ file = cover_file, scale_factor = 1 }
+                    tmp:_render()
+                    local ow = tmp:getOriginalWidth()
+                    local oh = tmp:getOriginalHeight()
+                    tmp:free()
+                    return ow, oh
+                end)
+                if ok and w and h then
+                    self:_setFolderCover(
+                        { file = cover_file, w = w, h = h },
+                        label_mode, show_name, label_style, label_pos)
+                    return
+                end
+            end
+
+            local covers = _collectCovers(self.menu, dir_path, 4, BookInfoManager)
+            if #covers > 0 then
+                local border    = Size.border.thin
+                local spine_w   = not M.getHideSpine() and _SPINE_W or 0
+                local max_img_w = self.width  - spine_w - border * 2
+                local max_img_h = self.height - border * 2
+                local cv_scale  = math.max(0.1, math.floor(
+                    (max_img_h / _BASE_COVER_H) * 10) / 10)
+                local widget = _buildQuadCover(self, covers, max_img_w, max_img_h,
+                    label_mode, show_name, label_style, label_pos, cv_scale)
+                if widget then
+                    self._foldercover_processed = true
+                    if self._underline_container[1] then
+                        self._underline_container[1]:free()
+                    end
+                    self._underline_container[1] = widget
+                    return
+                end
+            end
+            -- No covers yet — register for async retry.
+            if self.menu and self.menu.items_to_update then
+                if not self.menu._fc_pending_set then
+                    self.menu._fc_pending_set = {}
+                end
+                if not self.menu._fc_pending_set[self] then
+                    self.menu._fc_pending_set[self] = true
+                    table.insert(self.menu.items_to_update, self)
+                end
+            end
+            return
+        end
+
+        -- ── Single-cover mode (default) ───────────────────────────────────────
+
+        -- User-chosen cover override.
         local override_fp = _getCoverOverrides()[dir_path]
         if override_fp then
             local bi = BookInfoManager:getBookInfo(override_fp, true)
@@ -1566,41 +2058,40 @@ function M.install()
     function MosaicMenuItem:_setFolderCover(img, label_mode, show_name, label_style, label_pos)
         self._foldercover_processed = true
         local border    = Size.border.thin
-        local max_img_w = self.width  - _SPINE_W - border * 2
+        local spine_w   = not M.getHideSpine() and _SPINE_W or 0
+        local max_img_w = self.width  - spine_w - border * 2
         local max_img_h = self.height - border * 2
 
         local img_options = {}
         if img.file then img_options.file  = img.file end
         if img.data then img_options.image = img.data end
 
-        if M.getCoverMode() == "2_3" then
-            local ratio = 2 / 3
-            if max_img_w / max_img_h > ratio then
-                img_options.height = max_img_h
-                img_options.width  = math.floor(max_img_h * ratio)
-            else
-                img_options.width  = max_img_w
-                img_options.height = math.floor(max_img_w / ratio)
-            end
-            img_options.stretch_limit_percentage = 50
+        local ratio = 2 / 3
+        if max_img_w / max_img_h > ratio then
+            img_options.height = max_img_h
+            img_options.width  = math.floor(max_img_h * ratio)
         else
-            img_options.scale_factor = math.min(max_img_w / img.w, max_img_h / img.h)
+            img_options.width  = max_img_w
+            img_options.height = math.floor(max_img_w / ratio)
         end
+        img_options.stretch_limit_percentage = 50
 
         local image        = ImageWidget:new(img_options)
         local size         = image:getSize()
         local image_widget = FrameContainer:new{ padding = 0, bordersize = border, image }
-        local spine        = _buildSpine(size.h)
-        local cover_group  = HorizontalGroup:new{ align = "center", spine, image_widget }
+        local spine        = not M.getHideSpine() and _buildSpine(size.h) or nil
+        local cover_group  = spine
+            and HorizontalGroup:new{ align = "center", spine, image_widget }
+            or  HorizontalGroup:new{ align = "center", image_widget }
 
-        local cover_w    = _SPINE_W + size.w + border * 2
+        local cover_w    = spine_w + size.w + border * 2
         local cover_h    = size.h  + border * 2
         local cover_dimen = Geom:new{ w = cover_w, h = cover_h }
         local cell_dimen  = Geom:new{ w = self.width, h = self.height }
         local cv_scale    = math.max(0.1, math.floor((cover_h / _BASE_COVER_H) * 10) / 10)
 
         local folder_name_widget = _buildLabel(self, size.w - _LATERAL_PAD * 2,
-            size, border, cv_scale, label_mode, show_name, label_style, label_pos)
+            size, border, cv_scale, label_mode, show_name, label_style, label_pos, spine_w)
         local nbitems_widget = _buildBadge(self.mandatory, cover_dimen, cv_scale)
 
         local overlap = OverlapGroup:new{ dimen = cover_dimen, cover_group }
@@ -1609,7 +2100,7 @@ function M.install()
 
         local x_center    = math.floor((self.width  - cover_w) / 2)
         local y_center    = math.floor((self.height - cover_h) / 2)
-        overlap.overlap_offset = { x_center - math.floor(_SPINE_W / 2), y_center }
+        overlap.overlap_offset = { x_center - math.floor(spine_w / 2), y_center }
 
         local widget = OverlapGroup:new{ dimen = cell_dimen, overlap }
 
@@ -1622,19 +2113,15 @@ function M.install()
     function MosaicMenuItem:_setEmptyFolderCover(label_mode, show_name, label_style, label_pos)
         self._foldercover_processed = true
         local border    = Size.border.thin
-        local max_img_w = self.width  - _SPINE_W - border * 2
+        local spine_w   = not M.getHideSpine() and _SPINE_W or 0
+        local max_img_w = self.width  - spine_w - border * 2
         local max_img_h = self.height - border * 2
 
-        local img_w, img_h
-        if M.getCoverMode() == "2_3" then
-            local ratio = 2 / 3
-            if max_img_w / max_img_h > ratio then
-                img_h = max_img_h; img_w = math.floor(max_img_h * ratio)
-            else
-                img_w = max_img_w; img_h = math.floor(max_img_w / ratio)
-            end
+        local ratio = 2 / 3
+        if max_img_w / max_img_h > ratio then
+            img_h = max_img_h; img_w = math.floor(max_img_h * ratio)
         else
-            img_w = max_img_w; img_h = max_img_h
+            img_w = max_img_w; img_h = math.floor(max_img_w / ratio)
         end
 
         -- _ICON_PATH and _ICON_EXISTS are module-level constants (computed once at load).
@@ -1666,17 +2153,19 @@ function M.install()
 
         local size         = Geom:new{ w = img_w, h = img_h }
         local image_widget = FrameContainer:new{ padding = 0, bordersize = border, bg_canvas }
-        local spine        = _buildSpine(size.h)
-        local cover_group  = HorizontalGroup:new{ align = "center", spine, image_widget }
+        local spine        = not M.getHideSpine() and _buildSpine(size.h) or nil
+        local cover_group  = spine
+            and HorizontalGroup:new{ align = "center", spine, image_widget }
+            or  HorizontalGroup:new{ align = "center", image_widget }
 
-        local cover_w     = _SPINE_W + size.w + border * 2
+        local cover_w     = spine_w + size.w + border * 2
         local cover_h     = size.h  + border * 2
         local cover_dimen = Geom:new{ w = cover_w, h = cover_h }
         local cell_dimen  = Geom:new{ w = self.width, h = self.height }
         local cv_scale    = math.max(0.1, math.floor((cover_h / _BASE_COVER_H) * 10) / 10)
 
         local folder_name_widget = _buildLabel(self, size.w - _LATERAL_PAD * 2,
-            size, border, cv_scale, label_mode, show_name, label_style, label_pos)
+            size, border, cv_scale, label_mode, show_name, label_style, label_pos, spine_w)
         local nbitems_widget = _buildBadge(self.mandatory, cover_dimen, cv_scale)
 
         local overlap = OverlapGroup:new{ dimen = cover_dimen, cover_group }
@@ -1685,7 +2174,7 @@ function M.install()
 
         local x_center = math.floor((self.width  - cover_w) / 2)
         local y_center = math.floor((self.height - cover_h) / 2)
-        overlap.overlap_offset = { x_center - math.floor(_SPINE_W / 2), y_center }
+        overlap.overlap_offset = { x_center - math.floor(spine_w / 2), y_center }
 
         local widget = OverlapGroup:new{ dimen = cell_dimen, overlap }
         if self._underline_container[1] then self._underline_container[1]:free() end
@@ -1855,21 +2344,24 @@ function M.install()
                         fgcolor = Blitbuffer.COLOR_BLACK,
                     }
                     local tsz    = stw:getSize()
-                    local rect_w = tsz.w + _BADGE_PAD_H * 2
-                    local rect_h = tsz.h + _BADGE_PAD_V * 2
+                    local border  = Size.border.thin
+                    local inner_w = tsz.w + _BADGE_PAD_H * 2
+                    local inner_h = tsz.h + _BADGE_PAD_V * 2
+                    local buf_w   = inner_w + border * 2
+                    local buf_h   = inner_h + border * 2
                     local bw = FrameContainer:new{
-                        dimen      = Geom:new{ w = rect_w, h = rect_h },
-                        bordersize = Size.border.thin,
+                        dimen      = Geom:new{ w = buf_w, h = buf_h },
+                        bordersize = border,
                         color      = Blitbuffer.COLOR_DARK_GRAY,
                         background = Blitbuffer.COLOR_WHITE,
                         radius     = _BADGE_CORNER,
                         padding    = 0,
                         CenterContainer:new{
-                            dimen = Geom:new{ w = rect_w, h = rect_h },
+                            dimen = Geom:new{ w = inner_w, h = inner_h },
                             stw,
                         },
                     }
-                    local ok_buf, buf = pcall(Blitbuffer.new, rect_w, rect_h, Blitbuffer.TYPE_BB8A)
+                    local ok_buf, buf = pcall(Blitbuffer.new, buf_w, buf_h, Blitbuffer.TYPE_BB8A)
                     if ok_buf and buf then
                         buf:fill(Blitbuffer.COLOR_WHITE)
                         bw:paintTo(buf, 0, 0)
@@ -2221,8 +2713,8 @@ function M.uninstall()
             ListMenuItem.update = ListMenuItem._simpleui_lm_orig_update
             ListMenuItem._simpleui_lm_orig_update = nil
         end
-        ListMenuItem._setListFolderCover  = nil
-        ListMenuItem._simpleui_lm_patched = nil
+        ListMenuItem._setListFolderCover      = nil
+        ListMenuItem._simpleui_lm_patched     = nil
     end
 end
 

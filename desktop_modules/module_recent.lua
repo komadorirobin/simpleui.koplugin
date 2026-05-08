@@ -66,7 +66,7 @@ M.id          = "recent"
 M.name        = _("Recent Books")
 M.label       = _("Recent Books")
 M.enabled_key = "recent"
-M.default_on  = true
+M.default_on  = false
 
 -- Called by teardown (via _PLUGIN_MODULES flush) to drop the cached reference
 -- to module_books_shared so a hot update picks up fresh code on next load.
@@ -107,6 +107,7 @@ function M.build(w, ctx)
     local cell_h = use_overlay and (ch + badge_r) or D.RECENT_CELL_H
 
     local row = HorizontalGroup:new{ align = "top" }
+    local cover_slots = {}
     for i = 1, cols do
         local fp    = ctx.recent_fps[i]
         local bd    = SH.getBookData(fp, ctx.prefetched and ctx.prefetched[fp])
@@ -115,7 +116,7 @@ function M.build(w, ctx)
         -- Build cover layer: plain or with percentage badge overlaid.
         local cover_widget
         if use_overlay then
-            local pct_int = math.floor((bd.percent or 0) * 100)
+            local pct_int = math.floor((bd.percent or 0) * 100 + 0.5)
             local badge_d = badge_r * 2
             local badge = FrameContainer:new{
                 bordersize  = 0,
@@ -160,7 +161,7 @@ function M.build(w, ctx)
         if draw_text then
             cell[#cell+1] = SH.vspan(draw_progress and D.RB_GAP2 or D.RB_GAP1, ctx.vspan_pool)
             cell[#cell+1] = TextWidget:new{
-                text      = string.format(_("%d%% Read"), (bd.percent or 0) * 100),
+                text      = string.format(_("%d%% Read"), math.floor((bd.percent or 0) * 100 + 0.5)),
                 face      = pct_face,
                 bold      = true,
                 fgcolor   = CLR_TEXT_SUB,
@@ -188,6 +189,13 @@ function M.build(w, ctx)
             return true
         end
 
+        -- Record cover slot: cell[1] is cover_widget; if overlay, cover is at [1] inside it.
+        if use_overlay then
+            cover_slots[#cover_slots+1] = { container = cover_widget, idx = 1, fp = fp, w = cw, h = ch, align = nil, stretch = 0.10 }
+        else
+            cover_slots[#cover_slots+1] = { container = cell, idx = 1, fp = fp, w = cw, h = ch, align = nil, stretch = 0.10 }
+        end
+
         -- Keyboard focus: overlay a black rectangular border on this book cell
         -- when it is the currently selected keyboard-navigation item.
         local cell_widget = tappable
@@ -209,10 +217,28 @@ function M.build(w, ctx)
         row[#row + 1] = cell_widget
     end
 
-    return FrameContainer:new{
+    local result = FrameContainer:new{
         bordersize = 0, padding = PAD, padding_top = 0, padding_bottom = 0,
         row,
     }
+    result._cover_slots = cover_slots
+    return result
+end
+
+function M.updateCovers(widget, _ctx)
+    if not widget or not widget._cover_slots then return true end
+    local SH = getSH()
+    if not SH then return true end
+    local all_done = true
+    for _, slot in ipairs(widget._cover_slots) do
+        local new_cover = SH.getBookCover(slot.fp, slot.w, slot.h, slot.align, slot.stretch)
+        if new_cover then
+            slot.container[slot.idx] = new_cover
+        elseif not Config.isCoverMissing(slot.fp) then
+            all_done = false
+        end
+    end
+    return all_done
 end
 
 function M.getHeight(ctx)
