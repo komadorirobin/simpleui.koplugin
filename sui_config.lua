@@ -137,6 +137,8 @@ M.ALL_ACTIONS = {
     { id = "history",          label = _("History"),          icon = M.ICON.history     },
     { id = "continue",         label = _("Continue"),         icon = M.ICON.continue_   },
     { id = "favorites",        label = _("Favorites"),        icon = M.ICON.ko_star     },
+    { id = "bookshelf_prose",  label = _("Books"),            icon = "nerd:F02D"        },
+    { id = "bookshelf_comics", label = _("Comics"),           icon = "nerd:F5DB"        },
     { id = "bookmark_browser", label = _("Bookmarks"),        icon = M.ICON.ko_bookmark },
     { id = "wifi_toggle",      label = _("Wi-Fi"),            icon = M.ICON.ko_wifi_on  },
     { id = "frontlight",       label = _("Brightness"),       icon = M.ICON.frontlight  },

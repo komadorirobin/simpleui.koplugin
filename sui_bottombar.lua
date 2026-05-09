@@ -1430,6 +1430,15 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
         if fm.collections then fm.collections:onShowColl()
         else showUnavailable(_("Favorites not available.")) end
 
+    elseif action_id == "bookshelf_prose" or action_id == "bookshelf_comics" then
+        local event_name = (action_id == "bookshelf_prose")
+            and "OpenBookshelfProse" or "OpenBookshelfComics"
+        local ok = pcall(function()
+            UIManager:broadcastEvent(require("ui/event"):new(event_name))
+        end)
+        if not ok then showUnavailable(_("Bookshelf not available.")) end
+        return
+
     elseif action_id == "bookmark_browser" then
         -- Show the source-selection ButtonDialog floating on top of whatever
         -- is currently visible. Delegates to the shared helper.
