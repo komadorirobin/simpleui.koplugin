@@ -41,6 +41,7 @@ M.name        = _("Image")
 M.label       = _("Image")
 M.enabled_key = "image"
 M.default_on  = false
+M.has_covers  = true
 
 local function _key(pfx, suffix)
     return (pfx or "navbar_homescreen_") .. suffix
