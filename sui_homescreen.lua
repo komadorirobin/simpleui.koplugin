@@ -338,6 +338,7 @@ local _EMPTY_SUB_FS   = Screen:scaleBySize(13)
 local _BASE_SECTION_LABEL_SIZE = Screen:scaleBySize(SECTION_LABEL_SIZE)
 local _MODULE_BG_COLOR  = Blitbuffer.gray(0.08)
 local _MODULE_BG_RADIUS = Screen:scaleBySize(12)
+local _MODULE_BG_PAD_Y  = PAD
 
 -- Section label widget cache — keyed by "text|inner_w|scale_pct".
 -- Invalidated on screen resize/rotation via invalidateLabelCache().
@@ -384,13 +385,15 @@ local function applyModuleBackground(mod_id, widget, w)
     local ok_sz, sz = pcall(function() return widget:getSize() end)
     if not ok_sz or not sz or not sz.h then return widget end
     local bg_w = math.max(1, w or sz.w or 1)
-    local bg_h = math.max(1, sz.h)
+    local bg_h = math.max(1, sz.h + _MODULE_BG_PAD_Y * 2)
     return FrameContainer:new{
         dimen = Geom:new{ w = bg_w, h = bg_h },
         bordersize = 0,
         background = _MODULE_BG_COLOR,
         radius     = _MODULE_BG_RADIUS,
-        padding    = 0,
+        padding        = 0,
+        padding_top    = _MODULE_BG_PAD_Y,
+        padding_bottom = _MODULE_BG_PAD_Y,
         widget,
     }
 end
