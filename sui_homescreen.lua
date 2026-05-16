@@ -348,44 +348,55 @@ local function invalidateLabelCache()
     _label_cache = {}
 end
 
-local function sectionLabel(text, w, mod_id)
+local function buildSectionLabel(text, w, mod_id)
     local scale     = Config.getSectionLabelScale(mod_id, PFX)
     local fs        = math.max(8, math.floor(_BASE_SECTION_LABEL_SIZE * scale))
     local label_h   = math.max(8, math.floor(Screen:scaleBySize(16) * scale))
+    local ok_ss, SUIStyle = pcall(require, "sui_style")
+    local _label_fg = ok_ss and SUIStyle and SUIStyle.getThemeColor("fg")
+    return FrameContainer:new{
+        bordersize = 0, padding = 0,
+        padding_left = PAD, padding_right = PAD,
+        padding_bottom = UI.LABEL_PAD_BOT,
+        UI.makeColoredText{
+            text    = text,
+            face    = Font:getFace("smallinfofont", fs),
+            bold    = true,
+            fgcolor = _label_fg,   -- nil -> KOReader default (black)
+            width   = w - PAD * 2,
+            height  = label_h,
+        },
+    }
+end
+
+local function sectionLabel(text, w, mod_id)
+    local scale     = Config.getSectionLabelScale(mod_id, PFX)
     local scale_pct = math.floor(scale * 100)
-    -- Resolve theme fg color so labels honour the active palette.
-    -- The color pointer is included in the cache key so that a theme change
-    -- after the first render produces a fresh widget instead of reusing the
-    -- stale one (the cache is also invalidated on rebuildLayout, but this
-    -- guards against within-session theme switches without a full rebuild).
+    -- Include mod_id in the cache key so two modules with the same title
+    -- never share the same widget instance.
     local ok_ss, SUIStyle = pcall(require, "sui_style")
     local _label_fg = ok_ss and SUIStyle and SUIStyle.getThemeColor("fg")
     local color_key = _label_fg and tostring(_label_fg) or "default"
-    local key = text .. "|" .. w .. "|" .. scale_pct .. "|" .. color_key
+    local key = table.concat({
+        tostring(mod_id or ""),
+        text,
+        tostring(w),
+        tostring(scale_pct),
+        color_key,
+    }, "|")
     if not _label_cache[key] then
-        _label_cache[key] = FrameContainer:new{
-            bordersize = 0, padding = 0,
-            padding_left = PAD, padding_right = PAD,
-            padding_bottom = UI.LABEL_PAD_BOT,
-            UI.makeColoredText{
-                text    = text,
-                face    = Font:getFace("smallinfofont", fs),
-                bold    = true,
-                fgcolor = _label_fg,   -- nil → KOReader default (black)
-                width   = w - PAD * 2,
-                height  = label_h,
-            },
-        }
+        _label_cache[key] = buildSectionLabel(text, w, mod_id)
     end
     return _label_cache[key]
 end
 
-local function applyModuleBackground(mod_id, widget, w, label_text)
+local function applyModuleBackground(mod_id, widget, w, label_text, fresh_label)
     if not Config.isModuleBackgroundEnabled(mod_id, PFX) then return widget end
     if label_text then
         widget = VerticalGroup:new{
             align = "left",
-            sectionLabel(label_text, w, mod_id),
+            fresh_label and buildSectionLabel(label_text, w, mod_id)
+                or sectionLabel(label_text, w, mod_id),
             widget,
         }
     end
@@ -722,7 +733,7 @@ local HomescreenWidget = InputContainer:extend{
 
 function HomescreenWidget:_applyModuleBackground(mod_id, widget, w)
     local label_text = mod_id == "clock" and self._clock_label or nil
-    return applyModuleBackground(mod_id, widget, w, label_text)
+    return applyModuleBackground(mod_id, widget, w, label_text, label_text ~= nil)
 end
 
 -- Returns true when another widget (e.g. a modal dialog) sits on top of the
