@@ -22,7 +22,6 @@ local HorizontalSpan  = require("ui/widget/horizontalspan")
 local LineWidget      = require("ui/widget/linewidget")
 local OverlapGroup    = require("ui/widget/overlapgroup")
 local RightContainer  = require("ui/widget/container/rightcontainer")
-local TextBoxWidget   = require("ui/widget/textboxwidget")
 local TextWidget      = require("ui/widget/textwidget")
 local VerticalGroup   = require("ui/widget/verticalgroup")
 local VerticalSpan    = require("ui/widget/verticalspan")
@@ -568,8 +567,9 @@ end
 -- Build the card widget from a goal table
 -- ---------------------------------------------------------------------------
 
-local function _buildCard(w, goal)
-    local scale      = Config.getModuleScale("hardcover")
+local function _buildCard(w, goal, ctx)
+    local pfx        = ctx and ctx.pfx
+    local scale      = Config.getModuleScale("hardcover", pfx)
     local text_scale = scale * (_getTextScalePct() / 100)
     local inner_w    = w - PAD * 2
     local face_title = Font:getFace("cfont", math.max(8, math.floor(_BASE_TITLE_FS * text_scale)))
@@ -591,10 +591,11 @@ local function _buildCard(w, goal)
     local rows = VerticalGroup:new{ align = "left" }
 
     -- ── Row 1: Title (full width, wraps if needed) ────────────────────────
-    rows[#rows + 1] = TextBoxWidget:new{
+    rows[#rows + 1] = UI.makeAlphaTextBox{
         text  = title,
         face  = face_title,
         bold  = true,
+        fgcolor = Blitbuffer.COLOR_BLACK,
         width = inner_w,
     }
     rows[#rows + 1] = VerticalSpan:new{ width = Screen:scaleBySize(4) }
@@ -614,7 +615,7 @@ local function _buildCard(w, goal)
     rows[#rows + 1] = VerticalSpan:new{ width = Screen:scaleBySize(5) }
 
     -- ── Row 3: "X av Y böcker" ────────────────────────────────────────────
-    rows[#rows + 1] = TextBoxWidget:new{
+    rows[#rows + 1] = UI.makeAlphaTextBox{
         text    = prog_str,
         face    = face_body,
         fgcolor = CLR_TEXT_SUB,
@@ -624,7 +625,7 @@ local function _buildCard(w, goal)
     -- ── Row 4: Status (optional) ──────────────────────────────────────────
     if status then
         rows[#rows + 1] = VerticalSpan:new{ width = Screen:scaleBySize(3) }
-        rows[#rows + 1] = TextBoxWidget:new{
+        rows[#rows + 1] = UI.makeAlphaTextBox{
             text    = status,
             face    = face_small,
             fgcolor = is_warn and _CLR_WARN or _CLR_OK,
@@ -634,7 +635,7 @@ local function _buildCard(w, goal)
 
     -- ── Row 5: Date range ─────────────────────────────────────────────────
     rows[#rows + 1] = VerticalSpan:new{ width = Screen:scaleBySize(3) }
-    rows[#rows + 1] = TextBoxWidget:new{
+    rows[#rows + 1] = UI.makeAlphaTextBox{
         text    = date_str,
         face    = face_small,
         fgcolor = CLR_TEXT_SUB,
@@ -733,7 +734,7 @@ function _doBuild(w, ctx)
         if layout == "row" then
             widget = _buildRow(w, cached)
         else
-            widget = _buildCard(w, cached)
+            widget = _buildCard(w, cached, ctx)
         end
     elseif _last_error then
         widget = _buildPlaceholder(w, _last_error)
