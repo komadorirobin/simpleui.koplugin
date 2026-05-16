@@ -380,8 +380,15 @@ local function sectionLabel(text, w, mod_id)
     return _label_cache[key]
 end
 
-local function applyModuleBackground(mod_id, widget, w)
+local function applyModuleBackground(mod_id, widget, w, label_text)
     if not Config.isModuleBackgroundEnabled(mod_id, PFX) then return widget end
+    if label_text then
+        widget = VerticalGroup:new{
+            align = "left",
+            sectionLabel(label_text, w, mod_id),
+            widget,
+        }
+    end
     local ok_sz, sz = pcall(function() return widget:getSize() end)
     if not ok_sz or not sz or not sz.h then return widget end
     local bg_w = math.max(1, w or sz.w or 1)
@@ -714,7 +721,8 @@ local HomescreenWidget = InputContainer:extend{
 }
 
 function HomescreenWidget:_applyModuleBackground(mod_id, widget, w)
-    return applyModuleBackground(mod_id, widget, w)
+    local label_text = mod_id == "clock" and self._clock_label or nil
+    return applyModuleBackground(mod_id, widget, w, label_text)
 end
 
 -- Returns true when another widget (e.g. a modal dialog) sits on top of the
@@ -1203,6 +1211,7 @@ function HomescreenWidget:init()
     self._clock_is_wrapped   = nil
     self._clock_pfx          = nil
     self._clock_inner_w      = nil
+    self._clock_label        = nil
     self._overflow_warn_key  = nil
 
     -- Minimal placeholder so patches.lua can call wrapWithNavbar safely.
@@ -2007,6 +2016,7 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
     self._clock_body_ref    = body
     self._cover_mod_slots   = {}
     self._clock_is_wrapped  = false
+    self._clock_label       = nil
 
     -- Reset the per-filepath extraction dedup guard at the start of every
     -- render.  The guard is an intra-render dedup (prevents the same filepath
@@ -2136,9 +2146,13 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                 else
                     col_body[#col_body+1] = self:_vspan(mod_gaps[mod.id] or MOD_GAP)
                 end
-                if mod.label then col_body[#col_body+1] = sectionLabel(mod.label, col_w, mod.id) end
+                local bg_enabled = Config.isModuleBackgroundEnabled(mod.id, PFX)
+                if mod.label and not bg_enabled then
+                    col_body[#col_body+1] = sectionLabel(mod.label, col_w, mod.id)
+                end
                 local has_menu   = type(mod.getMenuItems) == "function"
-                local display_widget = applyModuleBackground(mod.id, widget, col_w)
+                local display_widget = applyModuleBackground(mod.id, widget, col_w,
+                    bg_enabled and mod.label or nil)
                 local entry_widget = has_menu
                     and self:_makeModWrapper(mod, display_widget, col_w)
                     or  display_widget
@@ -2157,12 +2171,13 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
         -- Locates the child index of the clock module within a column group
         -- by replaying the same insertion order used in _build_col_group.
         local function _locate_clock_idx(col_entries, _col_group)
-            local gi        = 0
-            local col_first = true
+            local gi = 0
             for _, entry in ipairs(col_entries) do
-                if col_first then col_first = false
-                else gi = gi + 1 end
-                if entry.mod.label then gi = gi + 1 end
+                gi = gi + 1 -- module gap/initial padding span
+                if entry.mod.label
+                   and not Config.isModuleBackgroundEnabled(entry.mod.id, PFX) then
+                    gi = gi + 1
+                end
                 gi = gi + 1
                 if entry.mod.id == "clock" then
                     return gi
@@ -2193,6 +2208,7 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                 for _, e in ipairs(left_col) do
                     if e.mod.id == "clock" then
                         self._clock_is_wrapped = type(e.mod.getMenuItems) == "function"
+                        self._clock_label      = e.mod.label
                         break
                     end
                 end
@@ -2204,6 +2220,7 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                     for _, e in ipairs(right_col) do
                         if e.mod.id == "clock" then
                             self._clock_is_wrapped = type(e.mod.getMenuItems) == "function"
+                            self._clock_label      = e.mod.label
                             break
                         end
                     end
@@ -2234,7 +2251,10 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                     local gap_px = mod_gaps[mod.id] or MOD_GAP
                     body[#body+1] = self:_vspan(gap_px)
                 end
-                if mod.label then body[#body+1] = sectionLabel(mod.label, inner_w, mod.id) end
+                local bg_enabled = Config.isModuleBackgroundEnabled(mod.id, PFX)
+                if mod.label and not bg_enabled then
+                    body[#body+1] = sectionLabel(mod.label, inner_w, mod.id)
+                end
                 local has_menu = type(mod.getMenuItems) == "function"
                 if mod.id == "header" then
                     self._header_body_idx   = #body + 1
@@ -2244,8 +2264,10 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                     self._clock_body_idx   = #body + 1
                     self._clock_body_ref   = body
                     self._clock_is_wrapped = has_menu
+                    self._clock_label      = mod.label
                 end
-                local display_widget = applyModuleBackground(mod.id, widget, inner_w)
+                local display_widget = applyModuleBackground(mod.id, widget, inner_w,
+                    bg_enabled and mod.label or nil)
                 if has_menu then
                     body[#body+1] = self:_makeModWrapper(mod, display_widget, inner_w)
                 else
@@ -2739,6 +2761,7 @@ function HomescreenWidget:onCloseWidget()
     self._clock_is_wrapped = nil
     self._clock_pfx        = nil
     self._clock_inner_w    = nil
+    self._clock_label      = nil
     self._overflow_warn_key = nil
 
     -- Clear cover cache only when the FM file browser was visited since the
