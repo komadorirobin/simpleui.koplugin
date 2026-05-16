@@ -1313,17 +1313,91 @@ local _ACTION_SET = {
 -- "sui_action_library.svg" is the public icon name for the "home" (Library) action.
 local _ICON_ID_ALIAS = { library = "home" }
 
+local function _iconPath(pack_dir, rel_fname)
+    if type(rel_fname) ~= "string" or rel_fname == "" then return nil end
+    if rel_fname:sub(1, 1) == "/" then return rel_fname end
+    return pack_dir .. "/" .. rel_fname
+end
+
+local function _actionKey(action_id)
+    if not action_id then return nil end
+    action_id = _ICON_ID_ALIAS[action_id] or action_id
+    if _ACTION_SET[action_id] then
+        return "simpleui_action_" .. action_id .. "_icon", "action"
+    end
+    return nil, nil
+end
+
 local function _filenameToKey(fname)
     local stem = fname:match("^(.+)%.[^%.]+$") or fname
     for _, s in ipairs(M.SLOTS) do
         if s.id == stem then return "simpleui_sysicon_" .. stem, "sysicon" end
     end
     local action_id = stem:match("^sui_action_(.+)$")
-    if action_id and _ACTION_SET[action_id] then
-        local internal_id = _ICON_ID_ALIAS[action_id] or action_id
-        return "simpleui_action_" .. internal_id .. "_icon", "action"
-    end
+    if action_id then return _actionKey(action_id) end
     return nil, nil
+end
+
+local function _slug(s)
+    s = tostring(s or ""):lower()
+    s = s:gsub("[^%w]+", "_")
+    s = s:gsub("^_+", ""):gsub("_+$", "")
+    return s
+end
+
+local function _applyCustomActions(pack_dir, manifest, result)
+    local ok_qa, QA = pcall(require, "sui_quickactions")
+    if not ok_qa or not QA then return end
+
+    local by_slug = {}
+    local lfs = require("libs/libkoreader-lfs")
+    pcall(function()
+        for fname in lfs.dir(pack_dir) do
+            if fname ~= "." and fname ~= ".." and _isIconFile(fname) then
+                local stem = fname:match("^(.+)%.[^%.]+$") or fname
+                local slug = stem:match("^sui_custom_(.+)$") or stem:match("^sui_cqa_(.+)$")
+                if slug and slug ~= "" then by_slug[slug] = fname end
+            end
+        end
+    end)
+
+    local rules = {}
+    local custom = manifest.custom_actions or manifest.custom_quick_actions or manifest.custom_qa
+    if type(custom) == "table" then
+        for key, val in pairs(custom) do
+            local rule = {}
+            if type(val) == "string" then
+                rule.label = type(key) == "string" and key or nil
+                rule.icon  = val
+            elseif type(val) == "table" then
+                rule.id    = val.id
+                rule.label = val.label or (type(key) == "string" and key or nil)
+                rule.icon  = val.icon or val.file or val.path
+            end
+            if (rule.id or rule.label) and rule.icon then rules[#rules + 1] = rule end
+        end
+    end
+
+    for _, qa_id in ipairs(QA.getCustomQAList()) do
+        local cfg = QA.getCustomQAConfig(qa_id)
+        local rel_fname = by_slug[_slug(cfg.label)]
+        for _, rule in ipairs(rules) do
+            if rule.id == qa_id or rule.label == cfg.label then
+                rel_fname = rule.icon
+                break
+            end
+        end
+        if rel_fname then
+            local full_path = _iconPath(pack_dir, rel_fname)
+            if full_path and lfs.attributes(full_path, "mode") == "file" then
+                QA.saveCustomQAConfig(qa_id, cfg.label, cfg.path, cfg.collection,
+                    full_path, cfg.plugin_key, cfg.plugin_method, cfg.dispatcher_action)
+                result.applied = result.applied + 1
+            else
+                result.errors = result.errors + 1
+            end
+        end
+    end
 end
 
 function M.getPacksDir()
@@ -1390,10 +1464,15 @@ local function _applyFromDir(pack_dir)
     for slot_id, rel_fname in pairs(file_map) do
         local is_sys = false
         for _, s in ipairs(M.SLOTS) do if s.id == slot_id then is_sys = true; break end end
+        local settings_key
         if is_sys then
-            local settings_key = "simpleui_sysicon_" .. slot_id
-            local full_path    = pack_dir .. "/" .. rel_fname
-            if lfs.attributes(full_path, "mode") == "file" then
+            settings_key = "simpleui_sysicon_" .. slot_id
+        else
+            settings_key = _actionKey(slot_id)
+        end
+        if settings_key then
+            local full_path = _iconPath(pack_dir, rel_fname)
+            if full_path and lfs.attributes(full_path, "mode") == "file" then
                 SUISettings:set(settings_key, full_path)
                 done_keys[settings_key] = true
                 result.applied = result.applied + 1
@@ -1426,6 +1505,7 @@ local function _applyFromDir(pack_dir)
             end
         end
     end)
+    _applyCustomActions(pack_dir, manifest, result)
     return result
 end
 
