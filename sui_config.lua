@@ -1356,6 +1356,7 @@ local LABEL_SCALE_KEY       = "simpleui_hs_label_scale"
 local SCALE_LINKED_KEY      = "simpleui_hs_scale_linked"
 local ITEM_LABEL_SCALE_SUFFIX = "_item_label_scale"
 local SECTION_LABEL_SCALE_SUFFIX = "_section_label_scale"
+local MODULE_BACKGROUND_SUFFIX = "_module_background"
 
 -- Clamp an integer percentage to valid range.
 local function _clamp(n)
@@ -1373,6 +1374,10 @@ end
 
 local function _sectionLabelKey(mod_id, pfx)
     return (pfx or "simpleui_hs_") .. (mod_id or "") .. SECTION_LABEL_SCALE_SUFFIX
+end
+
+local function _moduleBackgroundKey(mod_id, pfx)
+    return (pfx or "simpleui_hs_") .. (mod_id or "") .. MODULE_BACKGROUND_SUFFIX
 end
 
 -- ---------------------------------------------------------------------------
@@ -1707,6 +1712,16 @@ function M.setItemLabelScale(pct, mod_id, pfx)
     SUISettings:set(_itemLabelKey(mod_id, pfx), _clamp(pct))
 end
 
+function M.isModuleBackgroundEnabled(mod_id, pfx)
+    if not (mod_id and pfx) then return false end
+    return SUISettings:get(_moduleBackgroundKey(mod_id, pfx)) == true
+end
+
+function M.setModuleBackgroundEnabled(mod_id, pfx, on)
+    if not (mod_id and pfx) then return end
+    SUISettings:set(_moduleBackgroundKey(mod_id, pfx), on and true or nil)
+end
+
 -- ---------------------------------------------------------------------------
 -- Reset all scales to default (100%)
 -- Clears global module scale, label scale, all per-module overrides,
@@ -1949,6 +1964,20 @@ function M.makeLabelToggleItem(mod_id, default_label, refresh, _lc)
     }
 end
 
+function M.makeModuleBackgroundItem(mod_id, pfx, refresh, _lc)
+    return {
+        _sui_module_background_toggle = true,
+        text           = _lc("Show module background"),
+        checked_func   = function() return M.isModuleBackgroundEnabled(mod_id, pfx) end,
+        keep_menu_open = true,
+        callback       = function()
+            M.setModuleBackgroundEnabled(mod_id, pfx,
+                not M.isModuleBackgroundEnabled(mod_id, pfx))
+            if refresh then refresh() end
+        end,
+    }
+end
+
 function M.hasSectionLabelToggle(items)
     if type(items) ~= "table" then return false end
     for _, item in ipairs(items) do
@@ -1999,6 +2028,21 @@ function M.appendSectionLabelScaleItem(items, mod_id, pfx, refresh, _lc)
         })
     end
     return items
+end
+
+function M.appendModuleAppearanceItems(items, mod_id, pfx, refresh, _lc)
+    if type(items) ~= "table" then items = {} end
+    local has_bg = false
+    for _, item in ipairs(items) do
+        if type(item) == "table" and item._sui_module_background_toggle then
+            has_bg = true
+            break
+        end
+    end
+    if not has_bg then
+        items[#items + 1] = M.makeModuleBackgroundItem(mod_id, pfx, refresh, _lc)
+    end
+    return M.appendSectionLabelScaleItem(items, mod_id, pfx, refresh, _lc)
 end
 
 return M

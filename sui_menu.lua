@@ -1529,7 +1529,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                         qa_items[#qa_items + 1] = {
                             text_func           = text_fn,
                             sub_item_table_func = function()
-                                return Config.appendSectionLabelScaleItem(
+                                return Config.appendModuleAppearanceItems(
                                     _mod.getMenuItems(ctx_menu), _mod.id, ctx.pfx, ctx.refresh, _)
                             end,
                         }
@@ -1537,7 +1537,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                         items[#items + 1] = {
                             text_func           = text_fn,
                             sub_item_table_func = function()
-                                return Config.appendSectionLabelScaleItem(
+                                return Config.appendModuleAppearanceItems(
                                     _mod.getMenuItems(ctx_menu), _mod.id, ctx.pfx, ctx.refresh, _)
                             end,
                         }

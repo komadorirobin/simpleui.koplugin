@@ -336,6 +336,9 @@ local _EMPTY_GAP      = Screen:scaleBySize(12)
 local _EMPTY_SUB_H    = Screen:scaleBySize(20)
 local _EMPTY_SUB_FS   = Screen:scaleBySize(13)
 local _BASE_SECTION_LABEL_SIZE = Screen:scaleBySize(SECTION_LABEL_SIZE)
+local _MODULE_BG_COLOR  = Blitbuffer.gray(0.88)
+local _MODULE_BG_BORDER = Blitbuffer.gray(0.72)
+local _MODULE_BG_RADIUS = Screen:scaleBySize(12)
 
 -- Section label widget cache — keyed by "text|inner_w|scale_pct".
 -- Invalidated on screen resize/rotation via invalidateLabelCache().
@@ -375,6 +378,26 @@ local function sectionLabel(text, w, mod_id)
         }
     end
     return _label_cache[key]
+end
+
+local function applyModuleBackground(mod_id, widget, w)
+    if not Config.isModuleBackgroundEnabled(mod_id, PFX) then return widget end
+    local ok_sz, sz = pcall(function() return widget:getSize() end)
+    if not ok_sz or not sz or not sz.h then return widget end
+    local bg_w = math.max(1, w or sz.w or 1)
+    local bg_h = math.max(1, sz.h)
+    return OverlapGroup:new{
+        dimen = Geom:new{ w = bg_w, h = bg_h },
+        FrameContainer:new{
+            dimen      = Geom:new{ w = bg_w, h = bg_h },
+            bordersize = 1,
+            color      = _MODULE_BG_BORDER,
+            background = _MODULE_BG_COLOR,
+            radius     = _MODULE_BG_RADIUS,
+            padding    = 0,
+        },
+        widget,
+    }
 end
 
 local function buildEmptyState(w, h)
@@ -691,6 +714,10 @@ local HomescreenWidget = InputContainer:extend{
     _on_qa_tap          = nil,
     _on_goal_tap        = nil,
 }
+
+function HomescreenWidget:_applyModuleBackground(mod_id, widget, w)
+    return applyModuleBackground(mod_id, widget, w)
+end
 
 -- Returns true when another widget (e.g. a modal dialog) sits on top of the
 -- UIManager stack, so gesture handlers can fall through correctly.
@@ -1778,7 +1805,7 @@ function HomescreenWidget:_onHoldModRelease(wrapper)
         function()
             local ctx_menu = hs:_getHsCtxMenu()
             local items    = mod.getMenuItems(ctx_menu)
-            Config.appendSectionLabelScaleItem(items, mod.id, PFX, ctx_menu.refresh, _lc)
+            Config.appendModuleAppearanceItems(items, mod.id, PFX, ctx_menu.refresh, _lc)
             local gap_item = Config.makeGapItem({
                 text_func = function()
                     local pct = Config.getModuleGapPct(mod.id, PFX)
@@ -2113,9 +2140,10 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                 end
                 if mod.label then col_body[#col_body+1] = sectionLabel(mod.label, col_w, mod.id) end
                 local has_menu   = type(mod.getMenuItems) == "function"
+                local display_widget = applyModuleBackground(mod.id, widget, col_w)
                 local entry_widget = has_menu
-                    and self:_makeModWrapper(mod, widget, col_w)
-                    or  widget
+                    and self:_makeModWrapper(mod, display_widget, col_w)
+                    or  display_widget
                 col_body[#col_body+1] = entry_widget
                 -- Record slot for per-module cover poll (only for cover modules).
                 if mod.has_covers and type(mod.updateCovers) == "function" then
@@ -2219,10 +2247,11 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                     self._clock_body_ref   = body
                     self._clock_is_wrapped = has_menu
                 end
+                local display_widget = applyModuleBackground(mod.id, widget, inner_w)
                 if has_menu then
-                    body[#body+1] = self:_makeModWrapper(mod, widget, inner_w)
+                    body[#body+1] = self:_makeModWrapper(mod, display_widget, inner_w)
                 else
-                    body[#body+1] = widget
+                    body[#body+1] = display_widget
                 end
                 -- Record slot for per-module cover poll (only for cover modules).
                 if mod.has_covers and type(mod.updateCovers) == "function" then

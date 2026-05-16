@@ -401,6 +401,9 @@ local function _tick()
         end
 
         if ok_w and new_widget then
+            if type(hs._applyModuleBackground) == "function" then
+                new_widget = hs:_applyModuleBackground("clock", new_widget, inner_w)
+            end
             if is_wrapped then
                 -- The clock was wrapped in an InputContainer for hold-to-settings.
                 -- Replace the inner slot [1] to keep the gesture handler alive.
