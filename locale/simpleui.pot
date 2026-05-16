@@ -4,7 +4,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: simpleui\n"
-"POT-Creation-Date: 2026-05-15 18:10\n"
+"POT-Creation-Date: 2026-05-16 10:12\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -91,7 +91,7 @@ msgstr ""
 msgid "Above"
 msgstr ""
 
-#: sui_style.lua:1178
+#: sui_style.lua:1176
 msgid "Accent / Active Color"
 msgstr ""
 
@@ -159,14 +159,14 @@ msgstr ""
 #: sui_menu.lua:926
 #: sui_menu.lua:1828
 #: sui_menu.lua:1863
-#: sui_style.lua:1202
+#: sui_style.lua:1200
 #: desktop_modules/module_image.lua:320
 #: desktop_modules/module_clock.lua:618
 #: desktop_modules/module_clock.lua:648
 msgid "Apply"
 msgstr ""
 
-#: sui_style.lua:1252
+#: sui_style.lua:1250
 msgid "Apply Palette…"
 msgstr ""
 
@@ -242,7 +242,7 @@ msgid "Author: %s"
 msgstr ""
 
 #: sui_config.lua:148
-#: sui_browsemeta.lua:68
+#: sui_browsemeta.lua:70
 #: sui_quickactions.lua:348
 msgid "Authors"
 msgstr ""
@@ -251,7 +251,7 @@ msgstr ""
 msgid "Auto (Single ↔ 4-Cover Grid)"
 msgstr ""
 
-#: sui_browsemeta.lua:893
+#: sui_browsemeta.lua:965
 #: sui_foldercovers.lua:673
 #: sui_foldercovers.lua:729
 #: desktop_modules/module_collections.lua:686
@@ -358,11 +358,11 @@ msgstr ""
 msgid "Bottom Bar will be %s after restart.\n\nRestart now?"
 msgstr ""
 
-#: sui_style.lua:1171
+#: sui_style.lua:1169
 msgid "Bottom Bar — Background"
 msgstr ""
 
-#: sui_style.lua:1174
+#: sui_style.lua:1172
 msgid "Bottom Bar — Text and Icons"
 msgstr ""
 
@@ -401,7 +401,7 @@ msgstr ""
 msgid "Browse Button (tags)"
 msgstr ""
 
-#: sui_browsemeta.lua:438
+#: sui_browsemeta.lua:442
 msgid "Browse by"
 msgstr ""
 
@@ -415,7 +415,7 @@ msgstr ""
 msgid "Browse by Authors/Series/Tags not available."
 msgstr ""
 
-#: sui_titlebar.lua:948
+#: sui_titlebar.lua:969
 msgid "Browse library"
 msgstr ""
 
@@ -423,24 +423,24 @@ msgstr ""
 msgid "Button Size"
 msgstr ""
 
-#: sui_titlebar.lua:952
+#: sui_titlebar.lua:973
 msgid "By author"
 msgstr ""
 
-#: sui_titlebar.lua:953
+#: sui_titlebar.lua:974
 msgid "By series"
 msgstr ""
 
-#: sui_titlebar.lua:954
+#: sui_titlebar.lua:975
 msgid "By tags"
 msgstr ""
 
 #: sui_config.lua:1784
 #: sui_config.lua:1865
-#: sui_browsemeta.lua:817
-#: sui_browsemeta.lua:925
-#: sui_browsemeta.lua:1135
-#: sui_titlebar.lua:955
+#: sui_browsemeta.lua:889
+#: sui_browsemeta.lua:997
+#: sui_browsemeta.lua:1207
+#: sui_titlebar.lua:976
 #: sui_quickactions.lua:859
 #: sui_quickactions.lua:881
 #: sui_quickactions.lua:973
@@ -474,7 +474,7 @@ msgstr ""
 #: sui_foldercovers.lua:1320
 #: sui_bottombar.lua:1215
 #: sui_bottombar.lua:1790
-#: sui_style.lua:1198
+#: sui_style.lua:1196
 #: sui_updater.lua:482
 #: sui_updater.lua:499
 #: desktop_modules/module_image.lua:281
@@ -547,7 +547,7 @@ msgstr ""
 msgid "Closing Notice"
 msgstr ""
 
-#: main.lua:1134
+#: main.lua:1281
 msgid "Closing book…"
 msgstr ""
 
@@ -559,12 +559,12 @@ msgstr ""
 msgid "Collection"
 msgstr ""
 
-#: sui_browsemeta.lua:857
+#: sui_browsemeta.lua:929
 #: sui_foldercovers.lua:644
 msgid "Collection \"%1\" created with %2 books."
 msgstr ""
 
-#: sui_browsemeta.lua:832
+#: sui_browsemeta.lua:904
 #: sui_foldercovers.lua:627
 msgid "Collection already exists: %1"
 msgstr ""
@@ -625,11 +625,11 @@ msgstr ""
 msgid "Controls when the brief \"Closing book…\" notice is shown when leaving a book.\n\n• Always: shown whenever a book is closed, whether via the menu or a gesture.\n• Gesture Only: shown only when closing via a gesture (e.g. swipe); not shown when using the reader menu.\n• Never: the notice is never shown."
 msgstr ""
 
-#: sui_style.lua:1439
+#: sui_style.lua:1437
 msgid "Could not determine packs folder"
 msgstr ""
 
-#: sui_style.lua:1441
+#: sui_style.lua:1439
 msgid "Could not open zip (invalid format or corrupted)"
 msgstr ""
 
@@ -662,7 +662,7 @@ msgstr ""
 msgid "Cover size"
 msgstr ""
 
-#: sui_browsemeta.lua:824
+#: sui_browsemeta.lua:896
 #: sui_foldercovers.lua:619
 msgid "Create"
 msgstr ""
@@ -671,7 +671,7 @@ msgstr ""
 msgid "Create Quick Action"
 msgstr ""
 
-#: sui_browsemeta.lua:1127
+#: sui_browsemeta.lua:1199
 #: sui_foldercovers.lua:846
 #: sui_foldercovers.lua:1312
 msgid "Create collection"
@@ -751,7 +751,7 @@ msgstr ""
 msgid "December"
 msgstr ""
 
-#: sui_titlebar.lua:951
+#: sui_titlebar.lua:972
 #: sui_quickactions.lua:936
 #: sui_menu.lua:443
 #: sui_menu.lua:572
@@ -887,7 +887,7 @@ msgstr ""
 msgid "Enable at least 2 modules to arrange."
 msgstr ""
 
-#: sui_style.lua:867
+#: sui_style.lua:865
 msgid "Enable custom UI font"
 msgstr ""
 
@@ -895,7 +895,7 @@ msgstr ""
 msgid "Enable wallpaper"
 msgstr ""
 
-#: sui_style.lua:1195
+#: sui_style.lua:1193
 msgid "Enter a hex color (#RRGGBB). On greyscale e-ink the perceived brightness is used."
 msgstr ""
 
@@ -928,7 +928,7 @@ msgstr ""
 msgid "Error exporting preset: "
 msgstr ""
 
-#: sui_style.lua:1488
+#: sui_style.lua:1486
 msgid "Error extracting zip: "
 msgstr ""
 
@@ -980,7 +980,7 @@ msgstr ""
 msgid "File Search"
 msgstr ""
 
-#: sui_style.lua:1435
+#: sui_style.lua:1433
 msgid "File not found: "
 msgstr ""
 
@@ -1014,7 +1014,7 @@ msgstr ""
 msgid "Folder Shortcuts"
 msgstr ""
 
-#: sui_browsemeta.lua:929
+#: sui_browsemeta.lua:1001
 #: sui_foldercovers.lua:705
 #: sui_foldercovers.lua:761
 msgid "Folder cover"
@@ -1156,11 +1156,11 @@ msgstr ""
 msgid "Home Screen"
 msgstr ""
 
-#: sui_style.lua:1170
+#: sui_style.lua:1168
 msgid "Home Screen — Background"
 msgstr ""
 
-#: sui_style.lua:1173
+#: sui_style.lua:1171
 msgid "Home Screen — Text"
 msgstr ""
 
@@ -1385,7 +1385,7 @@ msgstr ""
 
 #: sui_config.lua:135
 #: sui_config.lua:415
-#: sui_titlebar.lua:1023
+#: sui_titlebar.lua:1044
 #: sui_quickactions.lua:161
 #: sui_menu.lua:3431
 msgid "Library"
@@ -1484,6 +1484,10 @@ msgstr ""
 msgid "Monday"
 msgstr ""
 
+#: main.lua:799
+msgid "More by %s (%d)"
+msgstr ""
+
 #: sui_quickactions.lua:20
 msgid "My Action"
 msgstr ""
@@ -1560,7 +1564,7 @@ msgstr ""
 msgid "New Quick Action"
 msgstr ""
 
-#: sui_browsemeta.lua:813
+#: sui_browsemeta.lua:885
 #: sui_foldercovers.lua:608
 msgid "New collection name"
 msgstr ""
@@ -1600,7 +1604,7 @@ msgstr ""
 msgid "No books found in this series."
 msgstr ""
 
-#: sui_browsemeta.lua:882
+#: sui_browsemeta.lua:954
 msgid "No books found."
 msgstr ""
 
@@ -1637,7 +1641,7 @@ msgstr ""
 msgid "No folder, collection or plugin configured.\nGo to Simple UI → Settings → Quick Actions to set one."
 msgstr ""
 
-#: sui_style.lua:882
+#: sui_style.lua:880
 msgid "No fonts found."
 msgstr ""
 
@@ -1795,7 +1799,7 @@ msgstr ""
 msgid "Pack \"%s\" installed.\nYou can now apply it from the list."
 msgstr ""
 
-#: sui_style.lua:1493
+#: sui_style.lua:1491
 msgid "Pack folder not accessible: "
 msgstr ""
 
@@ -1848,7 +1852,7 @@ msgstr ""
 msgid "Path chooser not available."
 msgstr ""
 
-#: sui_style.lua:1482
+#: sui_style.lua:1480
 msgid "Path does not exist: "
 msgstr ""
 
@@ -2060,7 +2064,7 @@ msgstr ""
 msgid "Reset All System Icons"
 msgstr ""
 
-#: sui_style.lua:1282
+#: sui_style.lua:1280
 msgid "Reset All Theme Colors"
 msgstr ""
 
@@ -2087,8 +2091,8 @@ msgstr ""
 msgid "Restart"
 msgstr ""
 
-#: sui_style.lua:874
-#: sui_style.lua:916
+#: sui_style.lua:872
+#: sui_style.lua:914
 msgid "Restart to fully apply the UI font change."
 msgstr ""
 
@@ -2271,7 +2275,7 @@ msgstr ""
 msgid "Search Button"
 msgstr ""
 
-#: sui_style.lua:1176
+#: sui_style.lua:1174
 msgid "Secondary / Dim Text"
 msgstr ""
 
@@ -2283,7 +2287,7 @@ msgstr ""
 msgid "Select at least 2 collections to arrange."
 msgstr ""
 
-#: sui_style.lua:1177
+#: sui_style.lua:1175
 msgid "Separator Line"
 msgstr ""
 
@@ -2292,7 +2296,7 @@ msgid "September"
 msgstr ""
 
 #: sui_config.lua:150
-#: sui_browsemeta.lua:69
+#: sui_browsemeta.lua:71
 #: sui_quickactions.lua:366
 msgid "Series"
 msgstr ""
@@ -2306,7 +2310,7 @@ msgstr ""
 msgid "Set"
 msgstr ""
 
-#: sui_browsemeta.lua:1118
+#: sui_browsemeta.lua:1190
 #: sui_foldercovers.lua:799
 #: sui_foldercovers.lua:1300
 msgid "Set folder cover"
@@ -2363,8 +2367,8 @@ msgstr ""
 msgid "Simple"
 msgstr ""
 
-#: main.lua:1533
-#: main.lua:1546
+#: main.lua:1680
+#: main.lua:1693
 #: sui_menu.lua:2662
 #: sui_menu.lua:2666
 msgid "Simple UI"
@@ -2481,11 +2485,11 @@ msgstr ""
 msgid "Status Bar"
 msgstr ""
 
-#: sui_style.lua:1172
+#: sui_style.lua:1170
 msgid "Status Bar — Background"
 msgstr ""
 
-#: sui_style.lua:1175
+#: sui_style.lua:1173
 msgid "Status Bar — Text"
 msgstr ""
 
@@ -2535,7 +2539,7 @@ msgid "Tabs  (%d/%d — at limit)"
 msgstr ""
 
 #: sui_config.lua:152
-#: sui_browsemeta.lua:70
+#: sui_browsemeta.lua:72
 #: sui_quickactions.lua:384
 msgid "Tags"
 msgstr ""
@@ -2752,7 +2756,7 @@ msgstr ""
 msgid "Uniformize Covers (2:3)"
 msgstr ""
 
-#: sui_style.lua:1491
+#: sui_style.lua:1489
 msgid "Unsupported format (use a folder or a .zip file)"
 msgstr ""
 
@@ -2923,7 +2927,7 @@ msgstr ""
 msgid "disabled"
 msgstr ""
 
-#: sui_style.lua:1194
+#: sui_style.lua:1192
 msgid "e.g. #F5F0E8  or #1C1C1E  (empty = reset)"
 msgstr ""
 
@@ -2950,7 +2954,7 @@ msgstr ""
 msgid "enabled"
 msgstr ""
 
-#: sui_style.lua:1437
+#: sui_style.lua:1435
 msgid "ffi/archiver not available in this KOReader version"
 msgstr ""
 
@@ -2987,7 +2991,7 @@ msgstr ""
 msgid "of reading, all time"
 msgstr ""
 
-#: sui_style.lua:1480
+#: sui_style.lua:1478
 msgid "pack_path not provided"
 msgstr ""
 
