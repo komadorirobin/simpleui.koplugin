@@ -222,12 +222,27 @@ function SimpleUIPlugin:init()
         -- not overwritten; keys successfully copied are removed from
         -- G_reader_settings.
         -- -------------------------------------------------------------------
+        local defer_defaults_until_settings_migrated = false
+        local function hasLegacySimpleUISettings()
+            return G_reader_settings:readSetting("navbar_tabs") ~= nil
+                or G_reader_settings:readSetting("navbar_enabled") ~= nil
+                or G_reader_settings:readSetting("navbar_homescreen_module_order") ~= nil
+                or G_reader_settings:readSetting("navbar_homescreen_currently") ~= nil
+                or G_reader_settings:readSetting("navbar_homescreen_coverdeck") ~= nil
+                or G_reader_settings:readSetting("navbar_homescreen_image") ~= nil
+                or G_reader_settings:readSetting("simpleui_hs_module_order") ~= nil
+                or G_reader_settings:readSetting("simpleui_bar_tabs") ~= nil
+        end
+
         if not SUISettings:isTrue("simpleui_settings_migrated_v2") then
-            pcall(function()
+            local ok_mig, migrated_ok = pcall(function()
                 -- Enumerate every key currently stored in G_reader_settings
                 -- and migrate the ones owned by SimpleUI.
                 local raw = G_reader_settings.data  -- LuaSettings exposes .data
-                if type(raw) ~= "table" then return end
+                if type(raw) ~= "table" then
+                    logger.warn("simpleui: settings migration v2 deferred — G_reader_settings.data unavailable")
+                    return false
+                end
 
                 -- Collect owned keys first; deleting from raw while iterating
                 -- it with pairs() has undefined behaviour in Lua and can cause
@@ -258,9 +273,17 @@ function SimpleUIPlugin:init()
 
                 SUISettings:flush()
                 logger.info("simpleui: settings migration v2 complete —", migrated, "keys moved to SUISettings")
+                return true
             end)
-            SUISettings:set("simpleui_settings_migrated_v2", true)
-            SUISettings:flush()
+            if ok_mig and migrated_ok then
+                SUISettings:set("simpleui_settings_migrated_v2", true)
+                SUISettings:flush()
+            else
+                defer_defaults_until_settings_migrated = hasLegacySimpleUISettings()
+                if defer_defaults_until_settings_migrated then
+                    logger.warn("simpleui: legacy settings detected; skipping defaults until settings migration succeeds")
+                end
+            end
         end
         -- -------------------------------------------------------------------
         -- Settings migration v3: rename all navbar_* keys inside SUISettings
@@ -278,7 +301,7 @@ function SimpleUIPlugin:init()
         --     the plugin from loading on a resource-constrained e-reader.
         --   • Guarded by simpleui_settings_migrated_v3 so it runs at most once.
         -- -------------------------------------------------------------------
-        if not SUISettings:isTrue("simpleui_settings_migrated_v3") then
+        if not defer_defaults_until_settings_migrated and not SUISettings:isTrue("simpleui_settings_migrated_v3") then
             pcall(function()
                 -- ── 1. Fixed renames ─────────────────────────────────────────
                 local fixed_renames = {
@@ -395,7 +418,7 @@ function SimpleUIPlugin:init()
         -- -------------------------------------------------------------------
         -- Settings migration v4: rename icon pack keys to integrated sui_ scheme.
         -- -------------------------------------------------------------------
-        if not SUISettings:isTrue("simpleui_settings_migrated_v4") then
+        if not defer_defaults_until_settings_migrated and not SUISettings:isTrue("simpleui_settings_migrated_v4") then
             pcall(function()
                 local icon_renames = {
                     { "simpleui_sysicon_bm_normal",     "simpleui_sysicon_sui_browse_normal" },
@@ -447,13 +470,15 @@ function SimpleUIPlugin:init()
         end
         -- -------------------------------------------------------------------
 
-        Config.applyFirstRunDefaults()
-        Config.migrateOldCustomSlots()
-        -- Always run sanitizeQASlots: it cleans both custom QA slot references
-        -- and any stale built-in IDs from navbar_tabs.  The function is cheap —
-        -- it reads a handful of settings and only writes back when it finds
-        -- something invalid, so the common no-op case costs only a few reads.
-        Config.sanitizeQASlots()
+        if not defer_defaults_until_settings_migrated then
+            Config.applyFirstRunDefaults()
+            Config.migrateOldCustomSlots()
+            -- Always run sanitizeQASlots: it cleans both custom QA slot references
+            -- and any stale built-in IDs from navbar_tabs.  The function is cheap —
+            -- it reads a handful of settings and only writes back when it finds
+            -- something invalid, so the common no-op case costs only a few reads.
+            Config.sanitizeQASlots()
+        end
         -- Apply the saved UI font preference early, before any widget is built.
         -- SUIStyle is lazy (module-level init runs only when the font menu opens)
         -- so this pcall is cheap on the common path where no custom font is set.

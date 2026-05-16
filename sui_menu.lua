@@ -3224,17 +3224,27 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                         table.sort(zips, function(a, b) return a.name:lower() < b.name:lower() end)
                                     end
 
-                                    sub[#sub + 1] = {
-                                        text     = _("Open packs folder"),
-                                        callback = function()
-                                            if not dir then return end
-                                            local FM = package.loaded["apps/filemanager/filemanager"]
-                                            if FM and FM.instance and FM.instance.file_chooser then
-                                                FM.instance.file_chooser:changeToPath(dir)
-                                            end
-                                        end,
-                                        separator = #zips > 0,
-                                    }
+	                                    sub[#sub + 1] = {
+	                                        text     = _("Open packs folder"),
+	                                        callback = function()
+	                                            if not dir then return end
+	                                            local FM = package.loaded["apps/filemanager/filemanager"]
+	                                            if FM and FM.instance and FM.instance.file_chooser then
+	                                                local fm = FM.instance
+	                                                UIManager:nextTick(function()
+	                                                    pcall(function()
+	                                                        if fm.onCloseAllMenus then fm:onCloseAllMenus() end
+	                                                    end)
+	                                                    pcall(function() fm.file_chooser:changeToPath(dir) end)
+	                                                    if fm.updateTitleBarPath then
+	                                                        pcall(function() fm:updateTitleBarPath(dir, false) end)
+	                                                    end
+	                                                    UIManager:setDirty(fm, "ui")
+	                                                end)
+	                                            end
+	                                        end,
+	                                        separator = #zips > 0,
+	                                    }
 
                                     if #zips == 0 then
                                         sub[#sub + 1] = {

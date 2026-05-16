@@ -332,7 +332,19 @@ function M.buildTabCell(action_id, active, tab_w, mode)
     vg[#vg + 1] = _vspan_icon_top
 
     if mode == "icons" or mode == "both" then
-        local nerd_char = Config.nerdIconChar(action.icon)
+        local icon = action.icon
+        local nerd_char = Config.nerdIconChar(icon)
+        if not nerd_char then
+            local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
+            local icon_missing = type(icon) ~= "string" or icon == ""
+                or (ok_lfs and icon:sub(1, 1) == "/" and lfs.attributes(icon, "mode") ~= "file")
+            if icon_missing then
+                local fallback = Config.ACTION_BY_ID[action_id] and Config.ACTION_BY_ID[action_id].icon
+                    or Config.ICON.library
+                icon = fallback
+                nerd_char = Config.nerdIconChar(icon)
+            end
+        end
         if nerd_char then
             local icon_sz = M.ICON_SZ()
             -- Use tab_w as the outer width so the nerd glyph is centred
@@ -348,7 +360,7 @@ function M.buildTabCell(action_id, active, tab_w, mode)
             }
         else
             vg[#vg + 1] = ImageWidget():new{
-                file    = action.icon,
+                file    = icon,
                 width   = M.ICON_SZ(),
                 height  = M.ICON_SZ(),
                 is_icon = true,

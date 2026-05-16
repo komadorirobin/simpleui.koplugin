@@ -1306,6 +1306,7 @@ local _ACTION_SET = {
     library=true, homescreen=true, collections=true, history=true, continue=true,
     favorites=true, bookmark_browser=true, wifi_toggle=true, wifi_toggle_off=true, frontlight=true,
     stats_calendar=true, power=true, browse_authors=true, browse_series=true, browse_tags=true,
+    bookshelf_prose=true, bookshelf_comics=true,
 }
 
 -- Maps icon-pack filename identifiers to internal action ids when they differ.
