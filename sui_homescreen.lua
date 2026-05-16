@@ -337,7 +337,6 @@ local _EMPTY_SUB_H    = Screen:scaleBySize(20)
 local _EMPTY_SUB_FS   = Screen:scaleBySize(13)
 local _BASE_SECTION_LABEL_SIZE = Screen:scaleBySize(SECTION_LABEL_SIZE)
 local _MODULE_BG_COLOR  = Blitbuffer.gray(0.88)
-local _MODULE_BG_BORDER = Blitbuffer.gray(0.72)
 local _MODULE_BG_RADIUS = Screen:scaleBySize(12)
 
 -- Section label widget cache — keyed by "text|inner_w|scale_pct".
@@ -386,16 +385,12 @@ local function applyModuleBackground(mod_id, widget, w)
     if not ok_sz or not sz or not sz.h then return widget end
     local bg_w = math.max(1, w or sz.w or 1)
     local bg_h = math.max(1, sz.h)
-    return OverlapGroup:new{
+    return FrameContainer:new{
         dimen = Geom:new{ w = bg_w, h = bg_h },
-        FrameContainer:new{
-            dimen      = Geom:new{ w = bg_w, h = bg_h },
-            bordersize = 1,
-            color      = _MODULE_BG_BORDER,
-            background = _MODULE_BG_COLOR,
-            radius     = _MODULE_BG_RADIUS,
-            padding    = 0,
-        },
+        bordersize = 0,
+        background = _MODULE_BG_COLOR,
+        radius     = _MODULE_BG_RADIUS,
+        padding    = 0,
         widget,
     }
 end
