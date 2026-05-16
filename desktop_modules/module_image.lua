@@ -221,6 +221,7 @@ function M.build(w, ctx)
                 width        = inner_w,
                 height       = h,
                 scale_factor = 0,
+                alpha        = true,
             }
         end)
         child = ok and img or placeholder(inner_w, h, _("Image not available."))
