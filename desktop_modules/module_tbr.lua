@@ -493,7 +493,7 @@ function M.getHeight(_ctx)
             h = h + D.RB_LABEL_H
         end
     end
-    return require("sui_config").getScaledLabelH() + h
+    return require("sui_config").getScaledLabelH("tbr", pfx) + h
 end
 
 -- ---------------------------------------------------------------------------

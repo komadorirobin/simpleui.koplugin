@@ -271,7 +271,7 @@ function M.getHeight(ctx)
             h = h + D.RB_LABEL_H
         end
     end
-    return require("sui_config").getScaledLabelH() + h
+    return require("sui_config").getScaledLabelH("recent", pfx) + h
 end
 
 

@@ -570,11 +570,12 @@ end
 function M.getHeight(_ctx)
     local n = (showAnnual() and 1 or 0) + (showDaily() and 1 or 0)
     if n == 0 then return 0 end
-    local label_h = require("sui_config").getScaledLabelH()
+    local pfx = _ctx and _ctx.pfx
+    local label_h = require("sui_config").getScaledLabelH("reading_goals", pfx)
     if isCompact() then
-        return label_h + _compactRowsHeight(n, _compactDims(Config.getModuleScale("reading_goals", _ctx and _ctx.pfx)))
+        return label_h + _compactRowsHeight(n, _compactDims(Config.getModuleScale("reading_goals", pfx)))
     end
-    local d = _scaledDims(Config.getModuleScale("reading_goals", _ctx and _ctx.pfx))
+    local d = _scaledDims(Config.getModuleScale("reading_goals", pfx))
     return label_h + n * d.goal_row_h + (n == 2 and d.row_gap or 0)
 end
 

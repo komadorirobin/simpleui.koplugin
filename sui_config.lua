@@ -1328,6 +1328,7 @@ end
 --   simpleui_hs_module_scale               global module scale (integer %)
 --   simpleui_hs_label_scale                label scale (integer %)
 --   simpleui_hs_<id>_scale                 per-module scale override (integer %)
+--   simpleui_hs_<id>_section_label_scale   per-module section label scale (integer %)
 --   simpleui_hs_scale_linked               bool; true = all scales move together
 --
 -- API for modules:
@@ -1337,6 +1338,9 @@ end
 --   Config.getLabelScale()                  → float multiplier for sectionLabel()
 --   Config.getLabelScalePct()               → integer %
 --   Config.setLabelScale(pct)               → save label scale
+--   Config.getSectionLabelScale(id, pfx)    → float multiplier for one section label
+--   Config.getSectionLabelScalePct(id, pfx) → integer %
+--   Config.setSectionLabelScale(pct,id,pfx) → save per-module section label scale
 --   Config.isScaleLinked()                  → bool
 --   Config.setScaleLinked(on)               → save link state
 --   Config.getScaledLabelH()                → scaled LABEL_H for getHeight()
@@ -1351,6 +1355,7 @@ local MODULE_SCALE_KEY      = "simpleui_hs_module_scale"
 local LABEL_SCALE_KEY       = "simpleui_hs_label_scale"
 local SCALE_LINKED_KEY      = "simpleui_hs_scale_linked"
 local ITEM_LABEL_SCALE_SUFFIX = "_item_label_scale"
+local SECTION_LABEL_SCALE_SUFFIX = "_section_label_scale"
 
 -- Clamp an integer percentage to valid range.
 local function _clamp(n)
@@ -1364,6 +1369,10 @@ end
 
 local function _itemLabelKey(mod_id, pfx)
     return (pfx or "simpleui_hs_") .. (mod_id or "") .. ITEM_LABEL_SCALE_SUFFIX
+end
+
+local function _sectionLabelKey(mod_id, pfx)
+    return (pfx or "simpleui_hs_") .. (mod_id or "") .. SECTION_LABEL_SCALE_SUFFIX
 end
 
 -- ---------------------------------------------------------------------------
@@ -1640,14 +1649,38 @@ function M.setLabelScale(pct)
     SUISettings:set(LABEL_SCALE_KEY, _clamp(pct))
 end
 
+function M.getSectionLabelScale(mod_id, pfx)
+    if mod_id and pfx then
+        local v = SUISettings:get(_sectionLabelKey(mod_id, pfx))
+        local n = tonumber(v)
+        if n then return _clamp(n) / 100 end
+    end
+    return M.getLabelScale()
+end
+
+function M.getSectionLabelScalePct(mod_id, pfx)
+    if mod_id and pfx then
+        local v = SUISettings:get(_sectionLabelKey(mod_id, pfx))
+        local n = tonumber(v)
+        if n then return _clamp(n) end
+    end
+    return M.getLabelScalePct()
+end
+
+function M.setSectionLabelScale(pct, mod_id, pfx)
+    if mod_id and pfx then
+        SUISettings:set(_sectionLabelKey(mod_id, pfx), _clamp(pct))
+    end
+end
+
 -- Returns the scaled LABEL_H value for module getHeight() calls.
 local _BASE_LABEL_TEXT_H = nil
-function M.getScaledLabelH()
+function M.getScaledLabelH(mod_id, pfx)
     if not _BASE_LABEL_TEXT_H then
         _BASE_LABEL_TEXT_H = require("device").screen:scaleBySize(16)
     end
     local PAD2  = require("sui_core").PAD2
-    local scale = M.getLabelScale()
+    local scale = M.getSectionLabelScale(mod_id, pfx)
     return PAD2 + math.max(8, math.floor(_BASE_LABEL_TEXT_H * scale))
 end
 
@@ -1697,6 +1730,7 @@ function M.resetAllScales(pfx, pfx_qa)
             SUISettings:del((pfx or "simpleui_hs_") .. mod.id .. "_scale")
             SUISettings:del((pfx or "simpleui_hs_") .. mod.id .. THUMB_SCALE_KEY_SUFFIX)
             SUISettings:del(_itemLabelKey(mod.id, pfx))
+            SUISettings:del(_sectionLabelKey(mod.id, pfx))
         end
     end
     -- Quick actions per-slot overrides
@@ -1902,6 +1936,7 @@ end
 -- _lc is the menu-local gettext wrapper (ctx_menu._).
 function M.makeLabelToggleItem(mod_id, default_label, refresh, _lc)
     return {
+        _sui_section_label_toggle = true,
         text           = _lc("Show section label"),
         checked_func   = function() return not M.isLabelHidden(mod_id) end,
         keep_menu_open = true,
@@ -1912,6 +1947,58 @@ function M.makeLabelToggleItem(mod_id, default_label, refresh, _lc)
             refresh()
         end,
     }
+end
+
+function M.hasSectionLabelToggle(items)
+    if type(items) ~= "table" then return false end
+    for _, item in ipairs(items) do
+        if type(item) == "table" and item._sui_section_label_toggle then
+            return true
+        end
+    end
+    return false
+end
+
+function M.makeSectionLabelScaleItem(opts)
+    local mod_id  = opts.mod_id
+    local pfx     = opts.pfx
+    local refresh = opts.refresh
+    local _lc     = opts._ or _
+    local item = M.makeScaleItem({
+        text_func = function()
+            return string.format(_lc("Section Label Size  (%d%%)"),
+                M.getSectionLabelScalePct(mod_id, pfx))
+        end,
+        title   = opts.title or _lc("Section Label Size"),
+        info    = _lc("Text size for this module's section label.\n100% follows the default size."),
+        get     = function() return M.getSectionLabelScalePct(mod_id, pfx) end,
+        set     = function(v) M.setSectionLabelScale(v, mod_id, pfx) end,
+        refresh = function()
+            local HS = package.loaded["sui_homescreen"]
+            if HS and HS.invalidateLabelCache then HS.invalidateLabelCache() end
+            if refresh then refresh() end
+        end,
+    })
+    item._sui_section_label_scale = true
+    return item
+end
+
+function M.appendSectionLabelScaleItem(items, mod_id, pfx, refresh, _lc)
+    if type(items) ~= "table" then return {} end
+    for _, item in ipairs(items) do
+        if type(item) == "table" and item._sui_section_label_scale then
+            return items
+        end
+    end
+    if M.hasSectionLabelToggle(items) then
+        items[#items + 1] = M.makeSectionLabelScaleItem({
+            mod_id  = mod_id,
+            pfx     = pfx,
+            refresh = refresh,
+            _       = _lc,
+        })
+    end
+    return items
 end
 
 return M

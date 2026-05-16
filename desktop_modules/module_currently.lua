@@ -837,8 +837,8 @@ end-- Returns the total pixel height of the module including the section label.
 -- under-allocating space and causing overlap with the module below.
 function M.getHeight(_ctx)
     local SH = getSH()
-    if not SH then return Config.getScaledLabelH() end
     local pfx         = _ctx and _ctx.pfx
+    if not SH then return Config.getScaledLabelH("currently", pfx) end
     local scale       = Config.getModuleScale("currently", pfx)
     local lbl_scale   = Config.getItemLabelScale("currently", pfx)
     local D           = SH.getDims(scale, Config.getThumbScale("currently", pfx))
@@ -915,7 +915,7 @@ function M.getHeight(_ctx)
         text_h = text_h + e[2]
     end
 
-    return Config.getScaledLabelH() + math.max(D.COVER_H, text_h)
+    return Config.getScaledLabelH("currently", pfx) + math.max(D.COVER_H, text_h)
 end
 
 

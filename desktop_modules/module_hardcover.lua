@@ -64,8 +64,8 @@ local CACHE_TTL_DEFAULT  = 60    -- minutes
 
 local _SECTION_LABEL_FS = Screen:scaleBySize(11)
 
-local function _buildLabel(w)
-    local scale   = Config.getLabelScale()
+local function _buildLabel(w, pfx)
+    local scale   = Config.getSectionLabelScale("hardcover", pfx)
     local fs      = math.max(8, math.floor(_SECTION_LABEL_FS * scale))
     local label_h = math.max(8, math.floor(Screen:scaleBySize(16) * scale))
     return FrameContainer:new{
@@ -748,7 +748,7 @@ function _doBuild(w, ctx)
     -- ensures it is always sized to `w` (the bento-reduced width).
     if not Config.isLabelHidden("hardcover") then
         local vg = VerticalGroup:new{ align = "left" }
-        vg[1] = _buildLabel(w)
+        vg[1] = _buildLabel(w, ctx and ctx.pfx)
         vg[2] = widget
         widget = vg
     end
@@ -759,8 +759,9 @@ function _doBuild(w, ctx)
 end
 
 function M.getHeight(ctx)
-    local label_h = (not Config.isLabelHidden("hardcover")) and Config.getScaledLabelH() or 0
-    local scale   = Config.getModuleScale("hardcover")
+    local pfx     = ctx and ctx.pfx
+    local label_h = (not Config.isLabelHidden("hardcover")) and Config.getScaledLabelH("hardcover", pfx) or 0
+    local scale   = Config.getModuleScale("hardcover", pfx)
     if _getApiKey() == "" then
         return label_h + math.floor(_BASE_BODY_FS * scale) + PAD * 2
     end

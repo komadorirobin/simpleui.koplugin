@@ -570,12 +570,13 @@ function M.updateCovers(widget, _ctx)
 end
 
 function M.getHeight(ctx)
-    local d = getDims(Config.getModuleScale("collections", _ctx and _ctx.pfx),
-                      Config.getThumbScale("collections", _ctx and _ctx.pfx))
+    local pfx = ctx and ctx.pfx
+    local d = getDims(Config.getModuleScale("collections", pfx),
+                      Config.getThumbScale("collections", pfx))
     if #getSelectedCollections() == 0 then
-        return Config.getScaledLabelH() + d.empty_h
+        return Config.getScaledLabelH("collections", pfx) + d.empty_h
     end
-    return Config.getScaledLabelH() + d.coll_cell_h
+    return Config.getScaledLabelH("collections", pfx) + d.coll_cell_h
 end
 
 -- Settings API (usados por getMenuItems e externamente pelo menu.lua legado)

@@ -1528,12 +1528,18 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                     if _mod.id:match("^quick_actions_%d+$") then
                         qa_items[#qa_items + 1] = {
                             text_func           = text_fn,
-                            sub_item_table_func = function() return _mod.getMenuItems(ctx_menu) end,
+                            sub_item_table_func = function()
+                                return Config.appendSectionLabelScaleItem(
+                                    _mod.getMenuItems(ctx_menu), _mod.id, ctx.pfx, ctx.refresh, _)
+                            end,
                         }
                     else
                         items[#items + 1] = {
                             text_func           = text_fn,
-                            sub_item_table_func = function() return _mod.getMenuItems(ctx_menu) end,
+                            sub_item_table_func = function()
+                                return Config.appendSectionLabelScaleItem(
+                                    _mod.getMenuItems(ctx_menu), _mod.id, ctx.pfx, ctx.refresh, _)
+                            end,
                         }
                     end
                 end

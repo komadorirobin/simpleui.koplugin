@@ -293,10 +293,11 @@ function M.updateCovers(widget, _ctx)
 end
 
 function M.getHeight(_ctx)
+    local pfx = _ctx and _ctx.pfx
     local SH = getSH()
-    local D  = SH.getDims(Config.getModuleScale("new_books", _ctx and _ctx.pfx),
-                           Config.getThumbScale("new_books", _ctx and _ctx.pfx))
-    return require("sui_config").getScaledLabelH() + D.RECENT_CELL_H
+    local D  = SH.getDims(Config.getModuleScale("new_books", pfx),
+                           Config.getThumbScale("new_books", pfx))
+    return require("sui_config").getScaledLabelH("new_books", pfx) + D.RECENT_CELL_H
 end
 
 -- ---------------------------------------------------------------------------

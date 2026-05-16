@@ -345,8 +345,8 @@ local function invalidateLabelCache()
     _label_cache = {}
 end
 
-local function sectionLabel(text, w)
-    local scale     = Config.getLabelScale()
+local function sectionLabel(text, w, mod_id)
+    local scale     = Config.getSectionLabelScale(mod_id, PFX)
     local fs        = math.max(8, math.floor(_BASE_SECTION_LABEL_SIZE * scale))
     local label_h   = math.max(8, math.floor(Screen:scaleBySize(16) * scale))
     local scale_pct = math.floor(scale * 100)
@@ -1778,6 +1778,7 @@ function HomescreenWidget:_onHoldModRelease(wrapper)
         function()
             local ctx_menu = hs:_getHsCtxMenu()
             local items    = mod.getMenuItems(ctx_menu)
+            Config.appendSectionLabelScaleItem(items, mod.id, PFX, ctx_menu.refresh, _lc)
             local gap_item = Config.makeGapItem({
                 text_func = function()
                     local pct = Config.getModuleGapPct(mod.id, PFX)
@@ -2023,14 +2024,18 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
         -- Originals are restored immediately after the build loop.
         local LANDSCAPE_FACTOR = 0.65
         self._clock_landscape_factor = LANDSCAPE_FACTOR
-        local _orig_getModuleScale = Config.getModuleScale
-        local _orig_getLabelScale  = Config.getLabelScale
-        local _orig_getThumbScale  = Config.getThumbScale
+        local _orig_getModuleScale       = Config.getModuleScale
+        local _orig_getLabelScale        = Config.getLabelScale
+        local _orig_getSectionLabelScale = Config.getSectionLabelScale
+        local _orig_getThumbScale        = Config.getThumbScale
         Config.getModuleScale = function(mod_id, pfx)
             return _orig_getModuleScale(mod_id, pfx) * LANDSCAPE_FACTOR
         end
         Config.getLabelScale = function()
             return _orig_getLabelScale() * LANDSCAPE_FACTOR
+        end
+        Config.getSectionLabelScale = function(mod_id, pfx)
+            return _orig_getSectionLabelScale(mod_id, pfx) * LANDSCAPE_FACTOR
         end
         Config.getThumbScale = function(mod_id, pfx)
             return _orig_getThumbScale(mod_id, pfx) * LANDSCAPE_FACTOR
@@ -2106,7 +2111,7 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                 else
                     col_body[#col_body+1] = self:_vspan(mod_gaps[mod.id] or MOD_GAP)
                 end
-                if mod.label then col_body[#col_body+1] = sectionLabel(mod.label, col_w) end
+                if mod.label then col_body[#col_body+1] = sectionLabel(mod.label, col_w, mod.id) end
                 local has_menu   = type(mod.getMenuItems) == "function"
                 local entry_widget = has_menu
                     and self:_makeModWrapper(mod, widget, col_w)
@@ -2180,9 +2185,10 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
             end
         end
 
-        Config.getModuleScale = _orig_getModuleScale
-        Config.getLabelScale  = _orig_getLabelScale
-        Config.getThumbScale  = _orig_getThumbScale
+        Config.getModuleScale       = _orig_getModuleScale
+        Config.getLabelScale        = _orig_getLabelScale
+        Config.getSectionLabelScale = _orig_getSectionLabelScale
+        Config.getThumbScale        = _orig_getThumbScale
     else
         -- Portrait single-column layout.
         self._clock_landscape_factor = nil
@@ -2202,7 +2208,7 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                     local gap_px = mod_gaps[mod.id] or MOD_GAP
                     body[#body+1] = self:_vspan(gap_px)
                 end
-                if mod.label then body[#body+1] = sectionLabel(mod.label, inner_w) end
+                if mod.label then body[#body+1] = sectionLabel(mod.label, inner_w, mod.id) end
                 local has_menu = type(mod.getMenuItems) == "function"
                 if mod.id == "header" then
                     self._header_body_idx   = #body + 1
