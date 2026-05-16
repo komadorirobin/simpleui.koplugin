@@ -336,7 +336,7 @@ local _EMPTY_GAP      = Screen:scaleBySize(12)
 local _EMPTY_SUB_H    = Screen:scaleBySize(20)
 local _EMPTY_SUB_FS   = Screen:scaleBySize(13)
 local _BASE_SECTION_LABEL_SIZE = Screen:scaleBySize(SECTION_LABEL_SIZE)
-local _MODULE_BG_COLOR  = Blitbuffer.gray(0.88)
+local _MODULE_BG_COLOR  = Blitbuffer.gray(0.08)
 local _MODULE_BG_RADIUS = Screen:scaleBySize(12)
 
 -- Section label widget cache — keyed by "text|inner_w|scale_pct".
