@@ -1345,6 +1345,44 @@ local function _slug(s)
     return s
 end
 
+local function _startsWith(s, prefix)
+    return type(s) == "string" and type(prefix) == "string"
+        and prefix ~= "" and s:sub(1, #prefix) == prefix
+end
+
+local function _slugMatches(a, b)
+    a, b = _slug(a), _slug(b)
+    if a == "" or b == "" then return false end
+    if a == b then return true end
+    -- Custom QA labels are capped at Config.MAX_LABEL_LEN when saved.
+    -- Allow pack.lua to use the original full label and still match the stored
+    -- shortened label, while avoiding very short accidental prefix matches.
+    if #a >= 12 and #b >= 12 then
+        return _startsWith(a, b) or _startsWith(b, a)
+    end
+    return false
+end
+
+local function _findBySlug(by_slug, label)
+    local wanted = _slug(label)
+    local rel_fname = by_slug[wanted]
+    if rel_fname then return rel_fname end
+    for slug, fname in pairs(by_slug) do
+        if _slugMatches(slug, wanted) then return fname end
+    end
+    return nil
+end
+
+local function _customRuleMatches(rule, qa_id, cfg)
+    if rule.id == qa_id
+        or (cfg.dispatcher_action and (rule.id == cfg.dispatcher_action or rule.label == cfg.dispatcher_action))
+        or (cfg.plugin_key and (rule.id == cfg.plugin_key or rule.label == cfg.plugin_key))
+    then
+        return true
+    end
+    return _slugMatches(rule.label, cfg.label)
+end
+
 local function _applyCustomActions(pack_dir, manifest, result)
     local ok_qa, QA = pcall(require, "sui_quickactions")
     if not ok_qa or not QA then return end
@@ -1380,9 +1418,9 @@ local function _applyCustomActions(pack_dir, manifest, result)
 
     for _, qa_id in ipairs(QA.getCustomQAList()) do
         local cfg = QA.getCustomQAConfig(qa_id)
-        local rel_fname = by_slug[_slug(cfg.label)]
+        local rel_fname = _findBySlug(by_slug, cfg.label)
         for _, rule in ipairs(rules) do
-            if rule.id == qa_id or rule.label == cfg.label then
+            if _customRuleMatches(rule, qa_id, cfg) then
                 rel_fname = rule.icon
                 break
             end
