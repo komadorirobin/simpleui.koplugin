@@ -3,7 +3,7 @@
 -- widgets (Collections, History, …).
 --
 -- FM context:   apply(fm_self)  /  restore(fm_self)  /  reapply(fm_self)
--- Injected:     applyToInjected(w)  /  restoreInjected(w)
+-- Sub-pages:    applyToSub(w)  /  restoreSub(w)
 -- Both:         reapplyAll(fm, stack)
 
 local _ = require("sui_i18n").translate
@@ -78,31 +78,32 @@ end
 -- ---------------------------------------------------------------------------
 local SETTING_KEY = "simpleui_titlebar_custom"
 local FM_CFG_KEY  = "simpleui_tb_fm_cfg"
-local INJ_CFG_KEY = "simpleui_tb_inj_cfg"
+local SUB_CFG_KEY = "simpleui_tb_sub_cfg"
 local SIZE_KEY    = "simpleui_tb_size"
 
 local _SIZE_SCALE = { compact = 0.75, default = 1.0, large = 1.3 }
 
 local _VIS_DEFAULTS = {
-    menu_button   = true,
-    up_button     = true,
-    title         = true,
-    search_button = true,
-    browse_button = false,
-    inj_back      = true,
-    inj_right     = false,
+    fm_menu       = true,
+    fm_back       = true,
+    fm_title      = true,
+    fm_search     = true,
+    fm_browse     = false,
+    sub_menu      = true,
+    sub_close     = false,
+    sub_back      = true,
 }
 
 -- Default side/order configs for FM and injected widgets.
 local _FM_DEFAULTS = {
-    side        = { menu_button = "right", up_button = "left", search_button = "left", browse_button = "right" },
-    order_left  = { "up_button", "search_button" },
-    order_right = { "browse_button", "menu_button" },
+    side        = { fm_menu = "right", fm_back = "left", fm_search = "left", fm_browse = "right" },
+    order_left  = { "fm_back", "fm_search" },
+    order_right = { "fm_browse", "fm_menu" },
 }
-local _INJ_DEFAULTS = {
-    side        = { inj_back = "right", inj_right = "right" },
-    order_left  = {},
-    order_right = { "inj_back", "inj_right" },
+local _SUB_DEFAULTS = {
+    side        = { sub_menu = "right", sub_close = "right", sub_back = "left" },
+    order_left  = { "sub_back" },
+    order_right = { "sub_menu", "sub_close" },
 }
 
 -- ---------------------------------------------------------------------------
@@ -110,13 +111,14 @@ local _INJ_DEFAULTS = {
 -- ---------------------------------------------------------------------------
 
 M.ITEMS = {
-    { id = "menu_button",   label = function() return _("Menu")              end, ctx = "fm"  },
-    { id = "up_button",     label = function() return _("Back")              end, ctx = "fm"  },
-    { id = "search_button", label = function() return _("Search")            end, ctx = "fm"  },
-    { id = "browse_button", label = function() return _("Browse")            end, ctx = "fm"  },
-    { id = "title",         label = function() return _("Title")             end, ctx = "fm",  no_side = true },
-    { id = "inj_back",      label = function() return _("Menu")              end, ctx = "inj" },
-    { id = "inj_right",     label = function() return _("Close")             end, ctx = "inj" },
+    { id = "fm_menu",       label = function() return _("Menu")              end, ctx = "fm"  },
+    { id = "fm_back",       label = function() return _("Back")              end, ctx = "fm"  },
+    { id = "fm_search",     label = function() return _("Search")            end, ctx = "fm"  },
+    { id = "fm_browse",     label = function() return _("Browse")            end, ctx = "fm"  },
+    { id = "fm_title",      label = function() return _("Title")             end, ctx = "fm",  no_side = true },
+    { id = "sub_menu",      label = function() return _("Menu")              end, ctx = "sub" },
+    { id = "sub_close",     label = function() return _("Close")             end, ctx = "sub" },
+    { id = "sub_back",      label = function() return _("Back")              end, ctx = "sub" },
 }
 
 -- ---------------------------------------------------------------------------
@@ -182,10 +184,10 @@ local function _loadCfg(key, defaults)
     return { side = side, order_left = order_left, order_right = order_right }
 end
 
-function M.getFMConfig()      return _loadCfg(FM_CFG_KEY,  _FM_DEFAULTS)  end
-function M.getInjConfig()     return _loadCfg(INJ_CFG_KEY, _INJ_DEFAULTS) end
-function M.saveFMConfig(cfg)  SUISettings:saveSetting(FM_CFG_KEY,  cfg) end
-function M.saveInjConfig(cfg) SUISettings:saveSetting(INJ_CFG_KEY, cfg) end
+function M.getFMConfig()       return _loadCfg(FM_CFG_KEY,  _FM_DEFAULTS)  end
+function M.getSubConfig()      return _loadCfg(SUB_CFG_KEY, _SUB_DEFAULTS) end
+function M.saveFMConfig(cfg)   SUISettings:saveSetting(FM_CFG_KEY,  cfg) end
+function M.saveSubConfig(cfg)  SUISettings:saveSetting(SUB_CFG_KEY, cfg) end
 
 -- ---------------------------------------------------------------------------
 -- Internal layout helpers
@@ -497,22 +499,22 @@ function M.apply(fm_self)
     local iw, pad, gap, sw = lp.iw, lp.pad, lp.gap, lp.sw
 
     -- Read all visibility settings once.
-    local show_menu   = M.isItemVisible("menu_button")
-    local show_up     = M.isItemVisible("up_button")
-    local show_search = M.isItemVisible("search_button")
-    local show_browse = M.isItemVisible("browse_button") and (function()
+    local show_menu   = M.isItemVisible("fm_menu")
+    local show_up     = M.isItemVisible("fm_back")
+    local show_search = M.isItemVisible("fm_search")
+    local show_browse = M.isItemVisible("fm_browse") and (function()
         -- Improvement #4: use cached _BrowseMeta() instead of inline pcall.
         local BM = _BrowseMeta()
         return BM and BM.isEnabled()
     end)()
-    local show_title  = M.isItemVisible("title")
+    local show_title  = M.isItemVisible("fm_title")
 
     local cfg     = M.getFMConfig()
     local visible = {}
-    if show_menu   then visible["menu_button"]   = true end
-    if show_up     then visible["up_button"]     = true end
-    if show_search then visible["search_button"] = true end
-    if show_browse then visible["browse_button"] = true end
+    if show_menu   then visible["fm_menu"]   = true end
+    if show_up     then visible["fm_back"]     = true end
+    if show_search then visible["fm_search"] = true end
+    if show_browse then visible["fm_browse"] = true end
     local slot_map = _buildSlotMap(cfg.order_left, cfg.order_right, visible)
 
     -- Resizes, strips paddings and positions a button according to its slot.
@@ -554,7 +556,7 @@ function M.apply(fm_self)
                 rb.image.file = (_ss and _ss.getIcon("sui_menu")) or Config.ICON.ko_menu
                 _reloadImage(rb.image)
             end
-            placeBtn("menu_button", rb)
+        placeBtn("fm_menu", rb)
         else
             rb.overlap_align  = nil
             -- Improvement #6: use defensive 2× width offset.
@@ -582,7 +584,7 @@ function M.apply(fm_self)
     if show_up then
         local ok_ib, IconButton = pcall(require, "ui/widget/iconbutton")
         if ok_ib and IconButton then
-            local s = slot_map["up_button"]
+            local s = slot_map["fm_back"]
             if s then
                 local btn_padding = tb.button_padding
                     or require("device").screen:scaleBySize(11)
@@ -629,12 +631,12 @@ function M.apply(fm_self)
                     local function _leftSideBtns()
                         local list = {}
                         for _, id in ipairs(cfg.order_left) do
-                            if id ~= "up_button" and slot_map[id]
+                            if id ~= "fm_back" and slot_map[id]
                                and slot_map[id].side == "left" then
                                 local widget
-                                if id == "search_button" then
+                                if id == "fm_search" then
                                     widget = fm_self._titlebar_search_btn
-                                elseif id == "browse_button" then
+                                elseif id == "fm_browse" then
                                     widget = fm_self._titlebar_browse_btn
                                 end
                                 if widget then
@@ -686,8 +688,9 @@ function M.apply(fm_self)
                                 pcall(btn.image.init, btn.image)
                             else
                                 btn.image.file = nil
-                                btn.image.icon = nil
-                                btn:setIcon(ICON_UP)
+                                btn.image.icon = ICON_UP
+                                pcall(btn.image.free, btn.image)
+                                pcall(btn.image.init, btn.image)
                             end
                             btn.overlap_offset = {
                                 _buttonX("left", up_slot, iw, pad, gap, sw), 0
@@ -874,7 +877,7 @@ function M.apply(fm_self)
     if show_search then
         local ok_ib, IconButton = pcall(require, "ui/widget/iconbutton")
         if ok_ib and IconButton then
-            local s = slot_map["search_button"]
+            local s = slot_map["fm_search"]
             if s then
                 local btn_padding = tb.button_padding or require("device").screen:scaleBySize(11)
                 local search_btn = IconButton:new{
@@ -902,7 +905,7 @@ function M.apply(fm_self)
 
 
                 if s.side == "left" then
-                    local up_slot2  = slot_map["up_button"] and slot_map["up_button"].slot or 0
+                    local up_slot2  = slot_map["fm_back"] and slot_map["fm_back"].slot or 0
                     local dslot     = s.slot > up_slot2 and s.slot - 1 or s.slot
                     local compact_x = _buttonX("left", dslot, iw, pad, gap, sw)
                     fm_self._simpleui_search_x_compact = compact_x
@@ -923,7 +926,7 @@ function M.apply(fm_self)
     if show_browse then
         local ok_ib, IconButton = pcall(require, "ui/widget/iconbutton")
         if ok_ib and IconButton then
-            local s = slot_map["browse_button"]
+            local s = slot_map["fm_browse"]
             if s then
                 local btn_padding = tb.button_padding or require("device").screen:scaleBySize(11)
 
@@ -995,7 +998,7 @@ function M.apply(fm_self)
                 -- Improvement #3 — compute compact slot once, reuse for both
                 -- the cached value and the immediate-at-root initial adjustment.
                 if s.side == "left" then
-                    local up_slot_b = slot_map["up_button"] and slot_map["up_button"].slot or 0
+                    local up_slot_b = slot_map["fm_back"] and slot_map["fm_back"].slot or 0
                     local dslot_b   = s.slot > up_slot_b and s.slot - 1 or s.slot
                     local compact_x_b = _buttonX("left", dslot_b, iw, pad, gap, sw)
                     fm_self._simpleui_browse_x_compact = compact_x_b
@@ -1123,25 +1126,28 @@ function M.reapply(fm_self)
 end
 
 -- ---------------------------------------------------------------------------
--- Injected widget titlebar — applyToInjected / restoreInjected
+-- Sub-pages widget titlebar — applyToSub / restoreSub
 -- ---------------------------------------------------------------------------
 
-function M.applyToInjected(widget)
+function M.applyToSub(widget)
     if not M.isEnabled() then return end
     local tb = widget.title_bar
     if not tb then return end
-    if widget._titlebar_inj_patched then return end
-    widget._titlebar_inj_patched = true
+    if widget._titlebar_sub_patched then return end
+    widget._titlebar_sub_patched = true
 
     local lp                = _layoutParams(tb)
     local iw, pad, gap, sw  = lp.iw, lp.pad, lp.gap, lp.sw
-    local show_back      = M.isItemVisible("inj_back")
-    local show_right     = M.isItemVisible("inj_right")
+    local show_menu      = M.isItemVisible("sub_menu")
+    local show_close     = M.isItemVisible("sub_close")
 
-    local cfg     = M.getInjConfig()
+    local show_back      = M.isItemVisible("sub_back")
+
+    local cfg     = M.getSubConfig()
     local visible = {}
-    if show_back  then visible["inj_back"]  = true end
-    if show_right then visible["inj_right"] = true end
+    if show_menu  then visible["sub_menu"]  = true end
+    if show_close then visible["sub_close"] = true end
+    if show_back  then visible["sub_back"]  = true end
     local slot_map = _buildSlotMap(cfg.order_left, cfg.order_right, visible)
 
     local function placeBtn(id, btn)
@@ -1152,17 +1158,63 @@ function M.applyToInjected(widget)
         btn.overlap_offset = { _buttonX(s.side, s.slot, iw, pad, gap, sw), 0 }
     end
 
-   -- Left button (hamburger / inj_back).
+   -- Left button (hamburger / sub_menu).
     if tb.left_button then
         local lb = tb.left_button
-        widget._titlebar_inj_lb = _snapBtn(lb)
-        if show_back then
-            placeBtn("inj_back", lb)
-            do
+        widget._titlebar_sub_lb = _snapBtn(lb)
+        if show_menu then
+            placeBtn("sub_menu", lb)
+            -- Apply the custom menu icon only when the button is currently
+            -- showing the hamburger (not "check" or another select-mode icon).
+            -- On a fresh applyToSub the button is always in menu state, but on
+            -- a reapply triggered while select-mode is active we must not
+            -- overwrite the "check" icon that KOReader just set.
+            -- We read lb.icon (the IconButton field, kept in sync by setIcon)
+            -- rather than lb.image.icon, because applyIconToBtn clears image.icon.
+            local _is_menu_state = (lb.icon == nil or lb.icon == "appbar.menu")
+            if _is_menu_state then
                 local _ss = SUIStyle()
-                if _ss then 
-                    _ss.applyIconToBtn("sui_menu", lb) 
+                if _ss then
+                    _ss.applyIconToBtn("sui_menu", lb)
                 end
+            end
+
+            -- Patch TitleBar:setLeftIcon so the custom menu icon survives
+            -- icon changes made by the host widget (e.g. collections toggles
+            -- the left button between "appbar.menu" and "check" when entering
+            -- or leaving select mode). We must:
+            --   • let "check" (and any non-menu icon) pass through unchanged;
+            --   • re-apply the custom icon when the host restores "appbar.menu".
+            -- The original icon name used by KOReader for the hamburger menu in
+            -- BookList / Menu widgets is "appbar.menu".
+            --
+            -- _sub_lb_is_menu: tracks whether the left button is currently in
+            -- hamburger-menu state (true) or in some other state like "check"
+            -- (false).  Used by reapply to avoid overwriting the check icon.
+            widget._titlebar_sub_lb_is_menu = true
+            local orig_setLeftIcon = tb.setLeftIcon
+            widget._titlebar_sub_orig_setLeftIcon = orig_setLeftIcon
+            tb.setLeftIcon = function(tb_self, icon, ...)
+                local result = orig_setLeftIcon(tb_self, icon, ...)
+                if icon == "appbar.menu" then
+                    -- Host is restoring the hamburger — re-apply custom icon.
+                    widget._titlebar_sub_lb_is_menu = true
+                    if tb_self.left_button and tb_self.left_button.image then
+                        local _ss2 = SUIStyle()
+                        local _custom = _ss2 and _ss2.getIcon("sui_menu")
+                        if _custom then
+                            tb_self.left_button.image.icon = nil
+                            tb_self.left_button.image.file = _custom
+                            _reloadImage(tb_self.left_button.image)
+                            UIManager:setDirty(tb_self.show_parent or widget, "ui", tb_self.dimen)
+                        end
+                    end
+                else
+                    -- Any other icon (e.g. "check"): record that we are NOT in
+                    -- menu state so a concurrent reapply does not overwrite it.
+                    widget._titlebar_sub_lb_is_menu = false
+                end
+                return result
             end
         else
             lb.overlap_align  = nil
@@ -1170,29 +1222,216 @@ function M.applyToInjected(widget)
         end
     end
 
-    -- Right button (close). Hidden by zeroing its dimen so it receives no taps.
+    -- Right button (close). Hidden by pushing it off-screen so it receives no taps.
+    -- NOTE: do NOT zero rb.dimen — a {w=0,h=0} dimen at (0,0) leaves a phantom
+    -- bounding-box at the top-left corner that the KOReader hit-test traversal
+    -- visits before the injected sub_back_btn, swallowing taps on it.
+    -- Using overlap_offset = {_hideOffset(sw), 0} is the same strategy used
+    -- everywhere else in this file and is safe to restore via _snapBtn.
     if tb.right_button then
         local rb = tb.right_button
-        widget._titlebar_inj_rb = _snapBtn(rb, { save_callback = true, save_dimen = true })
-        if show_right then
-            placeBtn("inj_right", rb)
+        widget._titlebar_sub_rb = _snapBtn(rb, { save_callback = true, save_dimen = true })
+        if show_close then
+            placeBtn("sub_close", rb)
         else
-            rb.dimen         = require("ui/geometry"):new{ w = 0, h = 0 }
-            rb.callback      = function() end
-            rb.hold_callback = function() end
+            rb.overlap_align  = nil
+            rb.overlap_offset = { _hideOffset(sw), 0 }
+            rb.callback       = function() end
+            rb.hold_callback  = function() end
+        end
+    end
+
+    -- Left button (back / pagination)
+    if show_back then
+        local ok_ib, IconButton = pcall(require, "ui/widget/iconbutton")
+        if ok_ib and IconButton then
+            local s = slot_map["sub_back"]
+            if s then
+                local btn_padding = tb.button_padding or require("device").screen:scaleBySize(11)
+                local ICON_UP = "chevron.left"
+                pcall(function()
+                    local BD = require("ui/bidi")
+                    ICON_UP = BD.mirroredUILayout() and "chevron.right" or "chevron.left"
+                end)
+                local sub_back_btn = IconButton:new{
+                    icon        = ICON_UP,
+                    width       = iw,
+                    height      = iw,
+                    padding     = btn_padding,
+                    show_parent = tb.show_parent or widget,
+                    callback    = function() end,
+                }
+                _resizeAndStrip(sub_back_btn, iw)
+                do
+                    local _ss = SUIStyle()
+                    if _ss then _ss.applyIconToBtn("sui_back", sub_back_btn) end
+                end
+                sub_back_btn.overlap_align  = nil
+                sub_back_btn.overlap_offset = { _buttonX(s.side, s.slot, iw, pad, gap, sw), 0 }
+                table.insert(tb, sub_back_btn)
+                widget._titlebar_sub_back_btn = sub_back_btn
+
+                -- Applies the correct state to sub_back with unified logic across
+                -- all sub-widgets (collections, history, coll_list, …):
+                --
+                --   page > 1              → show; tap = previous page, hold = page 1
+                --   page == 1, onReturn   → show; tap = onReturn (or onClose fallback)
+                --   page == 1, no onReturn → hide (nothing to go back to)
+                --
+                -- This mirrors the native bar: page_return_arrow is enabled when
+                -- #self.paths > 0 (there is somewhere to go back to), and the
+                -- chevrons handle page navigation. sub_back unifies both functions.
+                local function _applySubBackButtonState(w_self, page)
+                    local btn = w_self._titlebar_sub_back_btn
+                    if not btn then return end
+
+                    local has_return = (w_self.onReturn ~= nil)
+                    local visible    = (page > 1) or has_return
+
+                    if not visible then
+                        -- Nothing to go back to: hide the button.
+                        btn.overlap_offset = { _hideOffset(sw), 0 }
+                        btn.callback       = function() end
+                        btn.hold_callback  = function() end
+                    else
+                        -- Show the button with the current icon (respects SUIStyle override).
+                        -- .icon and .file are mutually exclusive in KOReader's ImageWidget:
+                        -- init() gives precedence to .icon, so whichever we do NOT want
+                        -- must be nilled explicitly.
+                        local _ss = SUIStyle()
+                        local custom_back = _ss and _ss.getIcon("sui_back")
+                        if custom_back then
+                            btn.image.icon = nil
+                            btn.image.file = custom_back
+                        else
+                            btn.image.file = nil
+                            btn.image.icon = ICON_UP
+                        end
+                        pcall(btn.image.free, btn.image)
+                        pcall(btn.image.init, btn.image)
+
+                        local sl = slot_map["sub_back"]
+                        if sl then
+                            btn.overlap_offset = { _buttonX(sl.side, sl.slot, iw, pad, gap, sw), 0 }
+                        end
+
+                        if page > 1 then
+                            -- Paginated: tap goes back one page, hold goes to page 1.
+                            btn.callback      = function() w_self:onGotoPage(page - 1) end
+                            btn.hold_callback = function() w_self:onGotoPage(1) end
+                        else
+                            -- Page 1 with a return destination (e.g. inside a collection,
+                            -- going back to the collection list via onReturn).
+                            btn.callback = function()
+                                if w_self.onReturn then
+                                    w_self:onReturn()
+                                elseif w_self.onClose then
+                                    w_self:onClose()
+                                else
+                                    require("ui/uimanager"):close(w_self)
+                                end
+                            end
+                            btn.hold_callback = function() end
+                        end
+                    end
+                    if w_self.title_bar then
+                        require("ui/uimanager"):setDirty(w_self.title_bar.show_parent or w_self, "ui", w_self.title_bar.dimen)
+                    end
+                end
+
+                _applySubBackButtonState(widget, widget.page or 1)
+                
+                local orig_updatePageInfo = rawget(widget, "updatePageInfo")
+                widget._titlebar_sub_orig_updatePageInfo = orig_updatePageInfo or false
+                local inherited = widget.updatePageInfo
+                widget.updatePageInfo = function(w_self, select_number)
+                    if inherited then inherited(w_self, select_number) end
+                    _applySubBackButtonState(w_self, w_self.page or 1)
+                end
+
+                -- Suppress the native return button (HorizontalGroup containing a
+                -- HorizontalSpan + page_return_arrow Button).
+                -- Two layers of suppression are needed:
+                --   1. Zero the leading HorizontalSpan so the group takes no space.
+                --   2. Hide page_return_arrow AND override its showHide() so that
+                --      Menu:updatePageInfo() — which calls showHide(self.onReturn ~= nil)
+                --      on every page turn — cannot bring it back while our sub_back is live.
+                if widget.return_button and widget.return_button[1] then
+                    widget._titlebar_sub_orig_return_btn = widget.return_button[1]
+                    widget.return_button[1] = require("ui/widget/verticalspan"):new{ width = 0 }
+                end
+                -- page_return_arrow sits at widget.page_return_arrow (set by Menu:init).
+                local pra = widget.page_return_arrow
+                if pra then
+                    -- Save the original showHide method (instance or class level).
+                    widget._titlebar_sub_orig_pra_showHide = rawget(pra, "showHide") or false
+                    -- Immediately hide the button.
+                    pcall(pra.hide, pra)
+                    -- No-op showHide so Menu:updatePageInfo cannot un-hide it.
+                    pra.showHide = function() end
+                end
+            end
         end
     end
 end
 
-function M.restoreInjected(widget)
+function M.restoreSub(widget)
     local tb = widget.title_bar
     if not tb then return end
-    if not widget._titlebar_inj_patched then return end
-    if tb.left_button  then _restoreBtn(tb.left_button,  widget._titlebar_inj_lb) end
-    if tb.right_button then _restoreBtn(tb.right_button, widget._titlebar_inj_rb) end
-    widget._titlebar_inj_lb      = nil
-    widget._titlebar_inj_rb      = nil
-    widget._titlebar_inj_patched = nil
+    if not widget._titlebar_sub_patched then return end
+    if tb.left_button  then _restoreBtn(tb.left_button,  widget._titlebar_sub_lb) end
+    if tb.right_button then _restoreBtn(tb.right_button, widget._titlebar_sub_rb) end
+
+    -- Restore the setLeftIcon patch.
+    if widget._titlebar_sub_orig_setLeftIcon ~= nil then
+        tb.setLeftIcon = widget._titlebar_sub_orig_setLeftIcon
+        widget._titlebar_sub_orig_setLeftIcon = nil
+    end
+
+    widget._titlebar_sub_lb      = nil
+    widget._titlebar_sub_rb      = nil
+    widget._titlebar_sub_patched = nil
+    widget._titlebar_sub_lb_is_menu = nil
+
+    if widget._titlebar_sub_back_btn then
+        local btn = widget._titlebar_sub_back_btn
+        if btn.image then pcall(btn.image.free, btn.image) end
+        if tb then
+            for i = #tb, 1, -1 do
+                if tb[i] == btn then table.remove(tb, i); break end
+            end
+        end
+        widget._titlebar_sub_back_btn = nil
+        widget._simpleui_force_refresh_sub_back = nil
+    end
+
+    if widget._titlebar_sub_orig_updatePageInfo ~= nil then
+        local orig = widget._titlebar_sub_orig_updatePageInfo
+        widget.updatePageInfo = orig ~= false and orig or nil
+        widget._titlebar_sub_orig_updatePageInfo = nil
+    end
+
+    if widget._titlebar_sub_orig_return_btn and widget.return_button then
+        widget.return_button[1] = widget._titlebar_sub_orig_return_btn
+        widget._titlebar_sub_orig_return_btn = nil
+    end
+
+    -- Restore page_return_arrow showHide and let the menu re-evaluate visibility.
+    local pra = widget.page_return_arrow
+    if pra and widget._titlebar_sub_orig_pra_showHide ~= nil then
+        local orig = widget._titlebar_sub_orig_pra_showHide
+        if orig ~= false then
+            pra.showHide = orig          -- restore instance-level override
+        else
+            pra.showHide = nil           -- remove instance override -> falls back to class
+        end
+        widget._titlebar_sub_orig_pra_showHide = nil
+        -- Re-evaluate visibility using the menu own logic.
+        pcall(function()
+            pra:showHide(widget.onReturn ~= nil)
+            pra:enableDisable(widget.paths and #widget.paths > 0)
+        end)
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -1210,10 +1449,10 @@ function M.reapplyAll(fm_self, window_stack)
     if type(window_stack) == "table" then
         for _, entry in ipairs(window_stack) do
             local w = entry.widget
-            if w and w._titlebar_inj_patched then
+            if w and w._titlebar_sub_patched then
                 local ok, err = pcall(function()
-                    M.restoreInjected(w)
-                    M.applyToInjected(w)
+                    M.restoreSub(w)
+                    M.applyToSub(w)
                 end)
                 if not ok then
                     logger.warn("simpleui: titlebar.reapplyAll widget failed:", tostring(err))
