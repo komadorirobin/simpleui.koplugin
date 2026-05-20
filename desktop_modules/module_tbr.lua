@@ -36,6 +36,7 @@ local VerticalGroup   = require("ui/widget/verticalgroup")
 local UIManager       = require("ui/uimanager")
 local lfs             = require("libs/libkoreader-lfs")
 local _ = require("sui_i18n").translate
+local Size            = require("ui/size")
 
 local logger = require("logger")
 local _SH    = nil
@@ -445,8 +446,26 @@ function M.build(w, ctx)
         row[#row + 1] = cell_widget
     end
 
+    local show_frame = SUISettings:isTrue(ctx.pfx .. "tbr_show_frame")
+    local solid_bg   = SUISettings:isTrue(ctx.pfx .. "tbr_solid_bg")
+    local has_box    = show_frame or solid_bg
+    local border_sz  = show_frame and 1 or 0
+    local radius     = has_box and math.floor(Screen:scaleBySize(12) * scale) or 0
+    local border_color = Blitbuffer.gray(0.72)
+    if ok_ss and SUIStyle then
+        border_color = SUIStyle.getThemeColor("separator") or border_color
+    end
+    local bg_color = nil
+    if solid_bg then
+        bg_color = (ok_ss and SUIStyle and SUIStyle.getThemeColor("bg")) or Blitbuffer.COLOR_WHITE
+    end
+
     local result = FrameContainer:new{
-        bordersize = 0, padding = PAD, padding_top = 0, padding_bottom = 0,
+        bordersize = border_sz,
+        radius     = radius,
+        color      = border_color,
+        background = bg_color,
+        padding = PAD, padding_top = has_box and PAD or 0, padding_bottom = has_box and PAD or 0,
         row,
     }
     result._cover_slots = cover_slots
@@ -492,6 +511,9 @@ function M.getHeight(_ctx)
             if not showProgress(pfx) then h = h + D.RB_GAP1 end
             h = h + D.RB_LABEL_H
         end
+    end
+    if SUISettings:isTrue(pfx .. "tbr_show_frame") or SUISettings:isTrue(pfx .. "tbr_solid_bg") then
+        h = h + PAD * 2
     end
     return require("sui_config").getScaledLabelH("tbr", pfx) + h
 end
@@ -550,6 +572,24 @@ function M.getMenuItems(ctx_menu)
         refresh   = refresh,
     })
     items[#items + 1] = Config.makeLabelToggleItem("tbr", _("To Be Read"), refresh, _lc)
+    items[#items + 1] = {
+        text           = _lc("Frame"),
+        checked_func   = function() return SUISettings:isTrue(pfx .. "tbr_show_frame") end,
+        keep_menu_open = true,
+        callback       = function()
+            SUISettings:saveSetting(pfx .. "tbr_show_frame", not SUISettings:isTrue(pfx .. "tbr_show_frame"))
+            refresh()
+        end,
+    }
+    items[#items + 1] = {
+        text           = _lc("Solid Background"),
+        checked_func   = function() return SUISettings:isTrue(pfx .. "tbr_solid_bg") end,
+        keep_menu_open = true,
+        callback       = function()
+            SUISettings:saveSetting(pfx .. "tbr_solid_bg", not SUISettings:isTrue(pfx .. "tbr_solid_bg"))
+            refresh()
+        end,
+    }
     items[#items + 1] = Config.makeScaleItem({
         text_func = function() return _lc("Cover size") end,
         separator = true,

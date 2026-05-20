@@ -499,10 +499,12 @@ function M.build(w, ctx)
     local CLR_TEXT_BLK_EFF = _theme_fg or _CLR_TEXT_LBL
     local CLR_TEXT_SUB_EFF = _theme_secondary or _theme_fg or CLR_TEXT_SUB
 
+    local scale = Config.getModuleScale("reading_goals", ctx.pfx)
+
     if compact then
         -- Compute compact dims using Config.getModuleScale so the landscape
         -- override in sui_homescreen (scale *= 0.65) is automatically honoured.
-        local cd = _compactDims(Config.getModuleScale("reading_goals", ctx.pfx))
+        local cd = _compactDims(scale)
         -- Capture year string once — avoids repeated os.date calls.
         local year_str = _getYearStr()
         -- Pre-compute data for both rows so we can measure pct_w across both
@@ -532,7 +534,6 @@ function M.build(w, ctx)
                 function() showDailySettingsDialog() end, cd, CLR_TEXT_SUB_EFF, CLR_TEXT_BLK_EFF)
         end
     else
-        local scale    = Config.getModuleScale("reading_goals", ctx.pfx)
         local d        = _scaledDims(scale)
         -- Capture year string once — avoids repeated os.date calls.
         local year_str = _getYearStr()
@@ -559,9 +560,29 @@ function M.build(w, ctx)
         end
     end
 
+    local show_frame = SUISettings:isTrue(ctx.pfx .. "reading_goals_show_frame")
+    local solid_bg   = SUISettings:isTrue(ctx.pfx .. "reading_goals_solid_bg")
+    local has_box    = show_frame or solid_bg
+    local border_sz  = show_frame and 1 or 0
+    local radius     = has_box and math.floor(Screen:scaleBySize(12) * scale) or 0
+    local border_color = Blitbuffer.gray(0.72)
+    if ok_ss and SUIStyle then
+        border_color = SUIStyle.getThemeColor("separator") or border_color
+    end
+    local bg_color = nil
+    if solid_bg then
+        bg_color = (ok_ss and SUIStyle and SUIStyle.getThemeColor("bg")) or Blitbuffer.COLOR_WHITE
+    end
+
     return FrameContainer:new{
-        bordersize    = 0, padding = 0,
+        bordersize    = border_sz,
+        radius        = radius,
+        color         = border_color,
+        background    = bg_color,
+        padding       = 0,
         padding_left  = PAD, padding_right = PAD,
+        padding_top   = has_box and PAD or 0,
+        padding_bottom= has_box and PAD or 0,
         rows,
     }
 end
@@ -572,11 +593,18 @@ function M.getHeight(_ctx)
     if n == 0 then return 0 end
     local pfx = _ctx and _ctx.pfx
     local label_h = require("sui_config").getScaledLabelH("reading_goals", pfx)
+    local h = 0
     if isCompact() then
-        return label_h + _compactRowsHeight(n, _compactDims(Config.getModuleScale("reading_goals", pfx)))
+        h = _compactRowsHeight(n, _compactDims(Config.getModuleScale("reading_goals", pfx)))
+    else
+        local d = _scaledDims(Config.getModuleScale("reading_goals", pfx))
+        h = n * d.goal_row_h + (n == 2 and d.row_gap or 0)
     end
-    local d = _scaledDims(Config.getModuleScale("reading_goals", pfx))
-    return label_h + n * d.goal_row_h + (n == 2 and d.row_gap or 0)
+    local key_pfx = pfx or ""
+    if SUISettings:isTrue(key_pfx .. "reading_goals_show_frame") or SUISettings:isTrue(key_pfx .. "reading_goals_solid_bg") then
+        h = h + PAD * 2
+    end
+    return label_h + h
 end
 
 -- Builds the scale menu item for the settings menu
@@ -625,6 +653,24 @@ function M.getMenuItems(ctx_menu)
         },
         scale_item,
         Config.makeLabelToggleItem("reading_goals", _("Reading Goals"), refresh, _lc),
+        {
+            text           = _lc("Frame"),
+            checked_func   = function() return SUISettings:isTrue(ctx_menu.pfx .. "reading_goals_show_frame") end,
+            keep_menu_open = true,
+            callback       = function()
+                SUISettings:saveSetting(ctx_menu.pfx .. "reading_goals_show_frame", not SUISettings:isTrue(ctx_menu.pfx .. "reading_goals_show_frame"))
+                refresh()
+            end,
+        },
+        {
+            text           = _lc("Solid Background"),
+            checked_func   = function() return SUISettings:isTrue(ctx_menu.pfx .. "reading_goals_solid_bg") end,
+            keep_menu_open = true,
+            callback       = function()
+                SUISettings:saveSetting(ctx_menu.pfx .. "reading_goals_solid_bg", not SUISettings:isTrue(ctx_menu.pfx .. "reading_goals_solid_bg"))
+                refresh()
+            end,
+        },
         { text         = _lc("Annual Goal"),
           checked_func = function() return showAnnual() end,
           keep_menu_open = true,

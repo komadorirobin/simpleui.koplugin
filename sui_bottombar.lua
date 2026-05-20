@@ -31,6 +31,33 @@ local _ = require("sui_i18n").translate
 local Config = require("sui_config")
 local SUISettings = require("sui_store")
 
+-- Lazy reference to sui_style — used by _safeIconFile() to validate icon paths
+-- before passing them to ImageWidget. Loaded on first use to avoid a circular
+-- require at startup (sui_style requires sui_store, not sui_bottombar).
+local function _SUIStyle()
+    return package.loaded["sui_style"] or require("sui_style")
+end
+
+-- Guard helper: validates an icon file path before it reaches ImageWidget.
+-- Returns `path` when valid, `fallback` otherwise (nil = no icon rendered).
+-- When `fallback` is nil and the path is bad, the caller must handle the nil
+-- return (e.g. skip ImageWidget construction entirely).
+local function _safeIconFile(path, fallback)
+    local ok, style = pcall(_SUIStyle)
+    if ok and style and style.safeIconPath then
+        return style.safeIconPath(path, fallback)
+    end
+    -- sui_style unavailable: minimal inline check (extension only, no lfs).
+    if type(path) ~= "string" or path == "" then return fallback end
+    local ext = path:match("%.([^.]+)$")
+    local supported = { png = true, svg = true, jpg = true, jpeg = true }
+    if not ext or not supported[ext:lower()] then
+        logger.warn("simpleui/bottombar: unsupported icon format in: " .. path)
+        return fallback
+    end
+    return path
+end
+
 -- Lazy reference to sui_quickactions — single source of truth for QA resolution
 -- and execution.  Loaded on first use to avoid a circular require at startup.
 local function _QA()
@@ -366,13 +393,16 @@ function M.buildTabCell(action_id, active, tab_w, mode)
                 },
             }
         else
-            vg[#vg + 1] = ImageWidget():new{
-                file    = icon,
-                width   = M.ICON_SZ(),
-                height  = M.ICON_SZ(),
-                is_icon = true,
-                alpha   = true,
-            }
+            local safe_file = _safeIconFile(icon, nil)
+            if safe_file then
+                vg[#vg + 1] = ImageWidget():new{
+                    file    = safe_file,
+                    width   = M.ICON_SZ(),
+                    height  = M.ICON_SZ(),
+                    is_icon = true,
+                    alpha   = true,
+                }
+            end
         end
     end
 
@@ -444,8 +474,19 @@ local function _navpagerColor()
 end
 
 local function _makeColoredIcon(file, size, fgcolor)
+    local safe_file = _safeIconFile(file, nil)
+    if not safe_file then
+        logger.warn("simpleui/bottombar: _makeColoredIcon skipped, invalid file: " .. tostring(file))
+        -- Return a transparent placeholder widget of the correct size so
+        -- the layout does not collapse when an icon is missing.
+        local placeholder = require("ui/widget/container/widgetcontainer"):new{}
+        placeholder.dimen = Geom():new{ w = size, h = size }
+        function placeholder:getSize() return self.dimen end
+        function placeholder:paintTo() end
+        return placeholder
+    end
     local inner = ImageWidget():new{
-        file    = file,
+        file    = safe_file,
         width   = size,
         height  = size,
         is_icon = true,

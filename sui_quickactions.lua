@@ -44,6 +44,34 @@ local SUISettings = require("sui_store")
 local QA = {}
 
 -- ---------------------------------------------------------------------------
+-- Icon path guard — picker-time validation
+-- ---------------------------------------------------------------------------
+-- Called in every on_select callback that receives a filesystem path.
+-- nil paths (user chose "Default") are always passed through unchanged.
+-- Invalid paths show an InfoMessage and call on_invalid() so the caller
+-- can reopen the picker or simply do nothing — the bad path is never saved.
+
+local function _guardedSetIcon(path, on_valid, on_invalid)
+    -- nil = "reset to default" — always valid, no file to check.
+    if path == nil then
+        on_valid(nil)
+        return
+    end
+    local ok_ss, SUIStyle = pcall(require, "sui_style")
+    local safe = ok_ss and SUIStyle and SUIStyle.safeIconPath(path, nil)
+    if safe then
+        on_valid(safe)
+    else
+        local InfoMessage = require("ui/widget/infomessage")
+        UIManager:show(InfoMessage:new{
+            text    = _("Unsupported icon format.\nPlease use a PNG or SVG file."),
+            timeout = 3,
+        })
+        if on_invalid then on_invalid() end
+    end
+end
+
+-- ---------------------------------------------------------------------------
 -- Icon directory
 -- ---------------------------------------------------------------------------
 
@@ -1364,11 +1392,13 @@ function QA.makeIconsMenuItems(plugin)
                         QA.showIconPicker(
                             SUIStyle.getIcon(slot.id),
                             function(new_path)
-                                SUIStyle.setIcon(slot.id, new_path)
-                                QA.invalidateCustomQACache()
-                                plugin:_rebuildAllNavbars()
-                                local ok, HS = pcall(require, "sui_homescreen")
-                                if ok and HS and HS._instance then HS._instance:_refreshImmediate(false) end
+                                _guardedSetIcon(new_path, function(safe_path)
+                                    SUIStyle.setIcon(slot.id, safe_path)
+                                    QA.invalidateCustomQACache()
+                                    plugin:_rebuildAllNavbars()
+                                    local ok, HS = pcall(require, "sui_homescreen")
+                                    if ok and HS and HS._instance then HS._instance:_refreshImmediate(false) end
+                                end)
                             end,
                             type(slot.label) == "function" and slot.label() or slot.label,
                             plugin,
@@ -1428,26 +1458,28 @@ function QA.makeIconsMenuItems(plugin)
                 end
                 local default_label = _title .. " (" .. _("default") .. ")"
                 QA.showIconPicker(current_icon, function(new_icon)
-                    if _is_default then
-                        QA.setDefaultActionIcon(_id, new_icon)
-                    else
-                        local c = Config.getCustomQAConfig(_id)
-                        local type_default
-                        if c.dispatcher_action and c.dispatcher_action ~= "" then
-                            type_default = Config.CUSTOM_DISPATCHER_ICON
-                        elseif c.plugin_key and c.plugin_key ~= "" then
-                            type_default = Config.CUSTOM_PLUGIN_ICON
+                    _guardedSetIcon(new_icon, function(safe_icon)
+                        if _is_default then
+                            QA.setDefaultActionIcon(_id, safe_icon)
                         else
-                            type_default = Config.CUSTOM_ICON
+                            local c = Config.getCustomQAConfig(_id)
+                            local type_default
+                            if c.dispatcher_action and c.dispatcher_action ~= "" then
+                                type_default = Config.CUSTOM_DISPATCHER_ICON
+                            elseif c.plugin_key and c.plugin_key ~= "" then
+                                type_default = Config.CUSTOM_PLUGIN_ICON
+                            else
+                                type_default = Config.CUSTOM_ICON
+                            end
+                            Config.saveCustomQAConfig(_id, c.label, c.path, c.collection,
+                                safe_icon or type_default,
+                                c.plugin_key, c.plugin_method, c.dispatcher_action)
                         end
-                        Config.saveCustomQAConfig(_id, c.label, c.path, c.collection,
-                            new_icon or type_default,
-                            c.plugin_key, c.plugin_method, c.dispatcher_action)
-                    end
-                    QA.invalidateCustomQACache()
-                    plugin:_rebuildAllNavbars()
-                    local ok, HS = pcall(require, "sui_homescreen")
-                    if ok and HS and HS._instance then HS._instance:_refreshImmediate(false) end
+                        QA.invalidateCustomQACache()
+                        plugin:_rebuildAllNavbars()
+                        local ok, HS = pcall(require, "sui_homescreen")
+                        if ok and HS and HS._instance then HS._instance:_refreshImmediate(false) end
+                    end)
                 end, default_label, plugin, "_qa_icon_picker_style")
             end,
         }

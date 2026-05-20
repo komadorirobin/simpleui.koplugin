@@ -400,7 +400,7 @@ msgid ""
 "\n"
 "Restart now?"
 msgstr ""
-"Bara de titlu personalizată va fi % după o repornire.\n"
+"Bara de titlu personalizată va fi %s după o repornire.\n"
 "\n"
 "Repornești acum?"
 

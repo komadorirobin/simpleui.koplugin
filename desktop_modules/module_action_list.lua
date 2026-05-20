@@ -3,11 +3,6 @@
 -- Apresenta as quick actions como lista vertical de linhas tocáveis,
 -- com ícone à esquerda e texto à direita (estilo launcher de apps).
 --
--- Diferenças face ao module_quick_actions:
---   • Layout em lista (linhas) em vez de botões numa grelha.
---   • Alinhamento do conjunto: esquerda / centro / direita (default: centro).
---   • Opção de ocultar o ícone (em vez de ocultar o texto).
---   • Sem estilo "flat" — o ícone não tem moldura, o visual é limpo.
 
 local Blitbuffer      = require("ffi/blitbuffer")
 local CenterContainer = require("ui/widget/container/centercontainer")

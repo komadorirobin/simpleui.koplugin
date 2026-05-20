@@ -3621,6 +3621,33 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                 {
                                     text         = _("Badges"),
                                     sub_item_table = {
+                                        {
+                                            text_func = function()
+                                                return _("Size")
+                                            end,
+                                            keep_menu_open = true,
+                                            separator = true,
+                                            callback = function()
+                                                local SpinWidget = require("ui/widget/spinwidget")
+                                                UIManager:show(SpinWidget:new{
+                                                    title_text    = _("Badge Size"),
+                                                    info_text     = _("Scale for the library badges (progress, pages, etc.).\n100% is the default size."),
+                                                    value         = FC.getBadgeScalePct(),
+                                                    value_min     = FC.FC_BADGE_SCALE_MIN,
+                                                    value_max     = FC.FC_BADGE_SCALE_MAX,
+                                                    value_step    = FC.FC_BADGE_SCALE_STEP,
+                                                    unit          = "%",
+                                                    ok_text       = _("Apply"),
+                                                    cancel_text   = _("Cancel"),
+                                                    default_value = FC.FC_BADGE_SCALE_DEF,
+                                                    callback      = function(spin)
+                                                        FC.setBadgeScale(spin.value)
+                                                        FC.invalidateCache()
+                                                        _refreshFC()
+                                                    end,
+                                                })
+                                            end,
+                                        },
                                         -- ── Number of Books in Folder ─────────────────────────────
                                         {
                                             text         = _("Number of Books in Folder"),

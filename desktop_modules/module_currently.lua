@@ -24,6 +24,7 @@ local TextWidget      = require("ui/widget/textwidget")
 local TextBoxWidget   = require("ui/widget/textboxwidget")
 local VerticalGroup   = require("ui/widget/verticalgroup")
 local VerticalSpan    = require("ui/widget/verticalspan")
+local Size            = require("ui/size")
 
 -- Internal dependencies
 local Config       = require("sui_config")
@@ -406,7 +407,11 @@ local function _computeContentH(params)
         h = h + e[2]                     -- line height
     end
 
-    return math.max(D.COVER_H, h)
+    local content_h = math.max(D.COVER_H, h)
+    if SUISettings:isTrue(params.pfx .. "currently_show_frame") or SUISettings:isTrue(params.pfx .. "currently_solid_bg") then
+        content_h = content_h + PAD * 2
+    end
+    return content_h
 end
 
 
@@ -737,6 +742,23 @@ function M.build(w, ctx)
     local meta_h = meta:getSize().h
     local content_h = math.max(D.COVER_H, meta_h)
 
+    local show_frame = SUISettings:isTrue(pfx .. "currently_show_frame")
+    local solid_bg   = SUISettings:isTrue(pfx .. "currently_solid_bg")
+    local has_box    = show_frame or solid_bg
+    local border_sz  = show_frame and 1 or 0
+    local radius     = has_box and math.floor(Screen:scaleBySize(12) * scale) or 0
+    local border_color = Blitbuffer.gray(0.72)
+    if ok_ss and SUIStyle then
+        border_color = SUIStyle.getThemeColor("separator") or border_color
+    end
+    local bg_color = nil
+    if solid_bg then
+        bg_color = (ok_ss and SUIStyle and SUIStyle.getThemeColor("bg")) or Blitbuffer.COLOR_WHITE
+    end
+
+    local full_h = content_h
+    if has_box then full_h = full_h + PAD * 2 end
+
     -- Layout: cover on left, text column on right.
     -- The cover is wrapped in a CenterContainer sized to content_h so it
     -- stays vertically centred when the text column is taller than the cover.
@@ -761,14 +783,19 @@ function M.build(w, ctx)
         meta_centered,
     }
     local tappable = InputContainer:new{
-        dimen    = Geom:new{ w = w, h = content_h },
+        dimen    = Geom:new{ w = w, h = full_h },
         _fp      = ctx.current_fp,
         _open_fn = ctx.open_fn,
         [1] = FrameContainer:new{
-            bordersize    = 0,
+            bordersize    = border_sz,
+            radius        = radius,
+            color         = border_color,
+            background    = bg_color,
             padding       = 0,
             padding_left  = PAD,
             padding_right = PAD,
+            padding_top   = has_box and PAD or 0,
+            padding_bottom= has_box and PAD or 0,
             row,
         },
     }
@@ -794,7 +821,7 @@ function M.build(w, ctx)
     if ctx.kb_currently_focused then
         local bw = Screen:scaleBySize(3)
         local tw = w
-        local th = content_h
+        local th = full_h
         return OverlapGroup:new{
             dimen = Geom:new{ w = tw, h = th },
             tappable,
@@ -915,7 +942,11 @@ function M.getHeight(_ctx)
         text_h = text_h + e[2]
     end
 
-    return Config.getScaledLabelH("currently", pfx) + math.max(D.COVER_H, text_h)
+    local content_h = math.max(D.COVER_H, text_h)
+    if SUISettings:isTrue(pfx .. "currently_show_frame") or SUISettings:isTrue(pfx .. "currently_solid_bg") then
+        content_h = content_h + PAD * 2
+    end
+    return Config.getScaledLabelH("currently", pfx) + content_h
 end
 
 
@@ -1133,6 +1164,24 @@ function M.getMenuItems(ctx_menu)
         thumb,
         gap_item,
         Config.makeLabelToggleItem("currently", _("Currently Reading"), refresh, _lc),
+        {
+            text           = _lc("Frame"),
+            checked_func   = function() return SUISettings:isTrue(pfx .. "currently_show_frame") end,
+            keep_menu_open = true,
+            callback       = function()
+                SUISettings:saveSetting(pfx .. "currently_show_frame", not SUISettings:isTrue(pfx .. "currently_show_frame"))
+                refresh()
+            end,
+        },
+        {
+            text           = _lc("Solid Background"),
+            checked_func   = function() return SUISettings:isTrue(pfx .. "currently_solid_bg") end,
+            keep_menu_open = true,
+            callback       = function()
+                SUISettings:saveSetting(pfx .. "currently_solid_bg", not SUISettings:isTrue(pfx .. "currently_solid_bg"))
+                refresh()
+            end,
+        },
         {
             text           = _lc("Items"),
             sub_item_table = items_submenu,

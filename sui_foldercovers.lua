@@ -67,6 +67,7 @@ local SK = {
     badge_color_progress = "simpleui_fc_badge_color_progress",
     badge_color_new      = "simpleui_fc_badge_color_new",
     badge_color_folder   = "simpleui_fc_badge_color_folder",
+    badge_scale          = "simpleui_fc_badge_scale",
 }
 
 -- ---------------------------------------------------------------------------
@@ -200,6 +201,28 @@ function M.getLabelScalePct()
 end
 function M.getLabelScale()    return M.getLabelScalePct() / 100         end
 function M.setLabelScale(pct) SUISettings:saveSetting(SK.label_scale, _clampFCScale(pct)) end
+
+-- Folder covers badge scale
+local _FC_BADGE_SCALE_MIN  = 50
+local _FC_BADGE_SCALE_MAX  = 200
+local _FC_BADGE_SCALE_DEF  = 100
+local _FC_BADGE_SCALE_STEP = 10
+M.FC_BADGE_SCALE_MIN  = _FC_BADGE_SCALE_MIN
+M.FC_BADGE_SCALE_MAX  = _FC_BADGE_SCALE_MAX
+M.FC_BADGE_SCALE_DEF  = _FC_BADGE_SCALE_DEF
+M.FC_BADGE_SCALE_STEP = _FC_BADGE_SCALE_STEP
+
+local function _clampFCBadgeScale(n)
+    return math.max(_FC_BADGE_SCALE_MIN, math.min(_FC_BADGE_SCALE_MAX, math.floor(n)))
+end
+
+function M.getBadgeScalePct()
+    local n = tonumber(SUISettings:readSetting(SK.badge_scale))
+    if not n then return _FC_BADGE_SCALE_DEF end
+    return _clampFCBadgeScale(n)
+end
+function M.getBadgeScale()    return M.getBadgeScalePct() / 100         end
+function M.setBadgeScale(pct) SUISettings:saveSetting(SK.badge_scale, _clampFCBadgeScale(pct)) end
 
 -- Menu items for the progress badge sub-menu (banner / native / none).
 -- Triggers a full redraw on change so the mosaic updates immediately.
@@ -1360,15 +1383,15 @@ end
 -- Returns a descriptor table for the progress badge, or nil when too small.
 -- No Blitbuffer is allocated here — drawing is deferred to paintTo().
 local function _buildProgressBadgeDesc(eff_size, status, percent_finished, border, dark)
-    local bw = math.floor(eff_size * 1.2)
-    local bh = math.floor(eff_size * 1.1)
+    local bw = math.floor(eff_size * 1.3)
+    local bh = math.floor(eff_size * 1.4)
     if bw < 4 or bh < 4 then return nil end
 
     local text_color  = dark and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
     local text_widget = nil
 
     if status == "abandoned" then
-        local font_sz = math.max(7, math.floor(eff_size * 0.24))
+        local font_sz = math.max(7, math.floor(eff_size * 0.26))
         text_widget = TextWidget:new{
             text    = "",
             face    = Font:getFace("cfont", font_sz),
@@ -1377,8 +1400,8 @@ local function _buildProgressBadgeDesc(eff_size, status, percent_finished, borde
             padding = 0,
         }
     elseif percent_finished ~= nil and status ~= "complete" then
-        local pct     = math.floor(100 * percent_finished)
-        local font_sz = math.max(7, math.floor(eff_size * 0.24))
+        local pct     = math.floor(percent_finished * 100 + 0.5)
+        local font_sz = math.max(7, math.floor(eff_size * 0.26))
         text_widget = TextWidget:new{
             text    = pct .. "%",
             face    = Font:getFace("cfont", font_sz),
@@ -1446,8 +1469,9 @@ end
 
 -- ── Rounded-rectangle badge (pages, series index, "New") ─────────────────────
 
-local function _buildRectBadgeWidget(text, bold, cell_min, dark, new_badge)
-    local eff_size = math.max(8, math.floor((cell_min or 40) * 0.14))
+local function _buildRectBadgeWidget(text, bold, cell_min, dark, new_badge, badge_scale)
+    badge_scale = badge_scale or 1.0
+    local eff_size = math.max(8, math.floor((cell_min or 40) * 0.14 * badge_scale))
     local font_sz  = math.max(7, math.floor(eff_size * 0.24))
     local pad_h    = math.max(1, math.floor(eff_size * 0.10))
     local pad_v    = math.max(1, math.floor(eff_size * 0.06))
@@ -1569,11 +1593,12 @@ local function _buildBadge(mandatory, cover_dimen, cv_scale, cell_dimen)
     local nb_text = mandatory and mandatory:match("(%d+) \u{F016}") or ""
     if nb_text == "" or nb_text == "0" then return nil end
 
+    local badge_scale    = M.getBadgeScale()
     local nb_count       = tonumber(nb_text)
     local size_dimen     = cell_dimen or cover_dimen
     local cell_min       = math.min(size_dimen.w, size_dimen.h)
-    local nb_size        = math.max(8, math.floor(cell_min * 0.14))
-    local nb_font_size   = math.max(7, math.floor(nb_size * 0.24))
+    local nb_size        = math.max(8, math.floor(cell_min * 0.12 * badge_scale))
+    local nb_font_size   = math.max(7, math.floor(nb_size * 0.28))
     local badge_margin   = math.max(1, math.floor(_BADGE_MARGIN_BASE   * cv_scale))
     local badge_margin_r = math.max(1, math.floor(_BADGE_MARGIN_R_BASE * cv_scale))
     local dark           = M.getBadgeColorFolder() == "dark"
@@ -2197,18 +2222,20 @@ function M.install()
             self._fc_series_widget = nil
             self._fc_new_widget    = nil
 
+            local badge_scale = M.getBadgeScale()
+
             if self._fc_overlay_pages and self.status ~= "complete" and self._fc_pages then
                 local cell_min = math.min(self.width or 40, self.height or 40)
                 local dark = M.getBadgeColorPages() == "dark"
                 self._fc_pages_widget = _buildRectBadgeWidget(
-                    self._fc_pages .. " p.", false, cell_min, dark, false)
+                    self._fc_pages .. _(" p."), false, cell_min, dark, false, badge_scale)
             end
 
             if self._fc_overlay_series and self._fc_series_index then
                 local cell_min = math.min(self.width or 40, self.height or 40)
                 local dark = M.getBadgeColorSeries() == "dark"
                 self._fc_series_widget = _buildRectBadgeWidget(
-                    "#" .. self._fc_series_index, false, cell_min, dark, false)
+                    "#" .. self._fc_series_index, false, cell_min, dark, false, badge_scale)
             end
 
             -- Progress pentagon: only for books that have been opened.
@@ -2217,7 +2244,7 @@ function M.install()
                     or (self.status == "complete") or (self.status == "abandoned")
                 if has_progress then
                     local eff_size = math.max(8, math.floor(
-                        math.min(self.width or 40, self.height or 40) * 0.14))
+                        math.min(self.width or 40, self.height or 40) * 0.13 * badge_scale))
                     local dark = M.getBadgeColorProgress() == "dark"
                     local prog_desc = _buildProgressBadgeDesc(
                         eff_size, self.status, self.percent_finished,
@@ -2234,7 +2261,7 @@ function M.install()
                     local cell_min = math.min(self.width or 40, self.height or 40)
                     local dark = M.getBadgeColorNew() == "dark"
                     self._fc_new_widget =
-                        _buildRectBadgeWidget(_("New"), true, cell_min, dark, true)
+                        _buildRectBadgeWidget(_("New"), true, cell_min, dark, true, badge_scale)
                 end
             end
         end

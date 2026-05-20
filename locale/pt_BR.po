@@ -2659,3 +2659,12 @@ msgstr "Redefinir Todos os Ícones de Ações Rápidas"
 
 msgid "More by %s (%d)"
 msgstr "Mais de %s (%d)"
+
+msgid "Badge Size"
+msgstr "Tamanho do Emblema"
+
+msgid "Scale for the library badges (progress, pages, etc.).\n100% is the default size."
+msgstr "Escala para os emblemas da biblioteca (progresso, páginas, etc.).\n100% é o tamanho padrão."
+
+msgid " p."
+msgstr " pág."

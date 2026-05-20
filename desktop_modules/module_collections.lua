@@ -531,8 +531,26 @@ function M.build(w, ctx)
         }
     end
 
+    local show_frame = SUISettings:isTrue(ctx.pfx .. "collections_show_frame")
+    local solid_bg   = SUISettings:isTrue(ctx.pfx .. "collections_solid_bg")
+    local has_box    = show_frame or solid_bg
+    local border_sz  = show_frame and 1 or 0
+    local radius     = has_box and math.floor(Screen:scaleBySize(12) * scale) or 0
+    local border_color = Blitbuffer.gray(0.72)
+    local bg_color   = nil
+    if ok_ss and SUIStyle then
+        border_color = SUIStyle.getThemeColor("separator") or border_color
+        if solid_bg then bg_color = SUIStyle.getThemeColor("bg") or Blitbuffer.COLOR_WHITE end
+    elseif solid_bg then
+        bg_color = Blitbuffer.COLOR_WHITE
+    end
+
     local result = FrameContainer:new{
-        bordersize = 0, padding = PAD, padding_top = 0, padding_bottom = 0,
+        bordersize = border_sz,
+        radius     = radius,
+        color      = border_color,
+        background = bg_color,
+        padding = PAD, padding_top = has_box and PAD or 0, padding_bottom = has_box and (PAD + PAD2) or 0,
         row,
     }
     result._cover_slots = cover_slots
@@ -576,7 +594,12 @@ function M.getHeight(ctx)
     if #getSelectedCollections() == 0 then
         return Config.getScaledLabelH("collections", pfx) + d.empty_h
     end
-    return Config.getScaledLabelH("collections", pfx) + d.coll_cell_h
+    local h = d.coll_cell_h
+    local key_pfx = pfx or ""
+    if SUISettings:isTrue(key_pfx .. "collections_show_frame") or SUISettings:isTrue(key_pfx .. "collections_solid_bg") then
+        h = h + PAD * 2 + PAD2
+    end
+    return Config.getScaledLabelH("collections", pfx) + h
 end
 
 -- Settings API (usados por getMenuItems e externamente pelo menu.lua legado)
@@ -760,6 +783,24 @@ function M.getMenuItems(ctx_menu)
         set       = function(v) Config.setThumbScale(v, "collections", ctx_menu.pfx) end,
         refresh   = ctx_menu.refresh,
     })
+    items[#items + 1] = {
+        text           = _lc("Frame"),
+        checked_func   = function() return SUISettings:isTrue(ctx_menu.pfx .. "collections_show_frame") end,
+        keep_menu_open = true,
+        callback       = function()
+            SUISettings:saveSetting(ctx_menu.pfx .. "collections_show_frame", not SUISettings:isTrue(ctx_menu.pfx .. "collections_show_frame"))
+            refresh()
+        end,
+    }
+    items[#items + 1] = {
+        text           = _lc("Solid Background"),
+        checked_func   = function() return SUISettings:isTrue(ctx_menu.pfx .. "collections_solid_bg") end,
+        keep_menu_open = true,
+        callback       = function()
+            SUISettings:saveSetting(ctx_menu.pfx .. "collections_solid_bg", not SUISettings:isTrue(ctx_menu.pfx .. "collections_solid_bg"))
+            refresh()
+        end,
+    }
     items[#items + 1] = {
         text         = _lc("Badge"),
         sub_item_table = {

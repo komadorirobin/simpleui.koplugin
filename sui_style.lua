@@ -214,6 +214,58 @@ function M.setIcon(id, path)
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- Icon path guard
+-- ---------------------------------------------------------------------------
+-- SUPPORTED_ICON_EXTS: formats that imagewidget.lua can actually load.
+-- SVG requires librsvg (available on most KOReader builds).
+-- PNG is always safe (liblodepng is always present).
+-- JPG/JPEG are supported but not recommended for icons (no transparency).
+local _SUPPORTED_ICON_EXTS = { png = true, svg = true, jpg = true, jpeg = true }
+
+--- Validates `path` as a loadable icon file.
+--- Returns `path` when valid, `fallback` otherwise.
+--- Also clears the stored setting for `slot_id` (when given) so a bad path
+--- is not retried on the next startup.
+---
+--- @param path      string|any   candidate icon path
+--- @param fallback  string|nil   path to return when `path` is invalid (nil = no icon)
+--- @param slot_id   string|nil   SUISettings key suffix; when given, a bad path
+---                               is deleted from settings so it is not retried.
+--- @return string|nil
+function M.safeIconPath(path, fallback, slot_id)
+    -- Type check — nil/non-string means "no override", not an error.
+    if type(path) ~= "string" or path == "" then
+        return fallback
+    end
+
+    -- Extension check — fast, no I/O.
+    local ext = path:match("%.([^.]+)$")
+    if not ext or not _SUPPORTED_ICON_EXTS[ext:lower()] then
+        logger.warn("simpleui/style: unsupported icon format '" .. tostring(ext)
+                    .. "' in path: " .. path)
+        if slot_id then M.setIcon(slot_id, nil) end
+        return fallback
+    end
+
+    -- Existence check — requires lfs; skip gracefully when unavailable.
+    -- Note: _reqLFS() is defined later in this file (Lua forward-reference
+    -- limitation), so we inline the pcall here instead of calling it.
+    local lfs_ok, lfs = pcall(require, "libs/libkoreader-lfs")
+    if lfs_ok and lfs then
+        if lfs.attributes(path, "mode") ~= "file" then
+            logger.warn("simpleui/style: icon file not found: " .. path)
+            if slot_id then M.setIcon(slot_id, nil) end
+            return fallback
+        end
+    else
+        -- lfs unavailable: trust the extension check, warn once.
+        logger.warn("simpleui/style: lfs unavailable, skipping existence check for: " .. path)
+    end
+
+    return path
+end
+
 --- Clears every system icon override.
 function M.resetAll()
     for _, s in ipairs(M.SLOTS) do
@@ -231,9 +283,11 @@ end
 --- `id`.  Does nothing when no override is set or the button has no image.
 --- Returns true when an override was applied.
 function M.applyIconToBtn(id, btn)
-    local path = M.getIcon(id)
-    if not path then return false end
+    local raw = M.getIcon(id)
+    if not raw then return false end
     if not (btn and btn.image) then return false end
+    local path = M.safeIconPath(raw, nil, id)
+    if not path then return false end
     -- CRITICAL: clear .icon before setting .file.
     -- KOReader ImageWidget:init() gives precedence to .icon over .file.
     -- Buttons created with icon="appbar.search" keep that name in .icon
@@ -274,9 +328,11 @@ end
 -- ---------------------------------------------------------------------------
 
 local function _applyNativeBtn(id, btn)
-    local path = M.getIcon(id)
-    if not path then return false end
+    local raw = M.getIcon(id)
+    if not raw then return false end
     if not btn then return false end
+    local path = M.safeIconPath(raw, nil, id)
+    if not path then return false end
 
     -- Path 1: IconButton exposes self.image (an IconWidget / ImageWidget).
     if btn.image then
@@ -548,8 +604,24 @@ local function _reapplyTitlebar()
                 QA.showIconPicker(
                     M.getIcon(slot.id),
                     function(new_path)
-                        M.setIcon(slot.id, new_path)
-                        _refresh(slot.group)
+                        -- Guard: validate format/existence before persisting.
+                        -- nil = "reset to default", always valid.
+                        if new_path == nil then
+                            M.setIcon(slot.id, nil)
+                            _refresh(slot.group)
+                            return
+                        end
+                        local safe = M.safeIconPath(new_path, nil)
+                        if safe then
+                            M.setIcon(slot.id, safe)
+                            _refresh(slot.group)
+                        else
+                            local _InfoMessage = require("ui/widget/infomessage")
+                            UIManager:show(_InfoMessage:new{
+                                text    = _("Unsupported icon format.\nPlease use a PNG or SVG file."),
+                                timeout = 3,
+                            })
+                        end
                     end,
                     type(slot.label) == "function" and slot.label() or slot.label,
                     plugin,
