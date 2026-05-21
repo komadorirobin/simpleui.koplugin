@@ -50,6 +50,7 @@ M.label       = _("New Books")
 M.enabled_key = "new_books"
 M.default_on  = false  -- opt-in; users enable via Arrange Modules
 M.has_covers  = true   -- activates e-ink dithering and cover poll
+M.is_book_mod = true   -- suppresses empty-state when active
 
 function M.reset() _SH = nil end
 
@@ -68,6 +69,8 @@ local _scan_cache_home = nil
 local _scan_cache_limit = nil
 local _scan_cache_time = 0
 local SCAN_CACHE_TTL = 60
+local DISPLAY_LIMIT = 5
+local CANDIDATE_SCAN_LIMIT = 100
 
 local function addTopBook(files, limit, path, mtime)
     local item = { path = path, mtime = mtime or 0 }
@@ -147,9 +150,11 @@ function M.build(w, ctx)
     -- Cache the scan result for the lifetime of this render cycle.
     local new_fps = ctx._new_books_fps
     if not new_fps then
-        -- Fetch extra entries to compensate for books that will be excluded
-        -- (current book, and books that are 100% read / marked complete).
-        new_fps = scanNewBooks(10)
+        -- Fetch a wider candidate pool before filtering. Metadata syncs can
+        -- touch many already-finished files at once, making them look newly
+        -- modified; if we only scan the first handful, the whole module can
+        -- disappear after those entries are filtered out.
+        new_fps = scanNewBooks(CANDIDATE_SCAN_LIMIT)
         -- Exclude the currently open book, matching the behaviour of the
         -- Recent Books module which also skips it.
         -- Also exclude books that are 100% read or marked complete,
@@ -179,15 +184,11 @@ function M.build(w, ctx)
                 end
                 if pct < 1.0 and not is_complete then
                     filtered[#filtered + 1] = fp
+                    if #filtered >= DISPLAY_LIMIT then break end
                 end
             end
         end
         new_fps = filtered
-        if #new_fps > 5 then
-            local trimmed = {}
-            for i = 1, 5 do trimmed[i] = new_fps[i] end
-            new_fps = trimmed
-        end
         ctx._new_books_fps = new_fps
     end
     if #new_fps == 0 then return nil end
