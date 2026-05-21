@@ -71,6 +71,11 @@ local _scan_cache_time = 0
 local SCAN_CACHE_TTL = 60
 local DISPLAY_LIMIT = 5
 local CANDIDATE_SCAN_LIMIT = 100
+local SETTING_SHOW_FINISHED = "new_books_show_finished" -- pfx .. this; default ON
+
+local function showFinished(pfx)
+    return SUISettings:readSetting(pfx .. SETTING_SHOW_FINISHED) ~= false
+end
 
 local function addTopBook(files, limit, path, mtime)
     local item = { path = path, mtime = mtime or 0 }
@@ -156,9 +161,11 @@ function M.build(w, ctx)
         -- disappear after those entries are filtered out.
         new_fps = scanNewBooks(CANDIDATE_SCAN_LIMIT)
         -- Exclude the currently open book, matching the behaviour of the
-        -- Recent Books module which also skips it.
-        -- Also exclude books that are 100% read or marked complete,
-        -- matching the filter applied by prefetchBooks() in module_books_shared.
+        -- Recent Books module which also skips it. Finished books are shown by
+        -- default: this module tracks newly changed files, and metadata syncs
+        -- can otherwise make the module disappear when the newest files are
+        -- already complete.
+        local show_finished = showFinished(ctx.pfx)
         local DS_mod = nil
         pcall(function() DS_mod = require("docsettings") end)
         local filtered = {}
@@ -182,7 +189,7 @@ function M.build(w, ctx)
                         pcall(function() ds:close() end)
                     end
                 end
-                if pct < 1.0 and not is_complete then
+                if show_finished or (pct < 1.0 and not is_complete) then
                     filtered[#filtered + 1] = fp
                     if #filtered >= DISPLAY_LIMIT then break end
                 end
@@ -386,7 +393,16 @@ function M.getMenuItems(ctx_menu)
             ctx_menu.refresh()
         end,
     }
-    return { _makeScaleItem(ctx_menu), label_item, Config.makeLabelToggleItem("new_books", _("New Books"), ctx_menu.refresh, _lc), frame_item, solid_bg_item, _makeThumbScaleItem(ctx_menu) }
+    local show_finished_item = {
+        text           = _lc("Show finished books"),
+        checked_func   = function() return showFinished(ctx_menu.pfx) end,
+        keep_menu_open = true,
+        callback       = function()
+            SUISettings:saveSetting(ctx_menu.pfx .. SETTING_SHOW_FINISHED, not showFinished(ctx_menu.pfx))
+            ctx_menu.refresh()
+        end,
+    }
+    return { _makeScaleItem(ctx_menu), label_item, Config.makeLabelToggleItem("new_books", _("New Books"), ctx_menu.refresh, _lc), show_finished_item, frame_item, solid_bg_item, _makeThumbScaleItem(ctx_menu) }
 end
 
 return M
