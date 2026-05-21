@@ -4,6 +4,7 @@
 -- the most recently added ones with cover thumbnails.  Unread books
 -- are labelled "New"; started books show their read percentage.
 
+local Blitbuffer      = require("ffi/blitbuffer")
 local Device          = require("device")
 local Font            = require("ui/font")
 local FrameContainer  = require("ui/widget/container/framecontainer")
@@ -198,7 +199,6 @@ function M.build(w, ctx)
         new_fps = filtered
         ctx._new_books_fps = new_fps
     end
-    if #new_fps == 0 then return nil end
 
     local SH          = getSH()
     local scale       = Config.getModuleScale("new_books", ctx.pfx)
@@ -211,6 +211,21 @@ function M.build(w, ctx)
     local _theme_fg        = ok_ss and SUIStyle and SUIStyle.getThemeColor("fg")
     local _theme_secondary = ok_ss and SUIStyle and SUIStyle.getThemeColor("text_secondary")
     local CLR_TEXT_SUB_EFF = _theme_secondary or _theme_fg or CLR_TEXT_SUB
+
+    if #new_fps == 0 then
+        return FrameContainer:new{
+            bordersize = 0,
+            padding = PAD,
+            UI.makeColoredText{
+                text      = _("No new books found"),
+                face      = Font:getFace("smallinfofont", label_fs),
+                fgcolor   = CLR_TEXT_SUB_EFF,
+                width     = w - PAD * 2,
+                height    = D.RB_LABEL_H,
+                alignment = "center",
+            },
+        }
+    end
 
     local cols    = math.min(#new_fps, 5)
     local cw      = D.RECENT_W

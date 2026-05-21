@@ -45,6 +45,71 @@ local SimpleUIPlugin = WidgetContainer:new{
     _goalTapCallback          = nil,
 }
 
+-- Modules with no stable external state. These may safely be evicted during
+-- init after an OTA update so the next require() picks up the files just
+-- installed, instead of stale package.loaded tables from the previous version.
+local _HOT_UPDATE_MODULES = {
+    "sui_homescreen",
+    "desktop_modules/moduleregistry",
+    "desktop_modules/module_books_shared",
+    "desktop_modules/module_clock",
+    "desktop_modules/module_collections",
+    "desktop_modules/module_image",
+    "desktop_modules/module_currently",
+    "desktop_modules/module_quick_actions",
+    "desktop_modules/module_quote",
+    "desktop_modules/module_reading_goals",
+    "desktop_modules/module_reading_stats",
+    "desktop_modules/module_stats_provider",
+    "desktop_modules/module_recent",
+    "desktop_modules/module_tbr",
+    "desktop_modules/module_coverdeck",
+    "desktop_modules/module_new_books",
+    "desktop_modules/module_app_launcher",
+    "desktop_modules/module_hardcover",
+    "desktop_modules/module_action_list",
+    "desktop_modules/quotes",
+}
+
+-- List of all plugin-owned Lua modules that must be evicted from
+-- package.loaded on teardown so that a hot plugin update (replacing files
+-- without restarting KOReader) always loads fresh code.
+local _PLUGIN_MODULES = {
+    "sui_i18n", "sui_config", "sui_core", "sui_bottombar", "sui_topbar",
+    "sui_patches", "sui_menu", "sui_titlebar", "sui_quickactions",
+    "sui_homescreen", "sui_foldercovers", "sui_browsemeta", "sui_updater",
+    "sui_store", "sui_presets", "sui_style",
+    "desktop_modules/moduleregistry",
+    "desktop_modules/module_books_shared",
+    "desktop_modules/module_clock",
+    "desktop_modules/module_collections",
+    "desktop_modules/module_image",
+    "desktop_modules/module_currently",
+    "desktop_modules/module_quick_actions",
+    "desktop_modules/module_quote",
+    "desktop_modules/module_reading_goals",
+    "desktop_modules/module_reading_stats",
+    "desktop_modules/module_stats_provider",
+    "desktop_modules/module_recent",
+    "desktop_modules/module_tbr",
+    "desktop_modules/module_coverdeck",
+    "desktop_modules/module_new_books",
+    "desktop_modules/module_app_launcher",
+    "desktop_modules/module_hardcover",
+    "desktop_modules/module_action_list",
+    "desktop_modules/quotes",
+}
+
+local function _evictLoadedModules(modules)
+    for _, mod_name in ipairs(modules) do
+        local mod = package.loaded[mod_name]
+        if type(mod) == "table" and type(mod.reset) == "function" then
+            pcall(mod.reset)
+        end
+        package.loaded[mod_name] = nil
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- Lifecycle
 -- ---------------------------------------------------------------------------
@@ -92,6 +157,7 @@ function SimpleUIPlugin:init()
             or G_reader_settings:readSetting("simpleui_loaded_version")
         if current_version then
             if prev_version and prev_version ~= current_version then
+                _evictLoadedModules(_HOT_UPDATE_MODULES)
                 logger.info("simpleui: updated from", prev_version, "to", current_version,
                     "— restart recommended")
                 UIManager:scheduleIn(1, function()
@@ -1007,32 +1073,6 @@ function SimpleUIPlugin:init()
 end
 
 -- ---------------------------------------------------------------------------
--- List of all plugin-owned Lua modules that must be evicted from
--- package.loaded on teardown so that a hot plugin update (replacing files
--- without restarting KOReader) always loads fresh code.
--- ---------------------------------------------------------------------------
-local _PLUGIN_MODULES = {
-    "sui_i18n", "sui_config", "sui_core", "sui_bottombar", "sui_topbar",
-    "sui_patches", "sui_menu", "sui_titlebar", "sui_quickactions",
-    "sui_homescreen", "sui_foldercovers", "sui_browsemeta", "sui_updater",
-    "sui_store", "sui_presets", "sui_style",
-    "desktop_modules/moduleregistry",
-    "desktop_modules/module_books_shared",
-    "desktop_modules/module_clock",
-    "desktop_modules/module_collections",
-    "desktop_modules/module_image",
-    "desktop_modules/module_currently",
-    "desktop_modules/module_quick_actions",
-    "desktop_modules/module_quote",
-    "desktop_modules/module_reading_goals",
-    "desktop_modules/module_reading_stats",
-    "desktop_modules/module_stats_provider",
-    "desktop_modules/module_recent",
-    "desktop_modules/module_tbr",
-    "desktop_modules/quotes",
-}
-
--- ---------------------------------------------------------------------------
 -- Dispatcher gesture handlers
 -- ---------------------------------------------------------------------------
 
@@ -1197,9 +1237,7 @@ function SimpleUIPlugin:onTeardown()
         end
         RS._sui_sync_patched = nil
     end
-    for _, mod in ipairs(_PLUGIN_MODULES) do
-        package.loaded[mod] = nil
-    end
+    _evictLoadedModules(_PLUGIN_MODULES)
 end
 
 -- ---------------------------------------------------------------------------
