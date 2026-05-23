@@ -1270,13 +1270,25 @@ end
 function M.getNonFavoritesCollections()
     local rc = M.getReadCollection()
     if not rc then return {} end
-    if rc._read then pcall(function() rc:_read() end) end
-    local coll = rc.coll
-    if not coll then return {} end
-    local fav, names = rc.default_collection_name or "favorites", {}
-    for name in pairs(coll) do
-        if name ~= fav then names[#names + 1] = name end
+    if rc._read then
+        pcall(function()
+            rc:_read()
+        end)
     end
+    local fav = rc.default_collection_name or "favorites"
+    local names = {}
+    local seen = {}
+    local function addColls(source)
+        if not source then return end
+        for name in pairs(source) do
+            if name ~= fav and not seen[name] then
+                names[#names + 1] = name
+                seen[name] = true
+            end
+        end
+    end
+    addColls(rc.coll)
+    addColls(rc.coll_folders)
     table.sort(names, function(a, b) return a:lower() < b:lower() end)
     return names
 end

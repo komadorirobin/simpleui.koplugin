@@ -95,11 +95,11 @@ local function _migrate()
     local RC = getRC()
     if not RC then return end
     RC:_read()
-    if not RC.coll[TBR_COLL_NAME] then
+    if not (RC.coll and RC.coll[TBR_COLL_NAME]) then
         RC:addCollection(TBR_COLL_NAME)
     end
     -- If already populated, nothing to migrate.
-    if next(RC.coll[TBR_COLL_NAME]) then return end
+    if RC.coll and RC.coll[TBR_COLL_NAME] and next(RC.coll[TBR_COLL_NAME]) then return end
     local raw = SUISettings:readSetting(TBR_SETTING)
     if type(raw) ~= "table" or #raw == 0 then return end
     local added = 0
@@ -127,7 +127,7 @@ local function getTBRList()
     local RC = getRC()
     if RC then
         RC:_read()
-        local coll = RC.coll[TBR_COLL_NAME]
+        local coll = RC.coll and RC.coll[TBR_COLL_NAME]
         if not coll then return {} end
         local items = {}
         for _, item in pairs(coll) do
@@ -166,7 +166,7 @@ local function isTBR(filepath)
     local RC = getRC()
     if RC then
         RC:_read()
-        local coll = RC.coll[TBR_COLL_NAME]
+        local coll = RC.coll and RC.coll[TBR_COLL_NAME]
         if not coll then return false end
         local ok_fu, ffiUtil = pcall(require, "ffi/util")
         local real = ok_fu and ffiUtil.realpath(filepath) or filepath
@@ -191,7 +191,7 @@ local function addTBR(filepath)
     local RC = getRC()
     if RC then
         RC:_read()
-        if not RC.coll[TBR_COLL_NAME] then
+        if not (RC.coll and RC.coll[TBR_COLL_NAME]) then
             RC:addCollection(TBR_COLL_NAME)
         end
         -- Call the *original* (un-hooked) addItem by going through the metatable
@@ -229,7 +229,7 @@ local function removeTBR(filepath)
     local RC = getRC()
     if RC then
         RC:_read()
-        local coll = RC.coll[TBR_COLL_NAME]
+        local coll = RC.coll and RC.coll[TBR_COLL_NAME]
         if coll then
             local ffiUtil = require("ffi/util")
             local real    = ffiUtil.realpath(filepath) or filepath

@@ -384,12 +384,19 @@ function M.build(w, ctx)
     local _ok_rc_sync, _rc_or_err_sync = pcall(require, "readcollection")
     if _ok_rc_sync and _rc_or_err_sync then
         _rc_sync = _rc_or_err_sync
-        if _rc_sync._read then pcall(function() _rc_sync:_read() end) end
+        if _rc_sync._read then
+            pcall(function()
+                _rc_sync:_read()
+            end)
+        end
     end
     local synced_raw = {}
-    if _rc_sync and _rc_sync.coll then
+    if _rc_sync and (_rc_sync.coll or _rc_sync.coll_folders) then
+        local coll_set = {}
+        if _rc_sync.coll then for n in pairs(_rc_sync.coll) do coll_set[n] = true end end
+        if _rc_sync.coll_folders then for n in pairs(_rc_sync.coll_folders) do coll_set[n] = true end end
         for _, n in ipairs(selected_raw) do
-            if _rc_sync.coll[n] then
+            if coll_set[n] then
                 synced_raw[#synced_raw + 1] = n
             end
         end
@@ -436,7 +443,11 @@ function M.build(w, ctx)
     local ok_rc, rc_or_err = pcall(require, "readcollection")
     if ok_rc and rc_or_err then
         rc = rc_or_err
-        if rc._read then pcall(function() rc:_read() end) end
+        if rc._read then
+            pcall(function()
+                rc:_read()
+            end)
+        end
     end
 
     -- Always distribute across 5 slots so spacing is consistent regardless
@@ -657,19 +668,23 @@ function M.getMenuItems(ctx_menu)
     local ok_rc, rc  = pcall(require, "readcollection")
     local all_colls  = {}
     if ok_rc and rc then
-        if rc._read then pcall(function() rc:_read() end) end
-        local fav = rc.default_collection_name or "favorites"
-        if rc.coll then
-            if rc.coll[fav] then
-                all_colls[#all_colls + 1] = fav
-            end
-            local others = {}
-            for name in pairs(rc.coll) do
-                if name ~= fav then others[#others + 1] = name end
-            end
-            table.sort(others, function(a, b) return a:lower() < b:lower() end)
-            for _, n in ipairs(others) do all_colls[#all_colls + 1] = n end
+        if rc._read then
+            pcall(function()
+                rc:_read()
+            end)
         end
+        local fav = rc.default_collection_name or "favorites"
+        local coll_set = {}
+        if rc.coll then for n in pairs(rc.coll) do coll_set[n] = true end end
+        if rc.coll_folders then for n in pairs(rc.coll_folders) do coll_set[n] = true end end
+        if coll_set[fav] then
+            all_colls[#all_colls + 1] = fav
+            coll_set[fav] = nil
+        end
+        local others = {}
+        for name in pairs(coll_set) do others[#others + 1] = name end
+        table.sort(others, function(a, b) return a:lower() < b:lower() end)
+        for _, n in ipairs(others) do all_colls[#all_colls + 1] = n end
     end
     -- Hide the TBR collection from the selection list when it is empty.
     do
@@ -691,7 +706,11 @@ function M.getMenuItems(ctx_menu)
 
     local function openCoverPicker(coll_name)
         if not ok_rc then return end
-        if rc._read then pcall(function() rc:_read() end) end
+        if rc._read then
+            pcall(function()
+                rc:_read()
+            end)
+        end
         local coll = rc.coll and rc.coll[coll_name]
         if not coll then
             _UIManager:show(InfoMessage:new{ text = _lc("Collection is empty."), timeout = 2 }); return
