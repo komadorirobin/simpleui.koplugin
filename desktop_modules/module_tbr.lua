@@ -18,6 +18,7 @@
 --   M.isTBR(filepath)                                    → bool
 --   M.addTBR(filepath)                                   → bool
 --   M.removeTBR(filepath)
+--   M.pruneFinished(filepath=nil, force_disk=false)      → bool
 --   M.genTBRButton(file, close_cb)                       → button table
 
 local Blitbuffer      = require("ffi/blitbuffer")
@@ -122,8 +123,33 @@ pcall(_migrate)
 -- so there is no re-entrancy between addTBR/removeTBR and the sui_patches hooks.
 -- ---------------------------------------------------------------------------
 
--- Returns an ordered array of filepaths from RC (or G_reader_settings fallback).
-local function getTBRList()
+-- Sync the canonical list into G_reader_settings for other modules.
+local function _syncSettings(list)
+    SUISettings:saveSetting(TBR_SETTING, list)
+end
+
+local _ffiUtil = nil
+local function _realpath(filepath)
+    if not filepath then return filepath end
+    if _ffiUtil == nil then
+        local ok, ffiUtil = pcall(require, "ffi/util")
+        _ffiUtil = ok and ffiUtil or false
+    end
+    if _ffiUtil then
+        return _ffiUtil.realpath(filepath) or filepath
+    end
+    return filepath
+end
+
+local function _sameFile(a, b)
+    if a == b then return true end
+    local ra, rb = _realpath(a), _realpath(b)
+    return ra and rb and ra == rb
+end
+
+-- Returns an ordered array of filepaths from RC (or G_reader_settings fallback),
+-- without applying the "finished book" cleanup.
+local function _readTBRListRaw()
     local RC = getRC()
     if RC then
         RC:_read()
@@ -152,9 +178,107 @@ local function getTBRList()
     return clean
 end
 
--- Sync the canonical list into G_reader_settings for other modules.
-local function _syncSettings(list)
-    SUISettings:saveSetting(TBR_SETTING, list)
+local function _isFinishedBook(filepath, force_disk)
+    local summary, percent
+
+    if not force_disk then
+        local SH = package.loaded["desktop_modules/module_books_shared"]
+        local cached = SH and SH._cacheGet and SH._cacheGet(filepath)
+        if cached then
+            percent = tonumber(cached.percent) or 0
+            summary = cached.summary
+            if percent >= 1.0 then return true end
+            if type(summary) == "table" then
+                return summary.status == "complete"
+            end
+        end
+    end
+
+    local ok_DS, DS = pcall(require, "docsettings")
+    if not ok_DS or not DS then return false end
+
+    local ok_ds, ds = pcall(DS.open, DS, filepath)
+    if not ok_ds or not ds then return false end
+
+    percent = tonumber(ds:readSetting("percent_finished")) or 0
+    summary = ds:readSetting("summary")
+
+    local SH = package.loaded["desktop_modules/module_books_shared"]
+    if SH and SH._cachePut then
+        local rp = ds:readSetting("doc_props") or {}
+        local rs = ds:readSetting("stats") or {}
+        SH._cachePut(filepath, ds.source_candidate, {
+            percent              = percent,
+            title                = rp.title,
+            authors              = rp.authors,
+            doc_pages            = ds:readSetting("doc_pages"),
+            partial_md5_checksum = ds:readSetting("partial_md5_checksum"),
+            stat_pages           = rs.pages,
+            stat_total_time      = rs.total_time_in_sec,
+            summary              = summary,
+        })
+    end
+
+    pcall(function() ds:close() end)
+    return percent >= 1.0 or (type(summary) == "table" and summary.status == "complete")
+end
+
+local function _removeFromCollection(remove_set)
+    local RC = getRC()
+    if not RC then return false end
+
+    RC:_read()
+    local coll = RC.coll and RC.coll[TBR_COLL_NAME]
+    if not coll then return false end
+
+    local changed = false
+    for fp in pairs(remove_set) do
+        local real = _realpath(fp)
+        if real and coll[real] then
+            coll[real] = nil
+            changed = true
+        end
+        if coll[fp] then
+            coll[fp] = nil
+            changed = true
+        end
+    end
+    if changed then RC:write({ [TBR_COLL_NAME] = true }) end
+    return changed
+end
+
+local _pruning_finished = false
+local function pruneFinishedTBR(filepath, force_disk)
+    if _pruning_finished then return false, _readTBRListRaw() end
+    _pruning_finished = true
+
+    local raw = _readTBRListRaw()
+    local clean, remove_set = {}, {}
+    local changed = false
+
+    for _, fp in ipairs(raw) do
+        local should_check = not filepath or _sameFile(fp, filepath)
+        if should_check and _isFinishedBook(fp, force_disk) then
+            remove_set[fp] = true
+            changed = true
+        else
+            clean[#clean + 1] = fp
+        end
+    end
+
+    if changed then
+        _removeFromCollection(remove_set)
+        _syncSettings(clean)
+    end
+
+    _pruning_finished = false
+    return changed, clean
+end
+
+-- Returns an ordered array of filepaths from RC (or G_reader_settings fallback).
+local function getTBRList()
+    local _changed, list = pruneFinishedTBR()
+    return list
 end
 
 local function getTBRCount()
@@ -278,6 +402,7 @@ M.getTBRCount = getTBRCount
 M.isTBR       = isTBR
 M.addTBR      = addTBR
 M.removeTBR   = removeTBR
+M.pruneFinished = pruneFinishedTBR
 
 -- ---------------------------------------------------------------------------
 -- genTBRButton — button for the single-book hold dialog.

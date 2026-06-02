@@ -1552,6 +1552,23 @@ function SimpleUIPlugin:onCloseDocument()
         end
     end
 
+    -- To Be Read: remove the just-closed book automatically when it crossed
+    -- into KOReader's finished state. Force a disk read here because the shared
+    -- sidecar cache still contains the pre-close status until later below.
+    local mod_tbr = Registry.get("tbr")
+    local tbr_active = mod_tbr and Registry.isEnabled(mod_tbr, PFX) or false
+    local tbr_removed = false
+    if closed_fp and mod_tbr and mod_tbr.pruneFinished then
+        local removed = mod_tbr.pruneFinished(closed_fp, true)
+        if removed then
+            tbr_removed = true
+            needs_refresh = true
+            if HS._instance and HS._instance._ctx_cache then
+                HS._instance._ctx_cache._tbr_fps = nil
+            end
+        end
+    end
+
     -- Currently Reading shows the current book's cover, title, author and
     -- progress (percent_finished). All of these come from _cached_books_state.
     -- When the reader closes, percent_finished has changed for the closed book.
@@ -1650,7 +1667,7 @@ function SimpleUIPlugin:onCloseDocument()
 
     if not needs_refresh then return end
 
-    local book_mod_active = currently_active or coverdeck_active
+    local book_mod_active = currently_active or coverdeck_active or tbr_active or tbr_removed
 
     -- Invalidate the sidecar mtime-cache entry for the closed book only when
     -- a book module is active — prefetchBooks() will re-read it on next render.
