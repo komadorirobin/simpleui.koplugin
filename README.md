@@ -4,13 +4,17 @@ A clean, distraction-free UI plugin for KOReader that transforms your reading ex
 
 ## This fork vs. upstream
 
-This repository tracks upstream SimpleUI and currently includes the upstream **1.4.1** changes, plus a few fork-specific additions and tweaks:
+This repository tracks upstream SimpleUI and currently includes the upstream **2.0.0** changes, plus a few fork-specific additions and tweaks:
 
 - **Hardcover module** — a Home Screen module that shows your active `hardcover.app` reading goal, with configurable layout and background refresh
 - **Image module** — a Home Screen module that displays images from a chosen folder, with configurable size and timed rotation
 - **App Launcher module** — an Android-focused launcher row for opening selected external apps from the Home Screen
 - **Cover Deck section label toggle** — Cover Deck can show a dynamic section title based on source (`Recent Books` or `To Be Read`)
+- **Per-module appearance controls** — section label sizing and optional light module backgrounds can be configured per Home Screen module
+- **Custom icon action mapping** — icon packs can map custom navbar actions, including separate Books and Comics bookshelf profiles
+- **To Be Read cleanup** — finished books can be removed from the To Be Read module automatically
 - **Home Screen performance work** — additional fork-side optimisations around startup, stats/index usage, and expensive Home Screen rebuild paths
+- **Fork OTA source** — the built-in updater points at this fork's GitHub releases
 
 If you are comparing this fork with the original project, those are the main user-facing differences.
 
