@@ -192,6 +192,10 @@ local function fmtTime(secs)
     else                     return string.format("%dm", m) end
 end
 
+local function sqlQuote(s)
+    return "'" .. tostring(s):gsub("'", "''") .. "'"
+end
+
 local function fetchBookStats(md5, shared_conn, ctx)
     if not md5 then return nil end
     local cached = _bstats_cache[md5]
@@ -208,7 +212,7 @@ local function fetchBookStats(md5, shared_conn, ctx)
     local ok, err = pcall(function()
         local row = conn:exec(string.format([[
             WITH b AS (
-                SELECT id FROM book WHERE md5 = %q LIMIT 1
+                SELECT id FROM book WHERE md5 = %s LIMIT 1
             ),
             ps_agg AS (
                 SELECT ps.page,
@@ -224,7 +228,7 @@ local function fetchBookStats(md5, shared_conn, ctx)
                 count(*),
                 sum(min(page_dur, %d))
             FROM ps_agg;
-        ]], md5, MAX_SEC_PER_PAGE))
+        ]], sqlQuote(md5), MAX_SEC_PER_PAGE))
 
         if row and row[1] and row[1][1] then
             local days   = tonumber(row[1][1]) or 0
