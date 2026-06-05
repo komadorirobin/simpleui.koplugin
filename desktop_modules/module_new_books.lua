@@ -34,10 +34,11 @@ end
 local Config       = require("sui_config")
 local UI           = require("sui_core")
 local SUISettings  = require("sui_store")
+local SUIStyle     = require("sui_style")
 local PAD          = UI.PAD
 local CLR_TEXT_SUB = UI.CLR_TEXT_SUB
 
-local _BASE_NB_LABEL_FS = Screen:scaleBySize(10)
+local _BASE_NB_LABEL_FS = SUIStyle.FS_DETAIL  -- 15: label text
 
 -- ---------------------------------------------------------------------------
 -- Module metadata
@@ -48,12 +49,24 @@ local M = {}
 M.id          = "new_books"
 M.name        = _("New Books")
 M.label       = _("New Books")
-M.enabled_key = "new_books"
+M.enabled_key = "new_books_enabled"
 M.default_on  = false  -- opt-in; users enable via Arrange Modules
 M.has_covers  = true   -- activates e-ink dithering and cover poll
 M.is_book_mod = true   -- suppresses empty-state when active
 
-function M.reset() _SH = nil end
+local _cached_new_fps = nil
+local _cached_new_fps_time = 0
+
+function M.reset()
+    _SH = nil
+    _cached_new_fps = nil
+    _cached_new_fps_time = 0
+end
+
+function M.invalidateCache()
+    _cached_new_fps = nil
+    _cached_new_fps_time = 0
+end
 
 -- ---------------------------------------------------------------------------
 -- File scanning
@@ -94,10 +107,15 @@ local function addTopBook(files, limit, path, mtime)
 end
 
 --- Recursively scan `dir` for book files, keeping only the newest entries.
-local function collectBooks(dir, files, limit)
+local function collectBooks(dir, files, limit, depth, state)
+    depth = depth or 1
+    state = state or { count = 0 }
+    if depth > 5 or state.count > 5000 then return end
     local ok, iter, dir_obj = pcall(lfs.dir, dir)
     if not ok then return end
     for f in iter, dir_obj do
+        state.count = state.count + 1
+        if state.count > 5000 then break end
         if f ~= "." and f ~= ".." and not f:match("^%.") then
             local path = dir .. "/" .. f
             local attr = lfs.attributes(path)
@@ -108,7 +126,7 @@ local function collectBooks(dir, files, limit)
                         addTopBook(files, limit, path, attr.modification)
                     end
                 elseif attr.mode == "directory" then
-                    collectBooks(path, files, limit)
+                    collectBooks(path, files, limit, depth + 1, state)
                 end
             end
         end
@@ -119,6 +137,9 @@ end
 local function scanNewBooks(limit)
     limit = limit or 5
     local home = G_reader_settings:readSetting("home_dir")
+    if not home or home == "" then
+        home = Device.home_dir
+    end
     if not home then return {} end
 
     local now = os.time()
@@ -134,7 +155,7 @@ local function scanNewBooks(limit)
     end
 
     local files = {}
-    collectBooks(home, files, limit)
+    collectBooks(home, files, limit, 1, { count = 0 })
 
     local result = {}
     for i = 1, math.min(limit, #files) do
@@ -233,7 +254,7 @@ function M.build(w, ctx)
     -- Space-between across 5 fixed slots, same lateral padding as other modules.
     local inner_w = w - PAD * 2
     local gap     = math.floor((inner_w - 5 * cw) / 4)
-    local face    = Font:getFace("smallinfofont", label_fs)
+    local face    = Font:getFace(SUIStyle.FACE_REGULAR, label_fs)
 
     local row = HorizontalGroup:new{ align = "top" }
     local cover_slots = {}
@@ -254,7 +275,7 @@ function M.build(w, ctx)
             align = "center",
             cover,
             SH.vspan(D.RB_GAP1, ctx.vspan_pool),
-            SH.progressBar(cw, bd.percent, D.RB_BAR_H),
+            UI.progressBar(cw, bd.percent, D.RB_BAR_H),
             SH.vspan(D.RB_GAP2, ctx.vspan_pool),
             UI.makeColoredText{
                 text      = label_text,
@@ -296,7 +317,7 @@ function M.build(w, ctx)
     local show_frame = SUISettings:isTrue(ctx.pfx .. "new_books_show_frame")
     local solid_bg   = SUISettings:isTrue(ctx.pfx .. "new_books_solid_bg")
     local has_box    = show_frame or solid_bg
-    local border_sz  = show_frame and 1 or 0
+    local border_sz  = show_frame and SUIStyle.BORDER_SZ or 0
     local radius     = has_box and math.floor(Screen:scaleBySize(12) * scale) or 0
     local border_color = Blitbuffer.gray(0.72)
     if ok_ss and SUIStyle then
@@ -417,7 +438,15 @@ function M.getMenuItems(ctx_menu)
             ctx_menu.refresh()
         end,
     }
-    return { _makeScaleItem(ctx_menu), label_item, Config.makeLabelToggleItem("new_books", _("New Books"), ctx_menu.refresh, _lc), show_finished_item, frame_item, solid_bg_item, _makeThumbScaleItem(ctx_menu) }
+    return {
+        _makeScaleItem(ctx_menu),
+        label_item,
+        Config.makeLabelToggleItem("new_books", _("New Books"), ctx_menu.refresh, _lc),
+        show_finished_item,
+        _makeThumbScaleItem(ctx_menu),
+        frame_item,
+        solid_bg_item,
+    }
 end
 
 return M
