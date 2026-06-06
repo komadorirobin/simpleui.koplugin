@@ -15,6 +15,7 @@ This repository tracks upstream SimpleUI and currently includes the upstream **2
 - **To Be Read cleanup** — finished books can be removed from the To Be Read module automatically
 - **Home Screen performance work** — additional fork-side optimisations around startup, stats/index usage, and expensive Home Screen rebuild paths
 - **Fork OTA source** — the built-in updater points at this fork's GitHub releases
+- **Bento Grid patch updater** — SimpleUI settings can install or update the companion Bento Grid patch from the forked `koreader-patches` repository
 
 If you are comparing this fork with the original project, those are the main user-facing differences.
 

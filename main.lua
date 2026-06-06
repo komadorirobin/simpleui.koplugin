@@ -78,7 +78,7 @@ local _HOT_UPDATE_MODULES = {
 local _PLUGIN_MODULES = {
     "sui_i18n", "sui_config", "sui_core", "sui_bottombar", "sui_topbar",
     "sui_patches", "sui_menu", "sui_titlebar", "sui_quickactions",
-    "sui_homescreen", "sui_foldercovers", "sui_browsemeta", "sui_updater",
+    "sui_homescreen", "sui_foldercovers", "sui_browsemeta", "sui_updater", "sui_patch_updater",
     "sui_store", "sui_presets", "sui_style",
     "desktop_modules/moduleregistry",
     "desktop_modules/module_books_shared",
@@ -1206,7 +1206,7 @@ end
 local _PLUGIN_MODULES = {
     "sui_i18n", "sui_config", "sui_core", "sui_bottombar", "sui_topbar",
     "sui_patches", "sui_menu", "sui_titlebar", "sui_quickactions",
-    "sui_homescreen", "sui_foldercovers", "sui_browsemeta", "sui_updater",
+    "sui_homescreen", "sui_foldercovers", "sui_browsemeta", "sui_updater", "sui_patch_updater",
     "sui_store", "sui_presets", "sui_style",
     "sui_settings_window",
     "sui_quicksettings_bar",

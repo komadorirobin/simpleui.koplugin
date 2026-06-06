@@ -4227,6 +4227,22 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                 end,
             },
             {
+                text      = _("Check Bento Grid Patch Update"),
+                callback  = function()
+                    local ok_upd, Updater = pcall(require, "sui_patch_updater")
+                    if not ok_upd then
+                        local UIM = ctx_menu and ctx_menu.UIManager or UIManager
+                        local InfoMsg = ctx_menu and ctx_menu.InfoMessage or InfoMessage()
+                        UIM:show(InfoMsg:new{
+                            text    = _("Patch updater module not found."),
+                            timeout = 4,
+                        })
+                        return
+                    end
+                    Updater.checkBentoGridPatch()
+                end,
+            },
+            {
                 text      = _("Factory Reset"),
                 separator = true,
                 callback  = function()
