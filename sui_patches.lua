@@ -247,14 +247,21 @@ function M.patchFileManagerClass(plugin)
             local rot_goal_tap = HS._rotation_on_goal_tap
             HS._rotation_on_qa_tap   = nil
             HS._rotation_on_goal_tap = nil
-            UIManager:scheduleIn(0, function()
-                local HS2 = liveHS()
-                if not HS2 then return end
-                _ensureGoalCallback(plugin)
-                local qa_tap   = rot_qa_tap   or _makeQaTap(plugin)
-                local goal_tap = rot_goal_tap or plugin._goalTapCallback
-                HS2.show(qa_tap, goal_tap)
-            end)
+            -- Show the new HS synchronously here, before setupLayout returns,
+            -- so it is on the UIManager stack before the event loop drains and
+            -- paints anything.  This prevents the FM flash that occurred when
+            -- scheduleIn(0) was used: the FM dirty flag was consumed by the
+            -- repaint before the scheduled callback had a chance to push the HS.
+            -- Clear the FM invisible flag first so the FM is repaintable again
+            -- if the user later closes the HS normally.
+            local FM2 = package.loaded["apps/filemanager/filemanager"]
+            local fm2 = FM2 and FM2.instance
+            if fm2 then fm2.invisible = nil end
+            _ensureGoalCallback(plugin)
+            local qa_tap   = rot_qa_tap   or _makeQaTap(plugin)
+            local goal_tap = rot_goal_tap or plugin._goalTapCallback
+            local HS2 = liveHS()
+            if HS2 then HS2.show(qa_tap, goal_tap) end
         end
 
         -- Patch FileChooser once on the class (not per instance) to shrink it
