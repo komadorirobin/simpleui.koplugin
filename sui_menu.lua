@@ -65,7 +65,11 @@ do
             local icon_file = plugin_root .. "/icons/settings.svg"
             local icon_exists = lfs.attributes(icon_file, "mode") == "file"
 
-            local iw_init = rawget(iw, "init")
+            -- Prefer the unwrapped init exposed by sui_patches' wallpaper alpha patch.
+            -- When that patch is active, rawget(iw,"init") returns its wrapper closure
+            -- which has no ICONS_PATH/ICONS_DIRS upvalues, making the scan below fail
+            -- and causing Strategy 3 to fire unnecessarily on every normal build.
+            local iw_init = iw._simpleui_orig_init_for_scan or rawget(iw, "init")
 
             local injected_path = false
             local injected_dir  = false
@@ -106,12 +110,15 @@ do
             -- patch IconWidget.init so icon="simpleui_settings" resolves directly.
             if not injected_path and not injected_dir and icon_exists then
                 local orig_init = iw.init
-                iw.init = function(self_iw)
+                iw.init = function(self_iw, ...)
                     if self_iw.icon == "simpleui_settings" and not self_iw.file and not self_iw.image then
                         self_iw.file = icon_file
-                        return
+                        -- Fall through to orig_init so dimensions and the
+                        -- internal ImageWidget are properly initialised.
+                        -- Returning early left width/height nil and caused
+                        -- "cannot render image" crashes on paintTo.
                     end
-                    if type(orig_init) == "function" then orig_init(self_iw) end
+                    if type(orig_init) == "function" then orig_init(self_iw, ...) end
                 end
                 logger.info("simpleui: icon registered via IconWidget.init patch (fallback)")
             end
@@ -2354,7 +2361,8 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
     end
     plugin.makeWallpaperMenuItems = makeWallpaperMenuItems
 
-    local function makeBehaviourMenuItems()
+    local function makeBehaviourMenuItems(ctx)
+        ctx = ctx or HOMESCREEN_CTX
         return {
             {
                 text           = _("Start with Home Screen"),
@@ -2378,7 +2386,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                         separator = true,
                         callback = function()
                             Config.setScaleLinked(not Config.isScaleLinked())
-                            ctx.refresh()
+                            _applyFullLayoutRefresh()
                         end,
                     },
                     {
@@ -2406,7 +2414,8 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                     Config.setModuleScale(spin.value)
                                     local HS = package.loaded["sui_homescreen"]
                                     if HS and HS.invalidateLabelCache then HS.invalidateLabelCache() end
-                                    ctx.refresh()
+                                    _applyFullLayoutRefresh()
+                                    if ctx and ctx.refresh then ctx.refresh() end
                                 end,
                             })
                         end,
@@ -2441,7 +2450,8 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                     Config.setLabelScale(spin.value)
                                     local HS = package.loaded["sui_homescreen"]
                                     if HS and HS.invalidateLabelCache then HS.invalidateLabelCache() end
-                                    ctx.refresh()
+                                    _applyFullLayoutRefresh()
+                                    if ctx and ctx.refresh then ctx.refresh() end
                                 end,
                             })
                         end,
@@ -2458,7 +2468,8 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                     Config.resetAllScales(ctx.pfx, ctx.pfx_qa)
                                     local HS = package.loaded["sui_homescreen"]
                                     if HS and HS.invalidateLabelCache then HS.invalidateLabelCache() end
-                                    ctx.refresh()
+                                    _applyFullLayoutRefresh()
+                                    if ctx and ctx.refresh then ctx.refresh() end
                                 end,
                             })
                         end,
@@ -2568,7 +2579,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                             local HS = package.loaded["sui_homescreen"]
                             if HS and HS.rebuildLayout then HS.rebuildLayout() end
                             refreshHomescreen()
-                        _applyFullLayoutRefresh()
+                            _applyFullLayoutRefresh()
                         end,
                         on_save        = refreshHomescreen,
                         lock_overlay   = ctx_menu and ctx_menu.lock_overlay,
@@ -2578,7 +2589,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
             },
             {
                 text = _("Behaviour"),
-                sub_item_table_func = makeBehaviourMenuItems,
+                sub_item_table_func = function() return makeBehaviourMenuItems(HOMESCREEN_CTX) end,
             },
         }
     end

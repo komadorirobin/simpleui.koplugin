@@ -247,14 +247,21 @@ function M.patchFileManagerClass(plugin)
             local rot_goal_tap = HS._rotation_on_goal_tap
             HS._rotation_on_qa_tap   = nil
             HS._rotation_on_goal_tap = nil
-            UIManager:scheduleIn(0, function()
-                local HS2 = liveHS()
-                if not HS2 then return end
-                _ensureGoalCallback(plugin)
-                local qa_tap   = rot_qa_tap   or _makeQaTap(plugin)
-                local goal_tap = rot_goal_tap or plugin._goalTapCallback
-                HS2.show(qa_tap, goal_tap)
-            end)
+            -- Show the new HS synchronously here, before setupLayout returns,
+            -- so it is on the UIManager stack before the event loop drains and
+            -- paints anything.  This prevents the FM flash that occurred when
+            -- scheduleIn(0) was used: the FM dirty flag was consumed by the
+            -- repaint before the scheduled callback had a chance to push the HS.
+            -- Clear the FM invisible flag first so the FM is repaintable again
+            -- if the user later closes the HS normally.
+            local FM2 = package.loaded["apps/filemanager/filemanager"]
+            local fm2 = FM2 and FM2.instance
+            if fm2 then fm2.invisible = nil end
+            _ensureGoalCallback(plugin)
+            local qa_tap   = rot_qa_tap   or _makeQaTap(plugin)
+            local goal_tap = rot_goal_tap or plugin._goalTapCallback
+            local HS2 = liveHS()
+            if HS2 then HS2.show(qa_tap, goal_tap) end
         end
 
         -- Patch FileChooser once on the class (not per instance) to shrink it
@@ -1676,20 +1683,10 @@ function M.patchUIManagerClose(plugin)
         end
         -- ────────────────────────────────────────────────────────────────────
 
-        -- When the FM closes, close the homescreen too — but ONLY when the
-        -- app is actually exiting.  If the FM is closing because the reader
-        -- is opening we leave the HS alive on the stack; _raiseHSFromStack()
-        -- will promote it back to the top when the reader closes, giving the
-        -- same warm-path behaviour as the Bookshelf plugin.
-        if widget_is_fm then
-            local HS      = liveHS()
-            local hs_inst = HS and HS._instance
-            if hs_inst and UIManager._exit_code ~= nil then
-                hs_inst._navbar_closing_intentionally = true
-                orig_close(um_self, hs_inst)  -- bypass our wrapper
-                if HS._instance == hs_inst then HS._instance = nil end
-            end
-        end
+        -- The homescreen is closed on FM exit via SimpleUIPlugin:onCloseWidget,
+        -- which mirrors the Bookshelf plugin pattern and uses self.ui.tearing_down
+        -- as the discriminator (set only when the reader is opening, not on exit).
+        -- Nothing to do here.
 
         local result = orig_close(um_self, widget, ...)
 
@@ -1758,6 +1755,9 @@ function M.patchUIManagerClose(plugin)
                             if fm_ref then fm_ref._sui_lazy_refresh_path = true end
                             UIManager:nextTick(function()
                                 if UIManager._exit_code ~= nil then return end
+                                -- If the FM is already gone, the app is exiting
+                                -- (exit from reader: FM closes before this tick runs).
+                                if not liveFM() then return end
                                 local RUI2 = package.loaded["apps/reader/readerui"]
                                 if RUI2 and RUI2.instance then return end
                                 if _raiseHSFromStack(plugin, prev_action) then return end
@@ -1777,10 +1777,11 @@ function M.patchUIManagerClose(plugin)
                 else
                     UIManager:scheduleIn(0, function()
                         if UIManager._exit_code ~= nil then return end
+                        local fm2 = liveFM()
+                        if not fm2 then return end  -- FM gone = app is exiting
                         local RUI = package.loaded["apps/reader/readerui"]
                         if RUI and RUI.instance then return end
-                        local fm2 = liveFM()
-                        if fm2 then _doShowHS(fm2, plugin) end
+                        _doShowHS(fm2, plugin)
                     end)
                 end
             end
@@ -3014,6 +3015,12 @@ function M.patchWallpaperFM(plugin)
     if ok_iw and IconWidget and not plugin._orig_wp_iconwidget_init then
         local orig_iw_init = IconWidget.init
         plugin._orig_wp_iconwidget_init = orig_iw_init
+        -- Expose the unwrapped init so that the icon-registration upvalue scan in
+        -- sui_menu.lua and sui_quicksettings_bar.lua can find ICONS_PATH / ICONS_DIRS
+        -- even after this patch replaces IconWidget.init.  Without this, rawget(iw,"init")
+        -- returns our wrapper, whose upvalues don't include ICONS_PATH/ICONS_DIRS, causing
+        -- Strategy 3 / Layer 3 to fire on every normal build and double-wrap init again.
+        IconWidget._simpleui_orig_init_for_scan = orig_iw_init
 
         IconWidget.init = function(iw_self, ...)
             orig_iw_init(iw_self, ...)

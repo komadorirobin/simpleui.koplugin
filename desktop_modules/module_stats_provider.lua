@@ -17,7 +17,7 @@
 -- DB roundtrips per cold-cache call: 2
 --   Query 1 — one pass over page_stat_data:
 --     • today_secs, today_pages   (start_time >= start_today)
---     • week_secs, week_pages     (7-day window, grouped by date)
+--     • week_secs, week_pages     (calendar week Mon–today, grouped by date)
 --     • avg_secs, avg_pages       (7-day window, grouped by date)
 --     • month_secs, month_pages   (start_time >= month_start)
 --     • year_secs                 (start_time >= year_start)
@@ -53,6 +53,10 @@ local _cache_day = nil   -- "YYYY-MM-DD" string when cache was built
 
 local function rownum(v)
     return tonumber(v or 0) or 0
+end
+
+local function sqlQuote(s)
+    return "'" .. tostring(s):gsub("'", "''") .. "'"
 end
 
 -- ---------------------------------------------------------------------------
@@ -210,6 +214,20 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Sidecar scan: one pass → books_year + books_total simultaneously.
+-- db_conn is passed in so we can cross-reference last_open from the statistics
+-- DB as a more reliable "read this year" signal than summary.modified.
+-- summary.modified reflects when the sidecar was last written — for books
+-- marked finished before SimpleUI 2.0, this timestamp predates the current
+-- year even if the user read the book this year.  last_open in the DB is set
+-- to os.time() on every session close and is always current.
+local function _dbLastOpenForMd5(conn, md5)
+    if not conn or not md5 then return nil end
+    local ok, row = pcall(function()
+        return conn:rowexec(string.format(
+            "SELECT last_open FROM book WHERE md5 = %s LIMIT 1", sqlQuote(md5)))
+    end)
+    return ok and row and tonumber(row) or nil
+end
 -- Replaces two separate countMarkedRead() calls (previously O(2N) sidecar I/O).
 -- Uses the same _sidecar_cache from module_books_shared for cache hits.
 -- ---------------------------------------------------------------------------
@@ -235,7 +253,7 @@ local function _modifiedInYear(summary, year_str)
     return false
 end
 
-local function countMarkedReadBoth(year_str)
+local function countMarkedReadBoth(year_str, year_start, db_conn)
     local books_year  = 0
     local books_total = 0
 
@@ -267,13 +285,14 @@ local function countMarkedReadBoth(year_str)
                 file_exists = lfs.attributes(fp, "mode") == "file"
             end
             if file_exists then
-                local summary
+                local summary, md5
                 -- Fast path: reuse the sidecar cache warmed by prefetchBooks().
                 -- Cache hit costs 1 lfs.attributes (mtime check); miss costs DS.open.
                 if SH then
                     local cached = SH._cacheGet and SH._cacheGet(fp)
                     if cached then
                         summary = cached.summary
+                        md5     = cached.partial_md5_checksum
                     else
                         local ok_open, ds = pcall(function() return DocSettings:open(fp) end)
                         if ok_open and ds then
@@ -293,6 +312,7 @@ local function countMarkedReadBoth(year_str)
                                     summary              = summary,
                                 }
                                 SH._cachePut(fp, ds.source_candidate, data)
+                                md5 = data.partial_md5_checksum
                             end
                             pcall(function() ds:close() end)
                         end
@@ -302,13 +322,32 @@ local function countMarkedReadBoth(year_str)
                     local ok_open, ds = pcall(function() return DocSettings:open(fp) end)
                     if ok_open and ds then
                         summary = ds:readSetting("summary")
+                        md5 = ds:readSetting("partial_md5_checksum")
                         pcall(function() ds:close() end)
                     end
                 end
 
                 if type(summary) == "table" and summary.status == "complete" then
                     books_total = books_total + 1
-                    if _modifiedInYear(summary, year_str) then books_year = books_year + 1 end
+                    -- Prefer DB last_open for the year check: it is updated on every
+                    -- session close and is always current, unlike summary.modified
+                    -- which reflects the sidecar write time and can predate the
+                    -- current year for books finished before SimpleUI 2.0.
+                    local in_year = false
+                    if db_conn and md5 and year_start then
+                        local lo = _dbLastOpenForMd5(db_conn, md5)
+                        if lo then
+                            in_year = lo >= year_start
+                        end
+                    end
+                    -- Fallback to summary.modified when the DB has no record for
+                    -- this book (e.g. statistics plugin was never enabled for it).
+                    if not in_year then
+                        in_year = _modifiedInYear(summary, year_str)
+                    end
+                    if in_year then
+                        books_year = books_year + 1
+                    end
                 end
             end
         end
@@ -381,7 +420,10 @@ function SP.get(db_conn, year_str, needs_books)
             -- streak were already correct and are carried over unchanged.
             _changed      = { timeseries = false, streak = false, books = true },
         }
-        local by, bt = countMarkedReadBoth(year_str or tostring(t.year))
+        local by, bt = countMarkedReadBoth(
+            year_str or tostring(t.year),
+            os.time{ year = t.year, month = 1, day = 1, hour = 0, min = 0, sec = 0 },
+            db_conn)
         result.books_year  = by
         result.books_total = bt
         _cache     = result
@@ -391,7 +433,9 @@ function SP.get(db_conn, year_str, needs_books)
 
     -- Compute timestamps once — shared by all sub-queries.
     local start_today = now - (t.hour * 3600 + t.min * 60 + t.sec)
-    local week_start  = start_today - 6 * 86400
+    -- Calendar week: Monday of the current week.
+    -- t.wday: 1=Sunday, 2=Monday, ..., 7=Saturday → days since Monday = (t.wday - 2) % 7
+    local week_start  = start_today - ((t.wday - 2) % 7) * 86400
     local month_start = os.time{ year = t.year, month = t.month, day = 1,
                                   hour = 0,     min  = 0,  sec = 0 }
     local year_start  = os.time{ year = t.year, month = 1, day = 1,
@@ -496,7 +540,10 @@ function SP.get(db_conn, year_str, needs_books)
         result.books_total = (_cache and _cache.books_total) or 0
         _books_cache_valid = false
     else
-        local by, bt = countMarkedReadBoth(year_str or tostring(t.year))
+        local by, bt = countMarkedReadBoth(
+            year_str or tostring(t.year),
+            year_start,
+            db_conn)
         result.books_year  = by
         result.books_total = bt
     end
