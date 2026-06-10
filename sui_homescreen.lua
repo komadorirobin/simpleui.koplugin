@@ -348,6 +348,21 @@ local PFX_QA = "simpleui_hs_qa_"
 -- Forward declaration needed so onCloseWidget() can reference it.
 local Homescreen = { _instance = nil }
 
+local function closeStaleHomescreens(keep)
+    local stack = UIManager._window_stack
+    if not stack then return end
+    local to_close = {}
+    for _, entry in ipairs(stack) do
+        local w = entry and entry.widget
+        if w and w ~= keep and w.name == "homescreen" then
+            to_close[#to_close + 1] = w
+        end
+    end
+    for _, w in ipairs(to_close) do
+        pcall(function() UIManager:close(w) end)
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- Pre-computed empty-state pixel constants (computed once at load time).
 -- ---------------------------------------------------------------------------
@@ -1428,10 +1443,11 @@ end
 function HomescreenWidget:_initLayout()
     local sw        = Screen:getWidth()
     local sh        = Screen:getHeight()
-    local content_h = self._navbar_content_h or sh
+    local content_h = UI.getContentHeight() or self._navbar_content_h or sh
     local side_off  = SIDE_PAD
     local inner_w   = sw - side_off * 2
 
+    self._navbar_content_h = content_h
     self._layout_sw        = sw
     self._layout_content_h = content_h
     self._layout_inner_w   = inner_w
@@ -1508,6 +1524,7 @@ function HomescreenWidget:_initLayout()
         footer_bc,
     }
     self._overlap = overlap
+    self._navbar_inner = overlap
     return overlap
 end
 
@@ -2269,8 +2286,9 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                 if mod.is_book_mod then
                     self._book_mod_slots[mod.id] = {
                         mod = mod,
+                        widget = widget,
                         parent = col_body,
-                        index = #col_body + 1,
+                        index = #col_body,
                         col_w = col_w,
                         has_menu = has_menu
                     }
@@ -2397,8 +2415,9 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                 if mod.is_book_mod then
                     self._book_mod_slots[mod.id] = {
                         mod = mod,
+                        widget = widget,
                         parent = body,
-                        index = #body + 1,
+                        index = #body,
                         col_w = inner_w,
                         has_menu = has_menu
                     }
@@ -2821,6 +2840,7 @@ end
 -- Lifecycle
 -- ---------------------------------------------------------------------------
 function HomescreenWidget:onShow()
+    closeStaleHomescreens(self)
     local need_async = false
     if self._stats_need_refresh or Homescreen._stats_need_refresh then
         self._stats_need_refresh       = nil
@@ -2834,6 +2854,7 @@ function HomescreenWidget:onShow()
             overlap.overlap_offset = old.overlap_offset
         end
         self._navbar_container[1] = overlap
+        self._navbar_inner = overlap
 
         if need_async then
             self._defer_stats = true
@@ -3111,6 +3132,7 @@ end
 function Homescreen.show(on_qa_tap, on_goal_tap)
     local onboarding_pending = not SUISettings:get("simpleui_onboarding_done")
 
+    closeStaleHomescreens(Homescreen._instance)
     if Homescreen._instance then
         UIManager:close(Homescreen._instance)
         Homescreen._instance = nil
@@ -3186,6 +3208,7 @@ local function _rebuildHomescreenLayout()
         overlap.overlap_offset = old.overlap_offset
     end
     hs_inst._navbar_container[1] = overlap
+    hs_inst._navbar_inner = overlap
     hs_inst:_updatePage(true)
     UIManager:setDirty(hs_inst, "ui")
 end

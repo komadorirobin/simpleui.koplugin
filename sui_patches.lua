@@ -2474,40 +2474,55 @@ _raiseHSFromStack = function(plugin, prev_action)
     -- Move to top of the window stack.
     local stack = UIManager._window_stack
     if not stack then return false end
-    local found = false
+    local found_idx = nil
+    local stale = {}
     for i = 1, #stack do
-        if stack[i].widget == hs_inst then
-            if i ~= #stack then
-                local entry = table.remove(stack, i)
-                table.insert(stack, entry)
-            end
-            found = true
-            break
+        local w = stack[i].widget
+        if w == hs_inst then
+            found_idx = i
+        elseif w and w.name == "homescreen" then
+            stale[#stale + 1] = w
         end
     end
-    if not found then
+    if not found_idx then
         -- Widget was evicted from the stack unexpectedly — fall back.
         HS._instance = nil
         return false
+    end
+    if found_idx ~= #stack then
+        local entry = table.remove(stack, found_idx)
+        table.insert(stack, entry)
+    end
+    for _, w in ipairs(stale) do
+        pcall(function() UIManager:close(w) end)
     end
 
     -- Re-inject a fresh navbar for the new FM instance.
     local tabs = Config.loadTabConfig()
     Bottombar.setActiveAndRefreshFM(plugin, "homescreen", tabs)
     _ensureGoalCallback(plugin)
+    local hs_inner = hs_inst._overlap or hs_inst._navbar_inner
+    if not hs_inner then return false end
     local navbar_container, wrapped, bar, topbar,
           bar_idx, topbar_on, topbar_idx =
-              UI.wrapWithNavbar(hs_inst._navbar_inner, "homescreen", tabs, true)
+              UI.wrapWithNavbar(hs_inner, "homescreen", tabs, true)
     UI.applyNavbarState(hs_inst, navbar_container, bar, topbar,
                         bar_idx, topbar_on, topbar_idx, tabs)
     hs_inst._navbar_injected    = true
+    hs_inst._navbar_inner       = hs_inner
     hs_inst._navbar_prev_action = prev_action
     hs_inst[1]                  = wrapped
 
     -- Refresh stale data (stats, progress, book order).
     hs_inst._on_qa_tap   = _makeQaTap(plugin)
     hs_inst._on_goal_tap = plugin._goalTapCallback
-    pcall(function() hs_inst:_refresh(false) end)
+    pcall(function()
+        if type(hs_inst._refreshImmediate) == "function" then
+            hs_inst:_refreshImmediate(false)
+        else
+            hs_inst:_refresh(false)
+        end
+    end)
 
     -- Scope the dirty region to the widget's own dimen (same approach as
     -- Bookshelf:_raiseInPlace). On colour panels, a full-screen "ui" dirty
