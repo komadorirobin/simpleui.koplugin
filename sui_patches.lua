@@ -485,6 +485,7 @@ function M.patchFileManagerClass(plugin)
                         _ensureGoalCallback(plugin)
                         local qa_tap   = rot_qa_tap   or _makeQaTap(plugin)
                         local goal_tap = rot_goal_tap or plugin._goalTapCallback
+                        HS._force_full_repaint_once = true
                         HS.show(qa_tap, goal_tap)
                     end
                 end)

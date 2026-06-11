@@ -1473,27 +1473,6 @@ function HomescreenWidget:_initLayout()
         content_widget,
     }
 
-    -- _styleGetBgWidget() already creates the ImageWidget with height=sh
-    -- (full screen), so when bars_transparent is active the wallpaper
-    -- automatically bleeds behind the topbar and bottombar with no extra
-    -- work needed here.  We just paint it at (x, y) as usual.
-    if _lf_bg then
-        local _orig_paintTo = content_widget.paintTo
-        local _bg           = _lf_bg
-        function content_widget:paintTo(bb, x, y)
-            -- Always paint from y=0 so the wallpaper is anchored at the top
-            -- and covers the full screen area.
-            _bg:paintTo(bb, x, 0)
-            -- Opacity: 0 = fully opaque (no lighten), 1-99 = fade toward white.
-            -- lightenRect is a cheap in-place blitbuffer op — safe on e-ink.
-            local opacity = _wpOpacity()
-            if opacity and opacity > 0 then
-                bb:lightenRect(x, 0, Screen:getWidth(), Screen:getHeight(), opacity / 100)
-            end
-            _orig_paintTo(self, bb, x, y)
-        end
-    end
-
     -- Navigation callback shared by both footer types.
     local self_ref = self
     local function _goto(page)
@@ -1523,6 +1502,22 @@ function HomescreenWidget:_initLayout()
         outer,
         footer_bc,
     }
+    -- Paint the wallpaper from the root homescreen overlap, not from the
+    -- content frame. On cold start e-ink retains old pixels until a widget
+    -- explicitly overwrites them; painting here covers transparent navbar and
+    -- statusbar areas before any children draw.
+    if _lf_bg then
+        local _orig_paintTo = overlap.paintTo
+        local _bg           = _lf_bg
+        function overlap:paintTo(bb, x, y)
+            _bg:paintTo(bb, x, 0)
+            local opacity = _wpOpacity()
+            if opacity and opacity > 0 then
+                bb:lightenRect(x, 0, Screen:getWidth(), Screen:getHeight(), opacity / 100)
+            end
+            _orig_paintTo(self, bb, x, y)
+        end
+    end
     self._overlap = overlap
     self._navbar_inner = overlap
     return overlap
@@ -2544,7 +2539,9 @@ function HomescreenWidget:_refresh(keep_cache, books_only, stats_only)
 
     if keep_cache and self._body then
         self:_updatePage(true)
-        UIManager:setDirty(self, "ui")
+        local dirty_mode = self._force_full_repaint_once and "full" or "ui"
+        self._force_full_repaint_once = nil
+        UIManager:setDirty(self, dirty_mode)
 
         if defer_async then
             if self._refresh_scheduled then return end
@@ -2861,7 +2858,9 @@ function HomescreenWidget:onShow()
         end
 
         self:_updatePage(true)
-        UIManager:setDirty(self, "ui")
+        local dirty_mode = self._force_full_repaint_once and "full" or "ui"
+        self._force_full_repaint_once = nil
+        UIManager:setDirty(self, dirty_mode)
         local ClockMod = Registry.get("clock")
         if ClockMod and Registry.isEnabled(ClockMod, PFX) and ClockMod.scheduleRefresh then
             ClockMod.scheduleRefresh(self)
@@ -3143,7 +3142,9 @@ function Homescreen.show(on_qa_tap, on_goal_tap)
         _cached_books_state = Homescreen._cached_books_state,
         _current_page       = Homescreen._current_page or 1,
         _cfg_cache          = Homescreen._cfg_cache,
+        _force_full_repaint_once = Homescreen._force_full_repaint_once,
     }
+    Homescreen._force_full_repaint_once = nil
     Homescreen._instance = w
     UIManager:show(w)
 
