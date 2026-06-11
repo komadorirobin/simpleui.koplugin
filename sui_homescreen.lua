@@ -2858,9 +2858,20 @@ function HomescreenWidget:onShow()
         end
 
         self:_updatePage(true)
-        local dirty_mode = self._force_full_repaint_once and "full" or "ui"
+        local force_full = self._force_full_repaint_once and true or false
+        local dirty_mode = force_full and "full" or "ui"
         self._force_full_repaint_once = nil
         UIManager:setDirty(self, dirty_mode)
+
+        if force_full then
+            local self_ref = self
+            UIManager:scheduleIn(0.1, function()
+                if Homescreen._instance ~= self_ref then return end
+                if not self_ref._body then return end
+                self_ref:_updatePage(true)
+                UIManager:setDirty(self_ref, "full")
+            end)
+        end
         local ClockMod = Registry.get("clock")
         if ClockMod and Registry.isEnabled(ClockMod, PFX) and ClockMod.scheduleRefresh then
             ClockMod.scheduleRefresh(self)
