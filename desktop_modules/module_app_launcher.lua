@@ -253,6 +253,7 @@ end
 local APPS = {
     { label = "Firefox",       abbr = "FF",  package = "org.mozilla.firefox"            },
     { label = "AirDroid",      abbr = "AD",  package = "com.sand.airdroid"              },
+    { label = "Tailscale",     abbr = "TS",  package = "com.tailscale.ipn"              },
     { label = "Inställningar", abbr = "⚙",   package = "com.android.settings",           action = "android.settings.SETTINGS" },
     { label = "Play Butik",    abbr = "▶",   package = "com.android.vending"            },
     { label = "Files",         abbr = "📁",  package = "com.google.android.apps.nbu.files" },
