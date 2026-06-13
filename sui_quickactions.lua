@@ -27,6 +27,7 @@
 --     -- execution:
 --     is_in_place = true,  -- bool OR function(id)->bool
 --     execute     = function(ctx) ... end,
+--     hold_execute = function(ctx) ... end, -- optional bottom-bar long-press
 --     -- ctx = { plugin, fm, show_unavailable }
 --     -- optional metadata:
 --     browsemeta_mode = nil,  -- "author"|"series"|"tags"
@@ -307,6 +308,13 @@ local function _registerBuiltins()
                 end)
                 if not ok then su(_("Bookshelf not available.")) end
             end,
+            hold_execute = function(ctx)
+                local su = ctx.show_unavailable or _unavailToast
+                local ok = pcall(function()
+                    UIManager:broadcastEvent(require("ui/event"):new("OpenBookshelfProseStartMenu"))
+                end)
+                if not ok then su(_("Bookshelf not available.")) end
+            end,
         },
         {
             id    = "bookshelf_comics",
@@ -317,6 +325,13 @@ local function _registerBuiltins()
                 local su = ctx.show_unavailable or _unavailToast
                 local ok = pcall(function()
                     UIManager:broadcastEvent(require("ui/event"):new("OpenBookshelfComics"))
+                end)
+                if not ok then su(_("Bookshelf not available.")) end
+            end,
+            hold_execute = function(ctx)
+                local su = ctx.show_unavailable or _unavailToast
+                local ok = pcall(function()
+                    UIManager:broadcastEvent(require("ui/event"):new("OpenBookshelfComicsStartMenu"))
                 end)
                 if not ok then su(_("Bookshelf not available.")) end
             end,
@@ -591,6 +606,23 @@ function QA.execute(id, ctx)
         logger.warn("simpleui: QA.execute: error in", id, tostring(err))
         su(string.format(_("Action error: %s"), tostring(err)))
     end
+end
+
+function QA.holdExecute(id, ctx)
+    ctx = ctx or {}
+    if not id or id:match("^custom_qa_%d+$") then return false end
+
+    local desc = _registry[id]
+    local fn = desc and desc.hold_execute
+    if type(fn) ~= "function" then return false end
+
+    local su = ctx.show_unavailable or _unavailToast
+    local ok, err = pcall(fn, ctx)
+    if not ok then
+        logger.warn("simpleui: QA.holdExecute: error in", id, tostring(err))
+        su(string.format(_("Action error: %s"), tostring(err)))
+    end
+    return true
 end
 
 -- ---------------------------------------------------------------------------

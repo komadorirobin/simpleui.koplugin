@@ -1044,6 +1044,32 @@ function M.registerTouchZones(plugin, fm_self)
     -- handler can read them without capturing a stale local from a nested block.
     local prev_end_x = arrows_active and (side_m + widths[1])                      or 0
     local next_x     = arrows_active and (side_m + usable_w - widths[total_slots]) or screen_w
+    local function _actionAtX(x)
+        if type(x) ~= "number" or x < side_m or x >= side_m + usable_w then
+            return nil
+        end
+        if arrows_active then
+            if x < prev_end_x or x >= next_x then return nil end
+            local cursor_x = side_m + widths[1]
+            for i = 1, center_n do
+                local w = widths[i + 1]
+                if x >= cursor_x and x < cursor_x + w then
+                    return tabs_snap[i]
+                end
+                cursor_x = cursor_x + w
+            end
+            return nil
+        end
+        local cursor_x = side_m
+        for i = 1, num_tabs do
+            local w = widths[i]
+            if x >= cursor_x and x < cursor_x + w then
+                return tabs_snap[i]
+            end
+            cursor_x = cursor_x + w
+        end
+        return nil
+    end
 
     if arrows_active then
         -- ── Prev arrow (slot 1) ──────────────────────────────────────────────
@@ -1187,10 +1213,10 @@ function M.registerTouchZones(plugin, fm_self)
         ges         = "hold_release",
         screen_zone = bar_screen_zone,
         handler = function(ges)
+            local x = ges and ges.pos and ges.pos.x or -1
             -- When navpager is active, a hold on the Prev or Next arrow jumps
             -- to the first or last page instead of opening the settings menu.
             if arrows_active then
-                local x = ges and ges.pos and ges.pos.x or -1
                 if x >= 0 and x < prev_end_x then
                     -- Held on Prev arrow → jump to first page.
                     local has_prev, _ = Config.getNavpagerState()
@@ -1203,6 +1229,14 @@ function M.registerTouchZones(plugin, fm_self)
                     if has_next then _callGotoPage(nil) end
                     return true
                 end
+            end
+            local action_id = _actionAtX(x)
+            if action_id and _QA().holdExecute(action_id, {
+                    plugin = plugin,
+                    fm = fm_self,
+                    show_unavailable = showUnavailable,
+                }) then
+                return true
             end
             -- Held anywhere else on the bar → open settings menu.
             if not SUISettings:nilOrTrue("simpleui_bar_settings_on_hold") then
