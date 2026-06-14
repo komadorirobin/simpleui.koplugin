@@ -610,7 +610,29 @@ end
 
 function QA.holdExecute(id, ctx)
     ctx = ctx or {}
-    if not id or id:match("^custom_qa_%d+$") then return false end
+    if not id then return false end
+
+    if id:match("^custom_qa_%d+$") then
+        local cfg = SUISettings:get("simpleui_qa_" .. id) or {}
+        local action = cfg.dispatcher_action
+        local event_name
+        if action == "open_bookshelf_prose" then
+            event_name = "OpenBookshelfProseStartMenu"
+        elseif action == "open_bookshelf_comics" then
+            event_name = "OpenBookshelfComicsStartMenu"
+        end
+        if not event_name then return false end
+
+        local su = ctx.show_unavailable or _unavailToast
+        local ok, err = pcall(function()
+            UIManager:broadcastEvent(require("ui/event"):new(event_name))
+        end)
+        if not ok then
+            logger.warn("simpleui: QA.holdExecute: custom action error in", id, tostring(err))
+            su(string.format(_("Action error: %s"), tostring(err)))
+        end
+        return true
+    end
 
     local desc = _registry[id]
     local fn = desc and desc.hold_execute
