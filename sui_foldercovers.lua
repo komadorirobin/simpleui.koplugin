@@ -2645,6 +2645,19 @@ function M.install()
     -- Builds and installs a single-image cover widget.
     -- `img` = { file=path } or { data=blitbuffer, w=n, h=n }
     function MosaicMenuItem:_setFolderCover(img, display)
+        -- `display` may be nil when called by third-party patches that pre-date
+        -- this parameter (e.g. patches/2-automatic-book-series.lua).  Fall back
+        -- to reading the settings directly so the rest of the pipeline never
+        -- receives a nil table.
+        if not display then
+            display = {
+                label_mode  = M.getLabelMode(),
+                show_name   = M.getShowName(),
+                label_style = M.getLabelStyle(),
+                label_pos   = M.getLabelPosition(),
+            }
+            if _STRIP_H > 0 then display.label_mode = "hidden" end
+        end
         self._foldercover_processed = true
         local border, spine_w, max_img_w, max_img_h = _computeCellGeometry(self)
 
@@ -2670,6 +2683,15 @@ function M.install()
 
     -- Placeholder cover for bookless folders (subfolders only or empty).
     function MosaicMenuItem:_setEmptyFolderCover(display)
+        if not display then
+            display = {
+                label_mode  = M.getLabelMode(),
+                show_name   = M.getShowName(),
+                label_style = M.getLabelStyle(),
+                label_pos   = M.getLabelPosition(),
+            }
+            if _STRIP_H > 0 then display.label_mode = "hidden" end
+        end
         self._foldercover_processed = true
         local border, spine_w, max_img_w, max_img_h = _computeCellGeometry(self)
 
