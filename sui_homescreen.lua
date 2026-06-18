@@ -1502,18 +1502,21 @@ function HomescreenWidget:_initLayout()
         outer,
         footer_bc,
     }
-    -- Paint the wallpaper from the root homescreen overlap, not from the
-    -- content frame. On cold start e-ink retains old pixels until a widget
-    -- explicitly overwrites them; painting here covers transparent navbar and
-    -- statusbar areas before any children draw.
-    if _lf_bg then
+    -- Always clear the full homescreen surface before painting children. 2.x
+    -- uses transparent module/background layers, and e-ink keeps old pixels
+    -- until something explicitly overwrites them. Without this clear, stale
+    -- module rows can remain visible after the first cold-start layout pass.
+    do
         local _orig_paintTo = overlap.paintTo
         local _bg           = _lf_bg
         function overlap:paintTo(bb, x, y)
-            _bg:paintTo(bb, x, 0)
-            local opacity = _wpOpacity()
-            if opacity and opacity > 0 then
-                bb:lightenRect(x, 0, Screen:getWidth(), Screen:getHeight(), opacity / 100)
+            bb:paintRect(x, 0, Screen:getWidth(), Screen:getHeight(), Blitbuffer.COLOR_WHITE)
+            if _bg then
+                _bg:paintTo(bb, x, 0)
+                local opacity = _wpOpacity()
+                if opacity and opacity > 0 then
+                    bb:lightenRect(x, 0, Screen:getWidth(), Screen:getHeight(), opacity / 100)
+                end
             end
             _orig_paintTo(self, bb, x, y)
         end
@@ -2858,7 +2861,9 @@ function HomescreenWidget:onShow()
         end
 
         self:_updatePage(true)
-        local force_full = self._force_full_repaint_once and true or false
+        local first_show = not self._sui_initial_show_done
+        self._sui_initial_show_done = true
+        local force_full = first_show or (self._force_full_repaint_once and true or false)
         local dirty_mode = force_full and "full" or "ui"
         self._force_full_repaint_once = nil
         UIManager:setDirty(self, dirty_mode)
