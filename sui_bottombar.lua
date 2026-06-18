@@ -74,11 +74,13 @@ end
 -- Used by onTabTap (early-return guard) AND setActiveAndRefreshFM (write guard).
 -- Keeping the list in one place makes it impossible for the two sites to drift.
 local _ACTION_ONLY = {
-    bookmark_browser = true,
-    wifi_toggle      = true,
-    frontlight       = true,
-    power            = true,
-    sui_settings     = true,
+    bookmark_browser      = true,
+    wifi_toggle           = true,
+    frontlight            = true,
+    power                 = true,
+    sui_settings          = true,
+    bookshelf_prose_menu  = true,
+    bookshelf_comics_menu = true,
 }
 
 -- _BROWSE_ACTIONS: action IDs that open a virtual browse view in the FM.
@@ -1200,7 +1202,7 @@ function M.registerTouchZones(plugin, fm_self)
         ratio_w = 1,
         ratio_h = nav_h / screen_h,
     }
-    local navbar_hold_action_consumed = false
+    local navbar_hold_action_id = nil
     zones[#zones + 1] = {
         id          = "navbar_hold_start",
         ges         = "hold",
@@ -1208,16 +1210,12 @@ function M.registerTouchZones(plugin, fm_self)
                         "TapBook", "TapColl", "TapQA", "TapGoal", "TapSelect" },
         screen_zone = bar_screen_zone,
         handler     = function(ges)
-            navbar_hold_action_consumed = false
+            -- Remember the held tab, but wait until hold_release to execute.
+            -- Opening an overlay on hold lets the release land on the freshly
+            -- opened overlay and immediately dismiss it, which looks like a no-op
+            -- when long-pressing the already-active Bookshelf tab.
             local x = ges and ges.pos and ges.pos.x or -1
-            local action_id = _actionAtX(x)
-            if action_id and _QA().holdExecute(action_id, {
-                    plugin = plugin,
-                    fm = fm_self,
-                    show_unavailable = showUnavailable,
-                }) then
-                navbar_hold_action_consumed = true
-            end
+            navbar_hold_action_id = _actionAtX(x)
             return true
         end,
     }
@@ -1226,8 +1224,13 @@ function M.registerTouchZones(plugin, fm_self)
         ges         = "hold_release",
         screen_zone = bar_screen_zone,
         handler = function(ges)
-            if navbar_hold_action_consumed then
-                navbar_hold_action_consumed = false
+            local held_action_id = navbar_hold_action_id
+            navbar_hold_action_id = nil
+            if held_action_id and _QA().holdExecute(held_action_id, {
+                    plugin = plugin,
+                    fm = fm_self,
+                    show_unavailable = showUnavailable,
+                }) then
                 return true
             end
             local x = ges and ges.pos and ges.pos.x or -1
