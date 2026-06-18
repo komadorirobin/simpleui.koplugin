@@ -1200,19 +1200,36 @@ function M.registerTouchZones(plugin, fm_self)
         ratio_w = 1,
         ratio_h = nav_h / screen_h,
     }
+    local navbar_hold_action_consumed = false
     zones[#zones + 1] = {
         id          = "navbar_hold_start",
         ges         = "hold",
         overrides   = { "tap_left_bottom_corner", "tap_right_bottom_corner",
                         "TapBook", "TapColl", "TapQA", "TapGoal", "TapSelect" },
         screen_zone = bar_screen_zone,
-        handler     = function(_ges) return true end,
+        handler     = function(ges)
+            navbar_hold_action_consumed = false
+            local x = ges and ges.pos and ges.pos.x or -1
+            local action_id = _actionAtX(x)
+            if action_id and _QA().holdExecute(action_id, {
+                    plugin = plugin,
+                    fm = fm_self,
+                    show_unavailable = showUnavailable,
+                }) then
+                navbar_hold_action_consumed = true
+            end
+            return true
+        end,
     }
     zones[#zones + 1] = {
         id          = "navbar_hold_settings",
         ges         = "hold_release",
         screen_zone = bar_screen_zone,
         handler = function(ges)
+            if navbar_hold_action_consumed then
+                navbar_hold_action_consumed = false
+                return true
+            end
             local x = ges and ges.pos and ges.pos.x or -1
             -- When navpager is active, a hold on the Prev or Next arrow jumps
             -- to the first or last page instead of opening the settings menu.
