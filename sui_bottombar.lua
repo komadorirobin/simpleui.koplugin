@@ -83,6 +83,22 @@ local _ACTION_ONLY = {
     bookshelf_comics_menu = true,
 }
 
+local _CUSTOM_QA_ACTION_ONLY_DISPATCHERS = {
+    open_bookshelf_prose_start_menu  = true,
+    open_bookshelf_comics_start_menu = true,
+}
+
+local function _isActionOnly(action_id)
+    if _ACTION_ONLY[action_id] then return true end
+    if type(action_id) == "string" and action_id:match("^custom_qa_%d+$") then
+        local cfg = SUISettings:get("simpleui_qa_" .. action_id) or {}
+        if _CUSTOM_QA_ACTION_ONLY_DISPATCHERS[cfg.dispatcher_action] then
+            return true
+        end
+    end
+    return false
+end
+
 -- _BROWSE_ACTIONS: action IDs that open a virtual browse view in the FM.
 -- When one of these is triggered, the active tab indicator should follow
 -- this priority: (1) the action's own tab if it is in the tab bar,
@@ -1292,7 +1308,7 @@ end
 function M.onTabTap(plugin, action_id, fm_self)
     -- Action-only tabs: fire their action without changing the active tab.
     -- Delegated entirely to QA.execute — no action-specific knowledge needed here.
-    if _ACTION_ONLY[action_id] then
+    if _isActionOnly(action_id) then
         local UIManager = require("ui/uimanager")
         UIManager:scheduleIn(0, function()
             _QA().execute(action_id, { plugin = plugin, fm = fm_self })
@@ -1361,7 +1377,7 @@ local function setActiveAndRefreshFM(plugin, action_id, tabs)
     -- Never mark an action-only tab (bookmark_browser, wifi, etc.) as the
     -- active navigation tab — doing so would light up its indicator even
     -- though the user never "navigated" to it.
-    if not _ACTION_ONLY[action_id] then
+    if not _isActionOnly(action_id) then
         plugin.active_action = action_id
     end
     local fm = plugin.ui
@@ -1590,7 +1606,7 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
     -- This must happen before the FM-fallback block so that the synced
     -- live_plugin.active_action already carries the correct value.
     local indicator_tab = _resolveActiveTab(action_id, tabs)
-    if not _ACTION_ONLY[action_id] then
+    if not _isActionOnly(action_id) then
         plugin.active_action = indicator_tab
     end
 
