@@ -203,9 +203,17 @@ local function _registerBuiltins()
             execute = function(ctx)
                 local fm = ctx.fm or _liveFM()
                 if not _goHome(fm) then
-                    if fm and fm.file_chooser then
-                        UIManager:setDirty(fm, "partial")
-                    end
+                    -- file_chooser not yet created (transitional state after
+                    -- returning from the reader) — resolve the live FM instance
+                    -- at execution time rather than capturing ctx.fm in the
+                    -- closure, which may be stale by the next event cycle.
+                    UIManager:scheduleIn(0, function()
+                        local FM2 = package.loaded["apps/filemanager/filemanager"]
+                        local live_fm = (FM2 and FM2.instance) or fm
+                        if not _goHome(live_fm) and live_fm and live_fm.file_chooser then
+                            UIManager:setDirty(live_fm, "partial")
+                        end
+                    end)
                 end
             end,
         },

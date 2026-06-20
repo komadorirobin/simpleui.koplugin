@@ -1552,7 +1552,7 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
     -- When the FM has been torn down and recreated (e.g. after returning from
     -- the reader), plugin.ui on the *old* plugin instance no longer has
     -- _navbar_container. Fall back to the live FileManager instance so that
-    -- replaceBar and _goHome operate on the real widget.
+    -- replaceBar and QA.execute operate on the real widget.
     if not (fm and fm._navbar_container) then
         local FM2 = package.loaded["apps/filemanager/filemanager"]
         local live = FM2 and FM2.instance
@@ -1582,59 +1582,6 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
         return
     end
 
-    -- Replicates FileChooser:goHome() behaviour:
-    --   1. Falls back to Device.home_dir if home_dir is unset or the folder is gone.
-    --   2. If the FM is already at the home path: page-reset + content refresh.
-    --   3. Otherwise: navigate to the home path.
-    -- The suppress flag prevents onPathChanged from firing a redundant bar rebuild
-    -- (the caller already handles the bar before or after invoking this helper).
-    -- Returns true when a home directory was resolved and acted upon, false otherwise.
-    local function _goHome(target_fm)
-        local fc = target_fm and target_fm.file_chooser
-        if not fc then return false end
-        local home = G_reader_settings:readSetting("home_dir")
-        local lfs  = require("libs/libkoreader-lfs")
-        if not home or lfs.attributes(home, "mode") ~= "directory" then
-            home = Device.home_dir
-        end
-        if not home then return false end
-        -- If we are inside a virtual series folder, exit it first via the
-        -- public API (avoids direct access to internal series-view state).
-        -- Virtual folders keep fc.path pointing at the real parent directory,
-        -- so the fc.path == home check below would incorrectly treat a virtual
-        -- folder whose parent is the home dir as "already at home" and call
-        -- refreshPath(), which re-enters the virtual folder instead of closing it.
-        local ok_fc_mod, FC_mod = pcall(require, "sui_foldercovers")
-        local in_virtual = ok_fc_mod and FC_mod.isInSeriesView and FC_mod.isInSeriesView(fc)
-        if in_virtual then
-            FC_mod.exitSeriesView(fc)
-        end
-        if fc.path == home and not in_virtual then
-            -- Already at home (and not in a virtual folder). Always go to
-            -- page 1 and refresh — this mirrors the "Go to HOME folder" button
-            -- behaviour: if the user is on a sub-page of the library, tapping
-            -- the tab again scrolls back to the top. Suppress onPathChanged in
-            -- both cases (re-tap and cross-tab) because the bar was already
-            -- rebuilt by onTabTap.
-            -- No refreshPath here: the item_table is already correct in memory
-            -- and nothing changed while the overlay was open, so a filesystem
-            -- scan would be redundant.
-            target_fm._navbar_suppress_path_change = true
-            pcall(function() fc:onGotoPage(1) end)
-            target_fm._navbar_suppress_path_change = nil
-        else
-            target_fm._navbar_suppress_path_change = true
-            fc:changeToPath(home)
-            target_fm._navbar_suppress_path_change = nil
-        end
-        if target_fm.updateTitleBarPath then
-            pcall(function()
-                target_fm:updateTitleBarPath(home, true)
-            end)
-        end
-        return true
-    end
-
     if hs_open then
         -- Close the HS first — the FM is invisible underneath so there is no
         -- benefit to navigating it before the close. Doing navigation after
@@ -1656,19 +1603,6 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
         if fm._navbar_container then
             M.replaceBar(fm, M.buildBarWidget(indicator_tab, tabs), tabs)
             UIManager:setDirty(fm, "ui")
-        end
-        -- For "home": navigate the FM to home_dir now that the HS is gone.
-        -- A single setDirty from replaceBar above covers the repaint.
-        if action_id == "home" then
-            if fm.file_chooser then
-                _goHome(fm)
-            else
-                -- file_chooser not yet created — schedule for next event cycle.
-                UIManager:scheduleIn(0, function()
-                    _goHome(plugin.ui)
-                end)
-            end
-            return
         end
         -- For other actions, fall through with fm_self = fm.
         fm_self = fm
