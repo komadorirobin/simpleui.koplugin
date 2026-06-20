@@ -813,12 +813,43 @@ function SimpleUIPlugin:init()
         -- -------------------------------------------------------------------
 
         if not defer_defaults_until_settings_migrated then
+            -- Settings migration v7:
+            -- 1. Restore coverdeck_show_title when written as false by the
+            --    "Momentum" preset but never explicitly toggled by the user.
+            -- 2. Enable recent_show_finished when it has never been set.
+            -- 3. Make automatic update checks opt-out instead of opt-in.
+            if not SUISettings:isTrue("simpleui_settings_migrated_v7") then
+                pcall(function()
+                    local PFX       = "simpleui_hs_"
+                    local title     = SUISettings:get(PFX .. "coverdeck_show_title")
+                    local author    = SUISettings:get(PFX .. "coverdeck_show_author")
+                    local progress  = SUISettings:get(PFX .. "coverdeck_show_progress")
+                    local percent   = SUISettings:get(PFX .. "coverdeck_show_percent")
+                    local book_days = SUISettings:get(PFX .. "coverdeck_show_book_days")
+                    if title == false and author == false
+                            and progress == true and percent == true
+                            and book_days == true then
+                        SUISettings:set(PFX .. "coverdeck_show_title", true)
+                        logger.info("simpleui: migration v7 — restored coverdeck_show_title to true")
+                    end
+                    if SUISettings:get(PFX .. "recent_show_finished") == nil then
+                        SUISettings:set(PFX .. "recent_show_finished", true)
+                        logger.info("simpleui: migration v7 — enabled recent_show_finished")
+                    end
+                    if SUISettings:get("simpleui_updater_auto_check") == nil then
+                        SUISettings:set("simpleui_updater_auto_check", true)
+                        logger.info("simpleui: migration v7 — enabled simpleui_updater_auto_check")
+                    end
+                end)
+                SUISettings:set("simpleui_settings_migrated_v7", true)
+                SUISettings:flush()
+            end
+            -- -------------------------------------------------------------------
+
             Config.applyFirstRunDefaults()
             Config.migrateOldCustomSlots()
             -- Always run sanitizeQASlots: it cleans both custom QA slot references
-            -- and any stale built-in IDs from navbar_tabs.  The function is cheap —
-            -- it reads a handful of settings and only writes back when it finds
-            -- something invalid, so the common no-op case costs only a few reads.
+            -- and any stale built-in IDs from navbar_tabs.
             Config.sanitizeQASlots()
         end
         -- Apply the saved UI font preference early, before any widget is built.
@@ -1078,7 +1109,10 @@ function SimpleUIPlugin:init()
                         callback = function()
                             if close_cb then close_cb() end
                             local ok_sw, SW = pcall(require, "sui_stats_windows")
-                            if ok_sw and SW then SW.showBookStatsFromFile(file) end
+                            if ok_sw and SW then
+                                if SW.showLoadingNotice then SW.showLoadingNotice() end
+                                SW.showBookStatsFromFile(file)
+                            end
                         end,
                     }}
                 end
@@ -1489,7 +1523,8 @@ function SimpleUIPlugin:onNetworkConnected()
     if RUI and RUI.instance then
         self:_rebuildAllNavbars()
     else
-        Bottombar.refreshWifiIcon(self)
+        local QA = package.loaded["sui_quickactions"] or require("sui_quickactions")
+        QA.refreshWifiIcon(self)
     end
 end
 
@@ -1503,7 +1538,8 @@ function SimpleUIPlugin:onNetworkDisconnected()
     if RUI and RUI.instance then
         self:_rebuildAllNavbars()
     else
-        Bottombar.refreshWifiIcon(self)
+        local QA = package.loaded["sui_quickactions"] or require("sui_quickactions")
+        QA.refreshWifiIcon(self)
     end
 end
 
@@ -2021,16 +2057,9 @@ function SimpleUIPlugin:_restoreTabInFM(tabs, prev_action)
     Bottombar.restoreTabInFM(self, tabs, prev_action)
 end
 
-function SimpleUIPlugin:_setPowerTabActive(active, prev_action)
-    Bottombar.setPowerTabActive(self, active, prev_action)
-end
-
-function SimpleUIPlugin:_showPowerDialog(fm_self)
-    Bottombar.showPowerDialog(self, fm_self)
-end
-
 function SimpleUIPlugin:_doWifiToggle()
-    Bottombar.doWifiToggle(self)
+    local QA = package.loaded["sui_quickactions"] or require("sui_quickactions")
+    QA.doWifiToggle(self)
 end
 
 function SimpleUIPlugin:_doRotateScreen()
@@ -2038,7 +2067,8 @@ function SimpleUIPlugin:_doRotateScreen()
 end
 
 function SimpleUIPlugin:_showFrontlightDialog()
-    Bottombar.showFrontlightDialog()
+    local QA = package.loaded["sui_quickactions"] or require("sui_quickactions")
+    QA.showFrontlightDialog()
 end
 
 function SimpleUIPlugin:_scheduleRebuild()

@@ -576,7 +576,7 @@ end
 -- NOTE: _cover_extraction_pending was removed from SH.
 -- Use Config.cover_extraction_pending (the single source of truth) instead.
 
-function SH.prefetchBooks(show_currently, show_recent, max_recent, show_finished)
+function SH.prefetchBooks(show_currently, show_recent, max_recent)
     max_recent = max_recent or 5
     local state = { current_fp = nil, recent_fps = {}, prefetched_data = {} }
     if not show_currently and not show_recent then return state end
@@ -689,12 +689,11 @@ function SH.prefetchBooks(show_currently, show_recent, max_recent, show_finished
                         end
                     end
                 end
-                -- Exclude books that are 100% read or explicitly marked as complete,
-                -- unless the caller has opted in to showing finished books.
-                local is_complete = type(book_summary) == "table" and book_summary.status == "complete"
-                if show_finished or (pct < 1.0 and not is_complete) then
-                    state.recent_fps[#state.recent_fps + 1] = fp
-                end
+                -- Always add to recent_fps regardless of read/complete status.
+                -- Filtering by finished/complete is each module's responsibility:
+                -- module_recent and module_coverdeck apply their own independent
+                -- setting at render time using pct/summary from prefetched_data.
+                state.recent_fps[#state.recent_fps + 1] = fp
             end
         end
         if not show_recent and state.current_fp then break end

@@ -572,6 +572,9 @@ msgstr "Aviso ao Fechar Livro"
 msgid "Closing book…"
 msgstr "A fechar o livro…"
 
+msgid "Loading statistics…"
+msgstr "A carregar estatísticas…"
+
 #: sui_quickactions.lua:1315
 msgid "Codepoint out of valid Unicode range (0–10FFFF)."
 msgstr "Codepoint fora do intervalo Unicode válido (0–10FFFF)."
@@ -1708,6 +1711,26 @@ msgstr "Novo"
 msgid "New Book"
 msgstr "Livro Novo"
 
+#: sui_menu.lua:3088
+msgid "Finished Books"
+msgstr "Livros Concluídos"
+
+#: sui_menu.lua:3095
+msgid "Fade Finished Books"
+msgstr "Desvanecer Livros Concluídos"
+
+#: sui_menu.lua:3104
+msgid "Intensity"
+msgstr "Intensidade"
+
+#: sui_menu.lua:3110
+msgid "Fade Intensity"
+msgstr "Intensidade do Desvanecer"
+
+#: sui_menu.lua:3111
+msgid "Fades finished book covers towards white.\n50% is the default."
+msgstr "Desvanece as capas dos livros concluídos em direção ao branco.\n50% é o valor predefinido."
+
 #: desktop_modules/module_new_books.lua:50 desktop_modules/module_new_books.lua:51
 #: desktop_modules/module_new_books.lua:130 desktop_modules/module_new_books.lua:381
 msgid "New Books"
@@ -2705,6 +2728,14 @@ msgstr "Definições não encontradas."
 msgid "Settings on Long Tap"
 msgstr "Definições com Toque Longo"
 
+#: sui_menu.lua:2541
+msgid "Preserve Deleted Books in Statistics"
+msgstr "Preservar Livros Eliminados nas Estatísticas"
+
+#: sui_menu.lua:2541
+msgid "When a finished book is deleted from the device, keep it counted in the Books Read statistics on the Home Screen.\n\nBooks changed back to Reading or Abandoned are automatically removed from this list."
+msgstr "Quando um livro terminado é eliminado do dispositivo, mantê-lo contado nas estatísticas de Livros Lidos no Ecrã Inicial.\n\nLivros cujo estado seja alterado para A Ler ou Abandonado são removidos automaticamente desta lista."
+
 #: desktop_modules/module_clock.lua:198 desktop_modules/module_clock.lua:248
 msgid "Seven"
 msgstr "Sete"
@@ -2740,6 +2771,9 @@ msgid ""
 msgstr ""
 "Mostra um breve aviso \"A fechar livro…\" ao fechar um livro, evitando toques duplos acidentais "
 "enquanto o ecrã de tinta eletrónica atualiza."
+
+msgid "Show a brief \"Loading statistics…\" notice when opening a statistics window, preventing accidental double-taps while e-ink refreshes."
+msgstr "Mostra um breve aviso \"A carregar estatísticas…\" ao abrir uma janela de estatísticas, evitando toques duplos acidentais enquanto o ecrã de tinta eletronónica atualiza."
 
 #: desktop_modules/module_recent.lua:397 desktop_modules/module_coverdeck.lua:1038
 msgid "Show finished books"
@@ -2942,6 +2976,9 @@ msgstr "Começa com uma predefinição pronta a usar. Podes alterar tudo mais ta
 #: sui_stats_windows.lua:136
 msgid "Statistics database library not available."
 msgstr "Biblioteca da base de dados de estatísticas indisponível."
+
+msgid "Statistics Loading Notice"
+msgstr "Aviso ao Carregar Estatísticas"
 
 #: sui_quickactions.lua:373
 msgid "Statistics plugin not available."

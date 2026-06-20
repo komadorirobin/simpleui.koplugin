@@ -827,10 +827,16 @@ local function buildWidget(inner_w, text_str, attr_str, face_quote, face_attr, v
         }
 
         if has_wallpaper then
-            return UI.makeAlphaTextBox(args)
-        else
-            return TextBoxWidget:new(args)
-        end
+                local ok_tbx, tbx = pcall(UI.makeAlphaTextBox, args)
+                if ok_tbx then
+                    return tbx
+                else
+                    logger.warn("simpleui: module_quote: makeAlphaTextBox failed, falling back: " .. tostring(tbx))
+                    return TextBoxWidget:new(args)
+                end
+            else
+                return TextBoxWidget:new(args)
+            end
     end
 
     local vg = VerticalGroup:new{ align = "center" }

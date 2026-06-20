@@ -554,7 +554,13 @@ end
 local function _resolveSwipeNav(cur, total, swipe_dir)
     local step = _pageStep(total)
     local raw
-    if swipe_dir == "west" then
+    -- In RTL layouts the user swipes in the opposite physical direction to
+    -- move forward, so we invert west/east before acting.
+    local dir = swipe_dir
+    if BD.mirroredUILayout() then
+        if dir == "west" then dir = "east" elseif dir == "east" then dir = "west" end
+    end
+    if dir == "west" then
         raw = cur + step
         if raw > total then raw = 1 end
     else -- "east"
@@ -684,6 +690,10 @@ local function buildDotFooter(goto_fn)
     function bar_input:onSwipeDot(_args, ges)
         if not ges then return true end
         local dir = ges.direction
+        -- Mirror swipe direction for RTL layouts.
+        if BD.mirroredUILayout() then
+            if dir == "west" then dir = "east" elseif dir == "east" then dir = "west" end
+        end
         local cur = dot_widget.current_page
         local tot = dot_widget.total_pages
         if dir == "west" then
@@ -722,13 +732,39 @@ local function _updateNavpagerForHS(current_page, total_pages)
     UIManager:setDirty(tgt, "ui")
 end
 
+-- Resolves a KOBO_VIRTUAL:// path to a real on-disk path by asking the kobo
+-- plugin's VirtualLibrary to rebuild its path mappings if needed.
+-- Returns the real path on success, or the original path unchanged so the
+-- normal "file does not exist" error surfaces as usual.
+local function _resolveKoboVirtualPath(filepath)
+    if not filepath or filepath:sub(1, 14) ~= "KOBO_VIRTUAL:/" then
+        return filepath
+    end
+    local ok, PluginLoader = pcall(require, "pluginloader")
+    if not ok or not PluginLoader then return filepath end
+    local kobo = PluginLoader:getPluginInstance("kobo_plugin")
+    if not kobo or not kobo.virtual_library then return filepath end
+    local vl = kobo.virtual_library
+    -- If the mapping table is empty the user has not yet opened the Kobo
+    -- Library folder this session — rebuild it now.
+    if not next(vl.virtual_to_real) then
+        local ok2, err = pcall(function() vl:buildPathMappings() end)
+        if not ok2 then
+            logger.warn("sui_homescreen: kobo buildPathMappings failed:", err)
+            return filepath
+        end
+    end
+    local real = vl:getRealPath(filepath)
+    return real or filepath
+end
+
 local function openBook(filepath, pos0, page)
     -- ReaderUI:showReader() broadcasts ShowingReader before its first paint,
     -- closing FM/Homescreen atomically — no need to close HS first.
     local doOpen = function()
         local ReaderUI = package.loaded["apps/reader/readerui"]
             or require("apps/reader/readerui")
-        ReaderUI:showReader(filepath)
+        ReaderUI:showReader(_resolveKoboVirtualPath(filepath))
         if pos0 or page then
             UIManager:scheduleIn(0.5, function()
                 local rui = package.loaded["apps/reader/readerui"]
@@ -1588,14 +1624,14 @@ function HomescreenWidget:_buildCtx()
         local SH = _getBookShared()
         if SH then
             if show_c or show_r then
-                local max_recent = 5
-                local show_finished =
-                    (mod_r  and Registry.isEnabled(mod_r,  PFX) and
-                        SUISettings:readSetting(PFX .. "recent_show_finished") == true)
-                    or
-                    (mod_cd and Registry.isEnabled(mod_cd, PFX) and
-                        SUISettings:readSetting(PFX .. "coverdeck_show_finished") == true)
-                self._cached_books_state = SH.prefetchBooks(show_c, show_r, max_recent, show_finished)
+                local max_recent = 15
+                -- show_finished is no longer computed here: each module
+                -- (module_recent, module_coverdeck) filters finished books
+                -- independently at render time using its own setting.
+                -- max_recent is set to 15 so that after each module filters
+                -- finished books at render time, at least 5 unfinished entries
+                -- remain available for display.
+                self._cached_books_state = SH.prefetchBooks(show_c, show_r, max_recent)
                 if Config.cover_extraction_pending then
                     self:_scheduleCoverPoll()
                 end
@@ -2571,13 +2607,8 @@ function HomescreenWidget:_refresh(keep_cache, books_only, stats_only)
                             local mod_cd = Registry.get("coverdeck")
                             local show_c = Registry.isEnabled(Registry.get("currently"), PFX)
                             local show_r = (mod_r and Registry.isEnabled(mod_r, PFX)) or (mod_cd and Registry.isEnabled(mod_cd, PFX))
-                            local show_finished = false
-                            if mod_r and Registry.isEnabled(mod_r, PFX) then
-                                show_finished = SUISettings:readSetting(PFX .. "recent_show_finished") == true
-                            elseif mod_cd and Registry.isEnabled(mod_cd, PFX) then
-                                show_finished = SUISettings:readSetting(PFX .. "coverdeck_show_finished") == true
-                            end
-                            local new_bs = SH.prefetchBooks(show_c, show_r, 5, show_finished)
+                            -- show_finished removed: each module filters independently at render time.
+                            local new_bs = SH.prefetchBooks(show_c, show_r, 15)
                             self._cached_books_state = new_bs
                             self._ctx_cache.prefetched = new_bs.prefetched_data
                             self._ctx_cache.current_fp = new_bs.current_fp

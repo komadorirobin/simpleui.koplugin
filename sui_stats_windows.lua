@@ -116,7 +116,8 @@ local function _getFinishedBooksThisYear()
                     title         = title   or entry.text or fp,
                     authors       = authors or "",
                     filepath      = fp,
-                    date_finished = (type(summary.modified) == "string" and summary.modified) or nil,
+                    date_finished = (type(summary.modified)    == "string" and summary.modified)    or nil,
+                    date_started  = (type(summary.date_started) == "string" and summary.date_started) or nil,
                     md5           = md5_checksum,
                 })
             end
@@ -303,27 +304,31 @@ local function _getStartDatesForBooks(books)
     local start_dates = {}
     if not books or #books == 0 then return start_dates end
 
-    -- 1. Collect MD5s from the book list
-    local md5_map = {} -- md5 -> filepath
+    -- Books that already have a sidecar date_started skip the DB entirely.
+    local needs_db = {}
+    local md5_map  = {}
     local md5_list_q = {}
     local util = require("util")
 
     for _, book in ipairs(books) do
         local fp = book.filepath
-        local md5 = book.md5
-        -- Fallback for books where md5 wasn't in the sidecar for some reason
-        if not md5 then
-            md5 = util.partialMD5(fp)
-        end
-        if md5 then
-            md5_map[md5] = fp
-            table.insert(md5_list_q, string.format("'%s'", md5))
+        if type(book.date_started) == "string" then
+            -- Sidecar value takes priority; store as string so _fmtDateRange
+            -- can handle it (it accepts both unix timestamps and YYYY-MM-DD).
+            start_dates[fp] = book.date_started
+        else
+            table.insert(needs_db, book)
+            local md5 = book.md5 or util.partialMD5(fp)
+            if md5 then
+                md5_map[md5] = fp
+                table.insert(md5_list_q, string.format("'%s'", md5))
+            end
         end
     end
 
     if #md5_list_q == 0 then return start_dates end
 
-    -- 2. Query DB once for all books
+    -- Query DB once for all books that still need it.
     local ok_sq3, SQ3 = pcall(require, "lua-ljsqlite3/init")
     if not ok_sq3 or not SQ3 then return start_dates end
 
@@ -428,6 +433,244 @@ end
 
 local function _fmtDate(ts)
     return os.date("%Y-%m-%d", ts)
+end
+
+-- Validates a YYYY-MM-DD string; returns true if the date is well-formed.
+local function _isValidDateStr(s)
+    if type(s) ~= "string" then return false end
+    local y, m, d = s:match("^(%d%d%d%d)-(%d%d)-(%d%d)$")
+    y, m, d = tonumber(y), tonumber(m), tonumber(d)
+    if not (y and m and d) then return false end
+    if m < 1 or m > 12 then return false end
+    if d < 1 or d > 31 then return false end
+    return true
+end
+
+-- Writes summary.modified (and optionally sets status = "complete") to the
+-- sidecar, then flushes it.  Invalidates the module_books_shared cache entry
+-- so the next homescreen refresh picks up the new value.
+local function _writeSummaryModified(filepath, date_str)
+    if not filepath or not _isValidDateStr(date_str) then return false end
+    local ok_ds, DocSettings = pcall(require, "docsettings")
+    if not ok_ds then return false end
+    local ok_open, ds = pcall(function() return DocSettings:open(filepath) end)
+    if not ok_open or not ds then return false end
+    local summary = ds:readSetting("summary") or {}
+    summary.modified = date_str
+    if summary.status ~= "complete" then
+        summary.status = "complete"
+    end
+    ds:saveSetting("summary", summary)
+    pcall(function() ds:flush() end)
+    pcall(function() ds:close() end)
+    -- Invalidate shared sidecar cache if available.
+    local SH = package.loaded["desktop_modules/module_books_shared"]
+    if SH then
+        if SH._cacheInvalidate then
+            SH._cacheInvalidate(filepath)
+        elseif SH._cache and filepath then
+            SH._cache[filepath] = nil
+        end
+    end
+    return true
+end
+
+-- Writes summary.date_started to the sidecar and flushes it.
+-- This is a SimpleUI-only field; KOReader ignores unknown sidecar keys.
+local function _writeSummaryStarted(filepath, date_str)
+    if not filepath or not _isValidDateStr(date_str) then return false end
+    local ok_ds, DocSettings = pcall(require, "docsettings")
+    if not ok_ds then return false end
+    local ok_open, ds = pcall(function() return DocSettings:open(filepath) end)
+    if not ok_open or not ds then return false end
+    local summary = ds:readSetting("summary") or {}
+    summary.date_started = date_str
+    ds:saveSetting("summary", summary)
+    pcall(function() ds:flush() end)
+    pcall(function() ds:close() end)
+    local SH = package.loaded["desktop_modules/module_books_shared"]
+    if SH then
+        if SH._cacheInvalidate then
+            SH._cacheInvalidate(filepath)
+        elseif SH._cache and filepath then
+            SH._cache[filepath] = nil
+        end
+    end
+    return true
+end
+
+-- Builds a date range card with independently tappable start/end halves.
+--
+-- Parameters:
+-- Removes a single key from summary in the sidecar (sets it to nil).
+-- Used by the Reset button to revert to the DB-derived fallback.
+local function _deleteSummaryField(filepath, key)
+    if not filepath or not key then return false end
+    local ok_ds, DocSettings = pcall(require, "docsettings")
+    if not ok_ds then return false end
+    local ok_open, ds = pcall(function() return DocSettings:open(filepath) end)
+    if not ok_open or not ds then return false end
+    local summary = ds:readSetting("summary")
+    if type(summary) == "table" and summary[key] ~= nil then
+        summary[key] = nil
+        ds:saveSetting("summary", summary)
+        pcall(function() ds:flush() end)
+    end
+    pcall(function() ds:close() end)
+    local SH = package.loaded["desktop_modules/module_books_shared"]
+    if SH then
+        if SH._cacheInvalidate then SH._cacheInvalidate(filepath)
+        elseif SH._cache then SH._cache[filepath] = nil end
+    end
+    return true
+end
+
+--   inner_w           – full inner width
+--   PAD_H             – horizontal padding (passed in to match caller's layout)
+--   date_start_str    – string to display on the left  (YYYY-MM-DD or "–")
+--   date_end_str      – string to display on the right (YYYY-MM-DD or "–")
+--   original_start_str – DB-derived fallback for start (shown on Reset)
+--   original_end_str   – DB-derived fallback for end   (shown on Reset)
+--   filepath          – used for sidecar writes; if nil the card is read-only
+--   on_start_saved    – function(new_date) called after a valid start edit or reset
+--   on_end_saved      – function(new_date) called after a valid end edit or reset
+--
+-- Returns a FrameContainer with each date half wrapped in its own
+-- InputContainer.  Tapping opens an InputDialog with Cancel / Reset / Save.
+local function _makeDateCard(inner_w, PAD_H,
+                             date_start_str, date_end_str,
+                             original_start_str, original_end_str,
+                             filepath,
+                             on_start_saved, on_end_saved)
+    local face_date  = Font:getFace(SUIStyle.FACE_REGULAR, SUIStyle.FS_BODY)
+    local face_arrow = Font:getFace(SUIStyle.FACE_ICONS,   SUIStyle.FS_BODY)
+    local CLR_BLACK  = Blitbuffer.COLOR_BLACK
+    local ARROW      = SUIStyle.icon("arrow_right")
+    local date_inner = inner_w - 2 * PAD_H
+    local date_third = math.floor(date_inner / 3)
+    local date_row_h = Screen:scaleBySize(24)
+
+    -- Helper: open an InputDialog for a single date field.
+    -- delete_fn  – called with filepath on Reset to remove the sidecar field
+    -- original   – the DB fallback value passed to on_saved after a reset
+    -- has_custom – true when the displayed value came from the sidecar (not DB)
+    local function openDateDialog(title, current, write_fn, delete_fn,
+                                  original, has_custom, on_saved)
+        local InputDialog = require("ui/widget/inputdialog")
+        local dlg
+        dlg = InputDialog:new{
+            title      = title,
+            input      = current or os.date("%Y-%m-%d"),
+            input_hint = "YYYY-MM-DD",
+            input_type = "string",
+            buttons    = {{
+                {
+                    text     = _("Cancel"),
+                    callback = function() UIManager:close(dlg) end,
+                },
+                {
+                    text    = _("Reset"),
+                    enabled = has_custom,
+                    callback = function()
+                        UIManager:close(dlg)
+                        delete_fn(filepath)
+                        on_saved(original)
+                    end,
+                },
+                {
+                    text             = _("Save"),
+                    is_enter_default = true,
+                    callback         = function()
+                        local val = dlg:getInputText()
+                        if not _isValidDateStr(val) then
+                            local InfoMessage = require("ui/widget/infomessage")
+                            UIManager:show(InfoMessage:new{
+                                text = _("Please enter a date in YYYY-MM-DD format."),
+                            })
+                            return
+                        end
+                        UIManager:close(dlg)
+                        if write_fn(filepath, val) then
+                            on_saved(val)
+                        end
+                    end,
+                },
+            }},
+        }
+        UIManager:show(dlg)
+    end
+
+    -- Build each of the three columns.  Start/end are tappable when filepath
+    -- is set; the arrow column is always passive.
+    local function makeSideTappable(display_str, title_str, write_fn,
+                                    delete_fn, original_str, on_saved_cb)
+        local tw = TextWidget:new{
+            text    = display_str,
+            face    = face_date,
+            fgcolor = CLR_BLACK,
+        }
+        local cc = _CenterContainer:new{
+            dimen = Geom:new{ w = date_third, h = date_row_h },
+            tw,
+        }
+        if not filepath then return cc end
+        local ic = InputContainer:new{
+            dimen = Geom:new{ w = date_third, h = date_row_h },
+            cc,
+        }
+        ic.ges_events = {
+            Tap = { GestureRange:new{
+                ges   = "tap",
+                range = function() return ic.dimen end,
+            }},
+        }
+        -- has_custom: the displayed value differs from the DB fallback, meaning
+        -- a sidecar value is in effect and Reset makes sense.
+        local has_custom = (display_str ~= original_str)
+        function ic:onTap()
+            openDateDialog(title_str, display_str, write_fn, delete_fn,
+                           original_str, has_custom, on_saved_cb)
+            return true
+        end
+        return ic
+    end
+
+    local start_widget = makeSideTappable(
+        date_start_str, _("Date started"),
+        _writeSummaryStarted,
+        function(fp) _deleteSummaryField(fp, "date_started") end,
+        original_start_str,
+        on_start_saved)
+
+    local end_widget = makeSideTappable(
+        date_end_str, _("Date finished"),
+        _writeSummaryModified,
+        function(fp) _deleteSummaryField(fp, "modified") end,
+        original_end_str,
+        on_end_saved)
+
+    return FrameContainer:new{
+        bordersize     = 0,
+        radius         = Screen:scaleBySize(12),
+        background     = Blitbuffer.gray(0.08),
+        padding_top    = Screen:scaleBySize(14),
+        padding_bottom = Screen:scaleBySize(14),
+        padding_left   = PAD_H,
+        padding_right  = PAD_H,
+        HorizontalGroup:new{
+            align = "center",
+            start_widget,
+            _CenterContainer:new{
+                dimen = Geom:new{ w = date_inner - 2 * date_third, h = date_row_h },
+                TextWidget:new{
+                    text    = ARROW,
+                    face    = face_arrow,
+                    fgcolor = CLR_BLACK,
+                },
+            },
+            end_widget,
+        },
+    }
 end
 
 -- Opens a book from the stats detail screen.
@@ -581,7 +824,7 @@ function StatsWindows.showFinishedBooksDialog(initial_page)
                 TextWidget:new{
                     text      = label,
                     face      = face_lbl,
-                    fgcolor   = CLR_GRAY,
+                    fgcolor   = CLR_BLACK,
                     alignment = "center",
                 },
             }
@@ -789,51 +1032,35 @@ function StatsWindows.showFinishedBooksDialog(initial_page)
 
         -- ── 3. Date range card ─────────────────────────────────────────────
 
-        local face_date  = Font:getFace(SUIStyle.FACE_REGULAR, SUIStyle.FS_BODY)
-        local face_arrow = Font:getFace(SUIStyle.FACE_ICONS, SUIStyle.FS_BODY)
-        local date_start = _fmtDate(d.first_open)
-        local date_end   = d.last_open and _fmtDate(d.last_open) or "\xe2\x80\x93"
-        local ARROW      = SUIStyle.icon("arrow_right")
-        local date_inner = inner_w - 2 * PAD_H
-        local date_third = math.floor(date_inner / 3)
-        local date_row_h = Screen:scaleBySize(24)
+        -- DB-derived fallbacks (used for display and as Reset targets).
+        local original_start_str = _fmtDate(d.first_open)
+        local original_end_str   = (d.last_open and _fmtDate(d.last_open)) or "\xe2\x80\x93"
 
-        local date_card = FrameContainer:new{
-            bordersize     = 0,
-            radius         = Screen:scaleBySize(12),
-            background     = Blitbuffer.gray(0.08),
-            padding_top    = Screen:scaleBySize(14),
-            padding_bottom = Screen:scaleBySize(14),
-            padding_left   = PAD_H,
-            padding_right  = PAD_H,
-            HorizontalGroup:new{
-                align = "center",
-                _CenterContainer:new{
-                    dimen = Geom:new{ w = date_third, h = date_row_h },
-                    TextWidget:new{
-                        text    = date_start,
-                        face    = face_date,
-                        fgcolor = CLR_BLACK,
-                    },
-                },
-                _CenterContainer:new{
-                    dimen = Geom:new{ w = date_inner - 2 * date_third, h = date_row_h },
-                    TextWidget:new{
-                        text    = ARROW,
-                        face    = face_arrow,
-                        fgcolor = CLR_BLACK,
-                    },
-                },
-                _CenterContainer:new{
-                    dimen = Geom:new{ w = date_third, h = date_row_h },
-                    TextWidget:new{
-                        text    = date_end,
-                        face    = face_date,
-                        fgcolor = CLR_BLACK,
-                    },
-                },
-            },
-        }
+        -- Prefer sidecar dates over raw DB timestamps.
+        local date_start_str = (type(book.date_started) == "string" and book.date_started)
+                               or original_start_str
+        local date_end_str   = (type(book.date_finished) == "string" and book.date_finished)
+                               or original_end_str
+
+        local date_widget = _makeDateCard(
+            inner_w, PAD_H,
+            date_start_str, date_end_str,
+            original_start_str, original_end_str,
+            fp,
+            function(new_date)   -- on_start_saved / on_start_reset
+                book.date_started   = (new_date ~= original_start_str) and new_date or nil
+                start_dates[fp]     = new_date
+                book_date_range[fp] = _fmtDateRange(new_date,
+                    book.date_finished or date_end_str)
+                ctx.repaint()
+            end,
+            function(new_date)   -- on_end_saved / on_end_reset
+                book.date_finished  = (new_date ~= original_end_str) and new_date or nil
+                book_date_range[fp] = _fmtDateRange(
+                    book.date_started or start_dates[fp], new_date)
+                ctx.repaint()
+            end
+        )
 
         local block_gap = VerticalSpan:new{ width = Screen:scaleBySize(10) }
 
@@ -843,7 +1070,7 @@ function StatsWindows.showFinishedBooksDialog(initial_page)
             block_gap,
             rows_block,
             block_gap,
-            date_card,
+            date_widget,
         }
     end
 
@@ -1935,6 +2162,27 @@ end
 -- remembered, but is not written to LuaSettings (ephemeral preference).
 local _ri_mode_key = "days"  -- "days" | "hours"
 
+--- Shows a brief "Loading statistics…" toast and flushes it to the e-ink
+--- screen immediately, so there is visible feedback before the (potentially
+--- slow) SQLite queries run.
+---
+--- Controlled by the "simpleui_stats_loading_notice" setting (default on).
+--- Callers must invoke this *before* any blocking work so the notice reaches
+--- the screen while the homescreen/library dialog is still the background.
+function StatsWindows.showLoadingNotice()
+    local ok_ss, SUISettings = pcall(require, "sui_settings")
+    if ok_ss and SUISettings and not SUISettings:nilOrTrue("simpleui_stats_loading_notice") then
+        return
+    end
+    local ok_im, InfoMessage = pcall(require, "ui/widget/infomessage")
+    if not ok_im or not InfoMessage then return end
+    UIManager:show(InfoMessage:new{
+        text    = _("Loading statistics\xe2\x80\xa6"),
+        timeout = 0.0,
+    })
+    UIManager:forceRePaint()
+end
+
 --- Opens the Reading Insights window.
 --- Can be called from module_reading_stats (streak card tap) or any other
 --- SimpleUI touch-point.
@@ -2213,6 +2461,17 @@ function StatsWindows.showBookStatsFromFile(filepath)
                 book.title   = doc_props.title
                 book.authors = doc_props.authors
             end
+            -- Read date_finished (summary.modified) and date_started so the
+            -- date card shows the user-visible dates rather than raw DB timestamps.
+            local summary = ds:readSetting("summary")
+            if type(summary) == "table" then
+                if type(summary.modified)    == "string" then
+                    book.date_finished = summary.modified
+                end
+                if type(summary.date_started) == "string" then
+                    book.date_started = summary.date_started
+                end
+            end
             pcall(function() ds:close() end)
         end
     end
@@ -2278,7 +2537,7 @@ function StatsWindows.showBookStatsFromFile(filepath)
                 TextWidget:new{
                     text      = label,
                     face      = face_lbl,
-                    fgcolor   = Blitbuffer.COLOR_GRAY,
+                    fgcolor   = CLR_BLACK,
                     alignment = "center",
                 },
             }
@@ -2459,39 +2718,31 @@ function StatsWindows.showBookStatsFromFile(filepath)
         }
 
         -- ── date range card ────────────────────────────────────────────
-        local face_date  = Font:getFace(SUIStyle.FACE_REGULAR, SUIStyle.FS_BODY)
-        local face_arrow = Font:getFace(SUIStyle.FACE_ICONS, SUIStyle.FS_BODY)
-        local date_start = _fmtDate(d.first_open)
-        local date_end   = d.last_open and _fmtDate(d.last_open) or "\xe2\x80\x93"
-        local ARROW      = SUIStyle.icon("arrow_right")
-        local date_inner = inner_w - 2 * PAD_H
-        local date_third = math.floor(date_inner / 3)
-        local date_row_h = Screen:scaleBySize(24)
 
-        local date_card = FrameContainer:new{
-            bordersize     = 0,
-            radius         = Screen:scaleBySize(12),
-            background     = Blitbuffer.gray(0.08),
-            padding_top    = Screen:scaleBySize(14),
-            padding_bottom = Screen:scaleBySize(14),
-            padding_left   = PAD_H,
-            padding_right  = PAD_H,
-            HorizontalGroup:new{
-                align = "center",
-                _CenterContainer:new{
-                    dimen = Geom:new{ w = date_third, h = date_row_h },
-                    TextWidget:new{ text = date_start, face = face_date, fgcolor = CLR_BLACK },
-                },
-                _CenterContainer:new{
-                    dimen = Geom:new{ w = date_inner - 2 * date_third, h = date_row_h },
-                    TextWidget:new{ text = ARROW, face = face_arrow, fgcolor = CLR_BLACK },
-                },
-                _CenterContainer:new{
-                    dimen = Geom:new{ w = date_third, h = date_row_h },
-                    TextWidget:new{ text = date_end, face = face_date, fgcolor = CLR_BLACK },
-                },
-            },
-        }
+        -- DB-derived fallbacks (used for display and as Reset targets).
+        local original_start_str = _fmtDate(d.first_open)
+        local original_end_str   = (d.last_open and _fmtDate(d.last_open)) or "\xe2\x80\x93"
+
+        -- Prefer sidecar dates over raw DB timestamps.
+        local date_start_str = (type(book.date_started) == "string" and book.date_started)
+                               or original_start_str
+        local date_end_str   = (type(book.date_finished) == "string" and book.date_finished)
+                               or original_end_str
+
+        local date_widget = _makeDateCard(
+            inner_w, PAD_H,
+            date_start_str, date_end_str,
+            original_start_str, original_end_str,
+            fp,
+            function(new_date)   -- on_start_saved / on_start_reset
+                book.date_started = (new_date ~= original_start_str) and new_date or nil
+                ctx.repaint()
+            end,
+            function(new_date)   -- on_end_saved / on_end_reset
+                book.date_finished = (new_date ~= original_end_str) and new_date or nil
+                ctx.repaint()
+            end
+        )
 
         local block_gap = VerticalSpan:new{ width = Screen:scaleBySize(10) }
         return {
@@ -2500,9 +2751,10 @@ function StatsWindows.showBookStatsFromFile(filepath)
             block_gap,
             rows_block,
             block_gap,
-            date_card,
+            date_widget,
         }
     end
+
 
     local win = SUIWindow:new{
         name     = "sui_win_book_stats_standalone",

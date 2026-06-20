@@ -2532,6 +2532,18 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                 },
             },
             {
+                text           = _("Statistics Loading Notice"),
+                help_text      = _("Show a brief \"Loading statistics\xe2\x80\xa6\" notice when opening a statistics window, preventing accidental double-taps while e-ink refreshes."),
+                checked_func   = function()
+                    return SUISettings:nilOrTrue("simpleui_stats_loading_notice")
+                end,
+                keep_menu_open = true,
+                callback       = function()
+                    local on = SUISettings:nilOrTrue("simpleui_stats_loading_notice")
+                    SUISettings:saveSetting("simpleui_stats_loading_notice", not on)
+                end,
+            },
+            {
                 text           = _("Overflow Warning"),
                 help_text      = _("Warn when modules on a page exceed the available screen height."),
                 checked_func   = function()
@@ -2553,6 +2565,21 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                 callback       = function()
                     local on = SUISettings:nilOrTrue("simpleui_hs_settings_on_hold")
                     SUISettings:saveSetting("simpleui_hs_settings_on_hold", not on)
+                    refreshHomescreen()
+                end,
+            },
+            {
+                text           = _("Preserve Deleted Books in Statistics"),
+                help_text      = _("When a finished book is deleted from the device, keep it counted in the Books Read statistics on the Home Screen.\n\nBooks changed back to Reading or Abandoned are automatically removed from this list."),
+                checked_func   = function()
+                    return SUISettings:nilOrTrue("simpleui_preserve_deleted_books_in_stats")
+                end,
+                keep_menu_open = true,
+                callback       = function()
+                    local on = SUISettings:nilOrTrue("simpleui_preserve_deleted_books_in_stats")
+                    SUISettings:saveSetting("simpleui_preserve_deleted_books_in_stats", not on)
+                    local SP = package.loaded["desktop_modules/module_stats_provider"]
+                    if SP and SP.invalidate then pcall(SP.invalidate) end
                     refreshHomescreen()
                 end,
             },
@@ -3086,6 +3113,50 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                                 },
                                             },
                                         },
+                                    },
+                                },
+                            },
+                            -- ── Finished Books ────────────────────────────────────────────────
+                            {
+                                text_func  = function() return _("Finished Books") end,
+                                value_func = function()
+                                    if not FC.getFadeFinished() then return _("Off") end
+                                    return FC.getFadeAmountPct() .. "%"
+                                end,
+                                sub_item_table = {
+                                    {
+                                        text           = _("Fade Finished Books"),
+                                        checked_func   = function() return FC.getFadeFinished() end,
+                                        keep_menu_open = true,
+                                        callback       = function()
+                                            FC.setFadeFinished(not FC.getFadeFinished())
+                                            _refreshFC()
+                                        end,
+                                    },
+                                    {
+                                        text_func    = function() return _("Intensity") end,
+                                        value_func   = function() return FC.getFadeAmountPct() .. "%" end,
+                                        enabled_func = function() return FC.getFadeFinished() end,
+                                        keep_menu_open = true,
+                                        callback = function()
+                                            local SpinWidget = require("ui/widget/spinwidget")
+                                            UIManager:show(SpinWidget:new{
+                                                title_text    = _("Fade Intensity"),
+                                                info_text     = _("Fades finished book covers towards white.\n50% is the default."),
+                                                value         = FC.getFadeAmountPct(),
+                                                value_min     = FC.FADE_AMOUNT_MIN,
+                                                value_max     = FC.FADE_AMOUNT_MAX,
+                                                value_step    = FC.FADE_AMOUNT_STEP,
+                                                unit          = "%",
+                                                ok_text       = _("Apply"),
+                                                cancel_text   = _("Cancel"),
+                                                default_value = FC.FADE_AMOUNT_DEF,
+                                                callback = function(spin)
+                                                    FC.setFadeAmountPct(spin.value)
+                                                    _refreshFC()
+                                                end,
+                                            })
+                                        end,
                                     },
                                 },
                             },

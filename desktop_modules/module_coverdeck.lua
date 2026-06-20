@@ -2,6 +2,7 @@
 -- Displays recent or TBR books as a cover-flow carousel.
 
 local Blitbuffer  = require("ffi/blitbuffer")
+local BD             = require("ui/bidi")
 local Device         = require("device")
 local Font           = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
@@ -276,7 +277,8 @@ end
 -- ---------------------------------------------------------------------------
 
 local function buildRecentFps(ctx)
-    local fps = {}
+    local fps         = {}
+    local show_fin    = showFinished(ctx.pfx or "")
     if ctx.current_fp then
         fps[1] = ctx.current_fp
     end
@@ -285,9 +287,17 @@ local function buildRecentFps(ctx)
         if ctx.current_fp then seen[ctx.current_fp] = true end
         for _i, fp in ipairs(ctx.recent_fps) do
             if not seen[fp] then
-                fps[#fps+1] = fp
-                seen[fp]    = true
-                if #fps >= MAX_RECENT_FPS then break end
+                -- Filter finished books according to this module's own setting.
+                local pd         = ctx.prefetched and ctx.prefetched[fp]
+                local pct        = pd and pd.percent or 0
+                local is_done    = (pct >= 1.0) or
+                                   (type(pd) == "table" and type(pd.summary) == "table"
+                                    and pd.summary.status == "complete")
+                if show_fin or not is_done then
+                    fps[#fps+1] = fp
+                    seen[fp]    = true
+                    if #fps >= MAX_RECENT_FPS then break end
+                end
             end
         end
     end
@@ -505,13 +515,23 @@ function M.build(w, ctx)
     function tappable:onTap(_, ges)
         local x = ges.pos.x - self.dimen.x
         if x < self._mid - self._half_cw then
-            self._cur = (self._cur - 2 + self._count) % self._count + 1
+            -- Left side: previous in LTR, next in RTL.
+            if BD.mirroredUILayout() then
+                self._cur = self._cur % self._count + 1
+            else
+                self._cur = (self._cur - 2 + self._count) % self._count + 1
+            end
             if self._hs then
                 self._hs:_setCoverdeckIdx(self._cur)
                 self._hs:_refreshImmediate(true)
             end
         elseif x > self._mid + self._half_cw then
-            self._cur = self._cur % self._count + 1
+            -- Right side: next in LTR, previous in RTL.
+            if BD.mirroredUILayout() then
+                self._cur = (self._cur - 2 + self._count) % self._count + 1
+            else
+                self._cur = self._cur % self._count + 1
+            end
             if self._hs then
                 self._hs:_setCoverdeckIdx(self._cur)
                 self._hs:_refreshImmediate(true)
@@ -523,14 +543,19 @@ function M.build(w, ctx)
     end
 
     function tappable:onSwipe(_, ges)
-        if ges.direction == "east" then
+        local dir = ges.direction
+        -- Mirror swipe direction for RTL layouts.
+        if BD.mirroredUILayout() then
+            if dir == "west" then dir = "east" elseif dir == "east" then dir = "west" end
+        end
+        if dir == "east" then
             self._cur = (self._cur - 2 + self._count) % self._count + 1
             if self._hs then
                 self._hs:_setCoverdeckIdx(self._cur)
                 self._hs:_refreshImmediate(true)
             end
             return true
-        elseif ges.direction == "west" then
+        elseif dir == "west" then
             self._cur = self._cur % self._count + 1
             if self._hs then
                 self._hs:_setCoverdeckIdx(self._cur)
