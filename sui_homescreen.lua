@@ -1561,10 +1561,13 @@ function HomescreenWidget:_buildCtx()
         local SH = _getBookShared()
         if SH then
             if show_c or show_r then
-                local max_recent = 5
+                local max_recent = 15
                 -- show_finished is no longer computed here: each module
                 -- (module_recent, module_coverdeck) filters finished books
                 -- independently at render time using its own setting.
+                -- max_recent is set to 15 so that after each module filters
+                -- finished books at render time, at least 5 unfinished entries
+                -- remain available for display.
                 self._cached_books_state = SH.prefetchBooks(show_c, show_r, max_recent)
                 if Config.cover_extraction_pending then
                     self:_scheduleCoverPoll()
@@ -2517,7 +2520,7 @@ function HomescreenWidget:_refresh(keep_cache, books_only, stats_only)
                             local show_c = Registry.isEnabled(Registry.get("currently"), PFX)
                             local show_r = (mod_r and Registry.isEnabled(mod_r, PFX)) or (mod_cd and Registry.isEnabled(mod_cd, PFX))
                             -- show_finished removed: each module filters independently at render time.
-                            local new_bs = SH.prefetchBooks(show_c, show_r, 5)
+                            local new_bs = SH.prefetchBooks(show_c, show_r, 15)
                             self._cached_books_state = new_bs
                             self._ctx_cache.prefetched = new_bs.prefetched_data
                             self._ctx_cache.current_fp = new_bs.current_fp

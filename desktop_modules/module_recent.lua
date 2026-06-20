@@ -92,8 +92,8 @@ function M.build(w, ctx)
                          and pd.summary.status == "complete")
         if show_fin or not is_done then
             recent_fps[#recent_fps + 1] = fp
+            if #recent_fps >= 5 then break end
         end
-        if #recent_fps >= 5 then break end
     end
     if #recent_fps == 0 then return nil end
 
