@@ -21,6 +21,51 @@ local QSBar        = require("sui_quicksettings_bar")
 local Patches      = require("sui_patches")
 local SUISettings  = require("sui_store")
 
+-- ---------------------------------------------------------------------------
+-- ReaderStatistics class-table accessor
+-- ---------------------------------------------------------------------------
+-- KOReader loads plugins via dofile(), not require(), so the statistics plugin
+-- is never registered in package.loaded under a predictable key. The path also
+-- differs between platforms (Kobo: relative "plugins/…", Linux deb/Android:
+-- absolute path under /usr/lib/koreader or the data dir). We try every known
+-- strategy in order and cache the result so subsequent calls are free.
+local _rs_module_cache  -- nil = not yet resolved, false = not available
+
+local function _requireStatistics()
+    if _rs_module_cache ~= nil then return _rs_module_cache or nil end
+
+    -- 1. Check package.loaded for any key containing "statistics.koplugin".
+    --    On Kobo the key is "plugins/statistics.koplugin/main"; on other
+    --    platforms it may differ, so we scan all loaded modules.
+    for key, m in pairs(package.loaded) do
+        if type(key) == "string" and key:find("statistics.koplugin", 1, true) then
+            _rs_module_cache = m
+            return m
+        end
+    end
+
+    -- 2. Scan package.path for a statistics.koplugin directory and dofile it,
+    --    exactly as PluginLoader does. This works on all platforms because
+    --    PluginLoader:loadPlugins() already added every plugin root to
+    --    package.path before SimpleUI:init() runs.
+    for path_entry in package.path:gmatch("[^;]+") do
+        -- path_entry looks like "/some/dir/statistics.koplugin/?.lua"
+        local plugin_root = path_entry:match("^(.*statistics%.koplugin)/")
+        if plugin_root then
+            local mainfile = plugin_root .. "/main.lua"
+            local ok, m = pcall(dofile, mainfile)
+            if ok and m then
+                _rs_module_cache = m
+                return m
+            end
+        end
+    end
+
+    -- Not available (statistics plugin disabled or not installed).
+    _rs_module_cache = false
+    return nil
+end
+
 local SimpleUIPlugin = WidgetContainer:new{
     name = "simpleui",
 
@@ -812,6 +857,47 @@ function SimpleUIPlugin:init()
         end
         -- -------------------------------------------------------------------
 
+        -- Settings migration v7:
+        -- 1. Restore coverdeck_show_title when written as false by the
+        --    "Momentum" preset but never explicitly toggled by the user.
+        --    Detects the exact Momentum signature (title=false, author=false,
+        --    progress=true, percent=true, book_days=true) and resets to true.
+        -- 2. Enable recent_show_finished when it has never been set, so users
+        --    upgrading from 1.5.x (where the filter did not exist) don't find
+        --    Recent Books / Cover Deck empty because all their books are at 100%.
+        -- 3. Enable the automatic update check when it has never been set,
+        --    making auto-check opt-out instead of opt-in.
+        if not defer_defaults_until_settings_migrated and not SUISettings:isTrue("simpleui_settings_migrated_v7") then
+            pcall(function()
+                local PFX       = "simpleui_hs_"
+                -- 1. coverdeck_show_title
+                local title     = SUISettings:get(PFX .. "coverdeck_show_title")
+                local author    = SUISettings:get(PFX .. "coverdeck_show_author")
+                local progress  = SUISettings:get(PFX .. "coverdeck_show_progress")
+                local percent   = SUISettings:get(PFX .. "coverdeck_show_percent")
+                local book_days = SUISettings:get(PFX .. "coverdeck_show_book_days")
+                if title == false and author == false
+                        and progress == true and percent == true
+                        and book_days == true then
+                    SUISettings:set(PFX .. "coverdeck_show_title", true)
+                    logger.info("simpleui: migration v7 — restored coverdeck_show_title to true")
+                end
+                -- 2. recent_show_finished
+                if SUISettings:get(PFX .. "recent_show_finished") == nil then
+                    SUISettings:set(PFX .. "recent_show_finished", true)
+                    logger.info("simpleui: migration v7 — enabled recent_show_finished")
+                end
+                -- 3. auto update check
+                if SUISettings:get("simpleui_updater_auto_check") == nil then
+                    SUISettings:set("simpleui_updater_auto_check", true)
+                    logger.info("simpleui: migration v7 — enabled simpleui_updater_auto_check")
+                end
+            end)
+            SUISettings:set("simpleui_settings_migrated_v7", true)
+            SUISettings:flush()
+        end
+        -- -------------------------------------------------------------------
+
         if not defer_defaults_until_settings_migrated then
             Config.applyFirstRunDefaults()
             Config.migrateOldCustomSlots()
@@ -1078,7 +1164,10 @@ function SimpleUIPlugin:init()
                         callback = function()
                             if close_cb then close_cb() end
                             local ok_sw, SW = pcall(require, "sui_stats_windows")
-                            if ok_sw and SW then SW.showBookStatsFromFile(file) end
+                            if ok_sw and SW then
+                                if SW.showLoadingNotice then SW.showLoadingNotice() end
+                                SW.showBookStatsFromFile(file)
+                            end
                         end,
                     }}
                 end
@@ -1141,8 +1230,8 @@ function SimpleUIPlugin:init()
             -- SimpleUI:init() runs, so the RS class table is already in
             -- package.loaded.
             do
-                local ok_rs, RS = pcall(require, "plugins/statistics.koplugin/main")
-                if ok_rs and RS and RS.onSyncBookStats and not RS._sui_sync_patched then
+                local RS = _requireStatistics()
+                if RS and RS.onSyncBookStats and not RS._sui_sync_patched then
                     local orig_onSyncBookStats = RS.onSyncBookStats
                     RS._sui_orig_onSyncBookStats = orig_onSyncBookStats
                     RS._sui_sync_patched         = true
@@ -1428,7 +1517,7 @@ function SimpleUIPlugin:onTeardown()
     -- on the next plugin load, instead of reusing the old in-memory versions.
     _menu_installer = nil
     -- Restore the ReaderStatistics:onSyncBookStats patch.
-    local RS = package.loaded["plugins/statistics.koplugin/main"]
+    local RS = _requireStatistics()
     if RS and RS._sui_sync_patched then
         if RS._sui_orig_onSyncBookStats then
             RS.onSyncBookStats = RS._sui_orig_onSyncBookStats
@@ -1489,7 +1578,8 @@ function SimpleUIPlugin:onNetworkConnected()
     if RUI and RUI.instance then
         self:_rebuildAllNavbars()
     else
-        Bottombar.refreshWifiIcon(self)
+        local QA = package.loaded["sui_quickactions"] or require("sui_quickactions")
+        QA.refreshWifiIcon(self)
     end
 end
 
@@ -1503,7 +1593,8 @@ function SimpleUIPlugin:onNetworkDisconnected()
     if RUI and RUI.instance then
         self:_rebuildAllNavbars()
     else
-        Bottombar.refreshWifiIcon(self)
+        local QA = package.loaded["sui_quickactions"] or require("sui_quickactions")
+        QA.refreshWifiIcon(self)
     end
 end
 
@@ -2021,16 +2112,9 @@ function SimpleUIPlugin:_restoreTabInFM(tabs, prev_action)
     Bottombar.restoreTabInFM(self, tabs, prev_action)
 end
 
-function SimpleUIPlugin:_setPowerTabActive(active, prev_action)
-    Bottombar.setPowerTabActive(self, active, prev_action)
-end
-
-function SimpleUIPlugin:_showPowerDialog(fm_self)
-    Bottombar.showPowerDialog(self, fm_self)
-end
-
 function SimpleUIPlugin:_doWifiToggle()
-    Bottombar.doWifiToggle(self)
+    local QA = package.loaded["sui_quickactions"] or require("sui_quickactions")
+    QA.doWifiToggle(self)
 end
 
 function SimpleUIPlugin:_doRotateScreen()
@@ -2038,7 +2122,8 @@ function SimpleUIPlugin:_doRotateScreen()
 end
 
 function SimpleUIPlugin:_showFrontlightDialog()
-    Bottombar.showFrontlightDialog()
+    local QA = package.loaded["sui_quickactions"] or require("sui_quickactions")
+    QA.showFrontlightDialog()
 end
 
 function SimpleUIPlugin:_scheduleRebuild()

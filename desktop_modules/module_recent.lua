@@ -81,6 +81,22 @@ function M.build(w, ctx)
     Config.applyLabelToggle(M, _("Recent Books"))
     if not ctx.recent_fps or #ctx.recent_fps == 0 then return nil end
 
+    -- Filter finished books using this module's own independent setting.
+    local show_fin   = showFinished(ctx.pfx or "")
+    local recent_fps = {}
+    for _, fp in ipairs(ctx.recent_fps) do
+        local pd      = ctx.prefetched and ctx.prefetched[fp]
+        local pct     = pd and pd.percent or 0
+        local is_done = (pct >= 1.0) or
+                        (type(pd) == "table" and type(pd.summary) == "table"
+                         and pd.summary.status == "complete")
+        if show_fin or not is_done then
+            recent_fps[#recent_fps + 1] = fp
+            if #recent_fps >= 5 then break end
+        end
+    end
+    if #recent_fps == 0 then return nil end
+
     local SH          = getSH()
     local scale       = Config.getModuleScale("recent", ctx.pfx)
     local thumb_scale = Config.getThumbScale("recent", ctx.pfx)
@@ -95,7 +111,7 @@ function M.build(w, ctx)
     local _CLR_DARK_EFF    = _theme_fg or Blitbuffer.COLOR_BLACK
     local CLR_TEXT_SUB_EFF = _theme_secondary or _theme_fg or CLR_TEXT_SUB
 
-    local cols    = math.min(#ctx.recent_fps, 5)
+    local cols    = math.min(#recent_fps, 5)
     local cw      = D.RECENT_W
     local ch      = D.RECENT_H
     -- Space-between across 5 fixed slots with same lateral padding as other modules (PAD).
@@ -121,7 +137,7 @@ function M.build(w, ctx)
     local row = HorizontalGroup:new{ align = "top" }
     local cover_slots = {}
     for i = 1, cols do
-        local fp    = ctx.recent_fps[i]
+        local fp    = recent_fps[i]
         local bd    = SH.getBookData(fp, ctx.prefetched and ctx.prefetched[fp])
         local cover = SH.getBookCover(fp, cw, ch, nil, 0.10) or SH.coverPlaceholder(bd.title, bd.authors, cw, ch)
 

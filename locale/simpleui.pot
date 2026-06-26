@@ -1729,6 +1729,10 @@ msgstr ""
 msgid "List"
 msgstr ""
 
+#: sui_stats_windows.lua
+msgid "Loading statistics…"
+msgstr ""
+
 #: sui_menu.lua:2369
 msgid "Lock Scale"
 msgstr ""
@@ -1960,6 +1964,26 @@ msgstr ""
 
 #: sui_menu.lua:3008
 msgid "New Book"
+msgstr ""
+
+#: sui_menu.lua:3088
+msgid "Finished Books"
+msgstr ""
+
+#: sui_menu.lua:3095
+msgid "Fade Finished Books"
+msgstr ""
+
+#: sui_menu.lua:3104
+msgid "Intensity"
+msgstr ""
+
+#: sui_menu.lua:3110
+msgid "Fade Intensity"
+msgstr ""
+
+#: sui_menu.lua:3111
+msgid "Fades finished book covers towards white.\n50% is the default."
 msgstr ""
 
 #: desktop_modules/module_new_books.lua:50
@@ -3011,6 +3035,14 @@ msgstr ""
 msgid "Settings on Long Tap"
 msgstr ""
 
+#: sui_menu.lua:2541
+msgid "Preserve Deleted Books in Statistics"
+msgstr ""
+
+#: sui_menu.lua:2541
+msgid "When a finished book is deleted from the device, keep it counted in the Books Read statistics on the Home Screen.\n\nBooks changed back to Reading or Abandoned are automatically removed from this list."
+msgstr ""
+
 #: desktop_modules/module_clock.lua:198
 #: desktop_modules/module_clock.lua:248
 msgid "Seven"
@@ -3043,6 +3075,10 @@ msgstr ""
 
 #: sui_menu.lua:2476
 msgid "Show a brief \"Closing book…\" notice when closing a book, preventing accidental double-taps while e-ink refreshes."
+msgstr ""
+
+#: sui_menu.lua
+msgid "Show a brief \"Loading statistics…\" notice when opening a statistics window, preventing accidental double-taps while e-ink refreshes."
 msgstr ""
 
 #: desktop_modules/module_recent.lua:397
@@ -3216,6 +3252,10 @@ msgstr ""
 
 #: sui_stats_windows.lua:136
 msgid "Statistics database library not available."
+msgstr ""
+
+#: sui_menu.lua
+msgid "Statistics Loading Notice"
 msgstr ""
 
 #: sui_quickactions.lua:373
@@ -4108,4 +4148,8 @@ msgstr[1] ""
 
 #: main.lua:986
 msgid "Book statistics"
+msgstr ""
+
+#: desktop_modules/module_quote.lua:1440
+msgid "Fixed Height"
 msgstr ""

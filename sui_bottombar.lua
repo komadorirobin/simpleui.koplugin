@@ -27,6 +27,7 @@ local Device          = require("device")
 local Screen          = Device.screen
 local logger          = require("logger")
 local _ = require("sui_i18n").translate
+local BD = require("ui/bidi")
 
 local Config = require("sui_config")
 local SUISettings = require("sui_store")
@@ -1109,8 +1110,12 @@ function M.registerTouchZones(plugin, fm_self)
                     ratio_h = nav_h      / screen_h,
                 },
                 handler = function(_ges)
-                    local action_id = tabs_snap[pos]
-                    logger.dbg("simpleui tz: navbar_pos_", pos, "fired action=", tostring(action_id))
+                    -- In RTL the HorizontalGroup visually reverses the tabs,
+                    -- so physical slot i maps to the mirrored tab index.
+                    local tab_pos = BD.mirroredUILayout() and (center_n - pos + 1) or pos
+                    local action_id = tabs_snap[tab_pos]
+                    logger.dbg("simpleui tz: navbar_pos_", pos, "fired action=", tostring(action_id),
+                        "(tab_pos=", tab_pos, "rtl=", tostring(BD.mirroredUILayout()), ")")
                     if not action_id then return true end
                     plugin:_onTabTap(action_id, fm_self)
                     return true
@@ -1174,7 +1179,11 @@ function M.registerTouchZones(plugin, fm_self)
                 handler = function(_ges)
                     if not active then return false end
                     if pos > Config.getNumTabs() then return false end
-                    local action_id = tabs_snap[pos]
+                    -- In RTL the HorizontalGroup visually reverses the tabs,
+                    -- so physical slot i maps to the mirrored tab index.
+                    local cur_n = Config.getNumTabs()
+                    local tab_pos = BD.mirroredUILayout() and (cur_n - pos + 1) or pos
+                    local action_id = tabs_snap[tab_pos]
                     if not action_id then return true end
                     plugin:_onTabTap(action_id, fm_self)
                     return true
@@ -1361,139 +1370,6 @@ local function _isInPlaceAction(action_id)
     return _QA().isInPlace(action_id)
 end
 
--- ---------------------------------------------------------------------------
--- showBookmarkBrowserSourceDialog
--- Shared helper: shows the source-selection ButtonDialog for the bookmark
--- browser. Used by both _executeInPlace (HS open, dialog floats on top) and
--- navigate (HS closed, normal open). Extracted to avoid duplication.
--- `bb_ui`  — the widget context to pass to BookmarkBrowser:show().
--- ---------------------------------------------------------------------------
-function M.showBookmarkBrowserSourceDialog(bb_ui)
-    local ok_bb, BookmarkBrowser = pcall(require, "ui/widget/bookmarkbrowser")
-    if not ok_bb then
-        showUnavailable(_("Bookmark browser not available."))
-        return
-    end
-    -- Remember whether the HS was open at call time.
-
-    local FM = package.loaded["apps/filemanager/filemanager"]
-    local plugin = FM and FM.instance and FM.instance._simpleui_plugin
-    local prev_action = plugin and plugin.active_action
-    if plugin then
-        M.setTempTabActive(plugin, "bookmark_browser", true, prev_action)
-    end
-
-    -- HS lifecycle managed here:
-    --   • Cancel  → HS stays open, repaint to clear any dirty region.
-    --   • Source chosen → BB opens on top of the HS (no intermediate close).
-    --     When the BB closes, the HS is closed intentionally so the user
-    --     returns to the bare FM (no _doShowHS re-open loop).
-    --
-    -- The InfoMessage “Fetching bookmarks…” is marked _navbar_closing_intentionally
-    -- so its close does not trigger patchUIManagerClose's "Start with HS" logic.
-    local HS = package.loaded["sui_homescreen"]
-    local hs_was_open = HS and HS._instance ~= nil
-    local home_dir = G_reader_settings:readSetting("home_dir")
-    local source_dialog
-    local function open_with_source(fetch_fn, subfolders)
-        UIManager:close(source_dialog)
-        -- Do NOT close the HS here — the BB opens directly on top of it,
-        -- avoiding the FM flash that occurred in earlier versions when the
-        -- HS was torn down before the nextTick ran.
-        local info_msg = require("ui/widget/infomessage"):new{
-            text    = _("Fetching bookmarks\xe2\x80\xa6"),
-            timeout = 0.1,
-            _navbar_closing_intentionally = true,
-        }
-        UIManager:show(info_msg)
-        UIManager:nextTick(function()
-            local books = {}
-            if type(fetch_fn) == "function" then
-                fetch_fn(books)
-            else
-                local util             = require("util")
-                local DocumentRegistry = require("document/documentregistry")
-                util.findFiles(fetch_fn, function(file)
-                    books[file] = DocumentRegistry:hasProvider(file) or nil
-                end, subfolders)
-            end
-            BookmarkBrowser:show(books, bb_ui)
-            -- After BookmarkBrowser:show() its Menu widget is on the stack
-            -- on top of the HS. Intercept onCloseWidget so that when the
-            -- user dismisses the BB, the HS is closed intentionally (no
-            -- _doShowHS loop) and the user returns to the bare FM.
-            if hs_was_open then
-                local UI_mod = require("sui_core")
-                local stack  = UI_mod.getWindowStack()
-                for i = #stack, 1, -1 do
-                    local w = stack[i] and stack[i].widget
-                    if w and w.covers_fullscreen and w.name ~= "homescreen" then
-                        local orig_cw = w.onCloseWidget
-                        w.onCloseWidget = function(self_w)
-                            local hs_inst2 = HS and HS._instance
-                            if hs_inst2 then
-                                hs_inst2._navbar_closing_intentionally = true
-                                UIManager:close(hs_inst2)
-                            end
-                            if plugin then
-                                M.setTempTabActive(plugin, "bookmark_browser", false, prev_action)
-                            end
-                            self_w._navbar_closing_intentionally = true
-                            self_w.onCloseWidget = orig_cw
-                            if orig_cw then return orig_cw(self_w) end
-                        end
-                        break
-                    end
-                end
-            end
-        end)
-    end
-    local ButtonDialog = require("ui/widget/buttondialog")
-    source_dialog = ButtonDialog:new{
-        title           = _("Bookmark browser"),
-        title_align     = "center",
-        width_factor    = 0.8,
-        buttons = {
-            {{ text = _("History"), callback = function()
-                open_with_source(function(books)
-                    for _, v in ipairs(require("readhistory").hist) do
-                        books[v.file] = v.select_enabled or nil
-                    end
-                end)
-            end }},
-            {{ text = _("Collections"), callback = function()
-                open_with_source(function(books)
-                    local rc = require("readcollection")
-                    if rc.coll then
-                        for _, coll in pairs(rc.coll) do
-                            for file in pairs(coll) do books[file] = true end
-                        end
-                    end
-                end)
-            end }},
-            {{ text = _("Home folder"), enabled = home_dir ~= nil,
-               callback = function() open_with_source(home_dir, false) end }},
-            {{ text = _("Home folder + subfolders"), enabled = home_dir ~= nil,
-               callback = function() open_with_source(home_dir, true) end }},
-            {{ text = _("Cancel"), callback = function()
-                if plugin then
-                    M.setTempTabActive(plugin, "bookmark_browser", false, prev_action)
-                end
-                UIManager:close(source_dialog)
-                -- Repaint the HS to clear any dirty region left by the dialog.
-                if hs_was_open then
-                    local hs_inst = HS and HS._instance
-                    if hs_inst then
-                        UIManager:setDirty(hs_inst, "full")
-                    end
-                end
-            end }},
-        },
-    }
-    UIManager:show(source_dialog)
-end
-
--- ---------------------------------------------------------------------------
 -- _executeInPlace: runs an in-place action while keeping the HS open.
 -- The HS is temporarily moved to the bottom of the window stack so that
 -- Dispatcher:sendEvent and broadcastEvent reach FM plugins correctly.
@@ -1577,7 +1453,7 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
     -- When the FM has been torn down and recreated (e.g. after returning from
     -- the reader), plugin.ui on the *old* plugin instance no longer has
     -- _navbar_container. Fall back to the live FileManager instance so that
-    -- replaceBar and _goHome operate on the real widget.
+    -- replaceBar and QA.execute operate on the real widget.
     if not (fm and fm._navbar_container) then
         local FM2 = package.loaded["apps/filemanager/filemanager"]
         local live = FM2 and FM2.instance
@@ -1607,59 +1483,6 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
         return
     end
 
-    -- Replicates FileChooser:goHome() behaviour:
-    --   1. Falls back to Device.home_dir if home_dir is unset or the folder is gone.
-    --   2. If the FM is already at the home path: page-reset + content refresh.
-    --   3. Otherwise: navigate to the home path.
-    -- The suppress flag prevents onPathChanged from firing a redundant bar rebuild
-    -- (the caller already handles the bar before or after invoking this helper).
-    -- Returns true when a home directory was resolved and acted upon, false otherwise.
-    local function _goHome(target_fm)
-        local fc = target_fm and target_fm.file_chooser
-        if not fc then return false end
-        local home = G_reader_settings:readSetting("home_dir")
-        local lfs  = require("libs/libkoreader-lfs")
-        if not home or lfs.attributes(home, "mode") ~= "directory" then
-            home = Device.home_dir
-        end
-        if not home then return false end
-        -- If we are inside a virtual series folder, exit it first via the
-        -- public API (avoids direct access to internal series-view state).
-        -- Virtual folders keep fc.path pointing at the real parent directory,
-        -- so the fc.path == home check below would incorrectly treat a virtual
-        -- folder whose parent is the home dir as "already at home" and call
-        -- refreshPath(), which re-enters the virtual folder instead of closing it.
-        local ok_fc_mod, FC_mod = pcall(require, "sui_foldercovers")
-        local in_virtual = ok_fc_mod and FC_mod.isInSeriesView and FC_mod.isInSeriesView(fc)
-        if in_virtual then
-            FC_mod.exitSeriesView(fc)
-        end
-        if fc.path == home and not in_virtual then
-            -- Already at home (and not in a virtual folder). Always go to
-            -- page 1 and refresh — this mirrors the "Go to HOME folder" button
-            -- behaviour: if the user is on a sub-page of the library, tapping
-            -- the tab again scrolls back to the top. Suppress onPathChanged in
-            -- both cases (re-tap and cross-tab) because the bar was already
-            -- rebuilt by onTabTap.
-            -- No refreshPath here: the item_table is already correct in memory
-            -- and nothing changed while the overlay was open, so a filesystem
-            -- scan would be redundant.
-            target_fm._navbar_suppress_path_change = true
-            pcall(function() fc:onGotoPage(1) end)
-            target_fm._navbar_suppress_path_change = nil
-        else
-            target_fm._navbar_suppress_path_change = true
-            fc:changeToPath(home)
-            target_fm._navbar_suppress_path_change = nil
-        end
-        if target_fm.updateTitleBarPath then
-            pcall(function()
-                target_fm:updateTitleBarPath(home, true)
-            end)
-        end
-        return true
-    end
-
     if hs_open then
         -- Close the HS first — the FM is invisible underneath so there is no
         -- benefit to navigating it before the close. Doing navigation after
@@ -1681,19 +1504,6 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
         if fm._navbar_container then
             M.replaceBar(fm, M.buildBarWidget(indicator_tab, tabs), tabs)
             UIManager:setDirty(fm, "ui")
-        end
-        -- For "home": navigate the FM to home_dir now that the HS is gone.
-        -- A single setDirty from replaceBar above covers the repaint.
-        if action_id == "home" then
-            if fm.file_chooser then
-                _goHome(fm)
-            else
-                -- file_chooser not yet created — schedule for next event cycle.
-                UIManager:scheduleIn(0, function()
-                    _goHome(plugin.ui)
-                end)
-            end
-            return
         end
         -- For other actions, fall through with fm_self = fm.
         fm_self = fm
@@ -1739,101 +1549,6 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
         show_unavailable = showUnavailable,
         already_active = already_active,
     })
-end
-
--- ---------------------------------------------------------------------------
--- Simple device actions
--- ---------------------------------------------------------------------------
-
-function M.doWifiToggle(plugin)
-    local ok_hw, has_wifi = pcall(function() return Device:hasWifiToggle() end)
-    if not (ok_hw and has_wifi) then
-        UIManager:show(InfoMessage():new{ text = _("WiFi not available on this device."), timeout = 2 })
-        return
-    end
-    local ok_nm, NetworkMgr = pcall(require, "ui/network/manager")
-    if not ok_nm or not NetworkMgr then
-        UIManager:show(InfoMessage():new{ text = _("Network manager unavailable."), timeout = 2 })
-        return
-    end
-    local ok_state, wifi_on = pcall(function() return NetworkMgr:isWifiOn() end)
-    if not ok_state then wifi_on = false end
-    if wifi_on then
-        Config.wifi_optimistic = false
-        pcall(function() NetworkMgr:turnOffWifi() end)
-        UIManager:show(InfoMessage():new{ text = _("Wi-Fi off"), timeout = 1 })
-    else
-        Config.wifi_optimistic = true
-        local ok_on, err = pcall(function() NetworkMgr:turnOnWifi() end)
-        if not ok_on then
-            logger.warn("simpleui: Wi-Fi turn-on error:", tostring(err))
-            Config.wifi_optimistic = nil
-        end
-    end
-
-    -- Immediately refresh ALL wifi indicators with the optimistic state.
-    -- This must happen BEFORE broadcastEvent, which triggers
-    -- onNetworkConnected/Disconnected and clears wifi_optimistic.
-    if plugin then
-        -- 1. Bottom bar tabs.
-        plugin:_rebuildAllNavbars()
-
-        -- 2. Topbar wifi icon — call refresh() directly (synchronous) instead
-        --    of scheduleRefresh(0) which defers to the next event-loop tick,
-        --    by which time wifi_optimistic will already be nil.
-        local Topbar = require("sui_topbar")
-        local cfg    = Config.getTopbarConfig()
-        if (cfg.side["wifi"] or "hidden") ~= "hidden" then
-            pcall(function() Topbar.refresh(plugin) end)
-        end
-
-        -- 3. Quick Actions icons and any other homescreen modules — these are
-        --    baked into ImageWidgets at build time, so a setDirty alone is not
-        --    enough. refreshImmediate rebuilds the full page synchronously.
-        local HS = package.loaded["sui_homescreen"]
-        if HS and HS._instance then
-            pcall(function() HS.refreshImmediate(false) end)
-        end
-    end
-
-    -- Broadcast network events so other listeners (e.g. KOReader's own network
-    -- status bar) are notified. Set a flag first so onNetworkConnected/Disconnected
-    -- knows this event came from us (optimistic state already applied) and should
-    -- rebuild the HS without resetting wifi_optimistic.
-    Config.wifi_broadcast_self = true
-    if wifi_on then
-        pcall(function()
-            UIManager:broadcastEvent(require("ui/event"):new("NetworkDisconnected"))
-        end)
-    else
-        pcall(function()
-            UIManager:broadcastEvent(require("ui/event"):new("NetworkConnected"))
-        end)
-    end
-    Config.wifi_broadcast_self = nil
-
-end
-
-function M.refreshWifiIcon(plugin)
-    if not Config.wifi_broadcast_self then
-        Config.wifi_optimistic = nil
-    end
-    plugin:_rebuildAllNavbars()
-    local HS = package.loaded["sui_homescreen"]
-    if HS and HS.refreshImmediate then
-        pcall(function() HS.refreshImmediate(false) end)
-    end
-end
-
-function M.showFrontlightDialog()
-    local ok_f, has_fl = pcall(function() return Device:hasFrontlight() end)
-    if not ok_f or not has_fl then
-        UIManager:show(InfoMessage():new{
-            text = _("Frontlight not available on this device."), timeout = 2,
-        })
-        return
-    end
-    UIManager:show(require("ui/widget/frontlightwidget"):new{})
 end
 
 -- ---------------------------------------------------------------------------
@@ -2011,96 +1726,6 @@ function M.restoreTabInFM(plugin, tabs, prev_action)
     plugin.active_action = restored
     M.replaceBar(fm, M.buildBarWidget(restored, t), t)
     UIManager:setDirty(fm, "ui")
-end
-
--- ---------------------------------------------------------------------------
--- Power dialog
--- ---------------------------------------------------------------------------
-
-function M.showPowerDialog(plugin)
-    if plugin._power_dialog then return end  -- guard: ignore double-tap
-    local ButtonDialog = require("ui/widget/buttondialog")
-    local dialog_w = math.floor(Screen:getWidth() * 0.42)
-    -- Capture the active tab before opening the dialog so Cancel/close can
-    -- restore the bar indicator to the correct state.
-    local prev_action = plugin.active_action
-
-    M.setPowerTabActive(plugin, true, prev_action)
-
-    -- _clear is the single point of cleanup for plugin._power_dialog.
-    -- It is called from onCloseWidget (fires on every close path, including
-    -- programmatic UIManager:close() calls) so the guard is always released
-    -- regardless of how the dialog disappears.
-    -- _quitting is set by the Restart/Quit/Sleep callbacks so _clear skips
-    -- the bar restore on those paths (the app is about to exit or suspend).
-    local _quitting = false
-    local function _clear()
-        plugin._power_dialog = nil
-        if _quitting then return end
-        -- Restore the bar to whichever tab was active before the dialog opened.
-        -- This covers Cancel, tapping outside, and the Back key — all paths
-        -- that do not quit/restart/sleep and therefore need the indicator restored.
-        M.setPowerTabActive(plugin, false, prev_action)
-    end
-
-    -- Build the button list dynamically based on what this device supports.
-    -- Each entry is a single-button row: { { text, callback } }.
-    local buttons = {}
-
-    if Device:canRestart() then
-        buttons[#buttons + 1] = {{ text = _("Restart"), callback = function()
-            _quitting = true
-            local d = plugin._power_dialog
-            plugin._power_dialog = nil
-            UIManager:close(d)
-            UIManager:flushSettings()
-            UIManager:restartKOReader()
-        end }}
-    end
-
-    if Device:canReboot() then
-        buttons[#buttons + 1] = {{ text = _("Reboot"), callback = function()
-            local d = plugin._power_dialog
-            plugin._power_dialog = nil
-            UIManager:close(d)
-            -- askForReboot fires the native Reboot event handler which shows
-            -- a ConfirmBox ("Are you sure?") and only then calls reboot_action.
-            -- _quitting is intentionally NOT set here so _clear() restores the
-            -- bar indicator if the user cancels the confirmation dialog.
-            UIManager:askForReboot()
-        end }}
-    end
-
-    if Device:canSuspend() then
-        buttons[#buttons + 1] = {{ text = _("Sleep"), callback = function()
-            _quitting = true
-            local d = plugin._power_dialog
-            plugin._power_dialog = nil
-            UIManager:close(d)
-            UIManager:flushSettings()
-            UIManager:suspend()
-        end }}
-    end
-
-    buttons[#buttons + 1] = {{ text = _("Quit"), callback = function()
-        _quitting = true
-        local d = plugin._power_dialog
-        plugin._power_dialog = nil
-        UIManager:close(d)
-        UIManager:flushSettings()
-        UIManager:quit(0)
-    end }}
-
-    plugin._power_dialog = ButtonDialog:new{
-        width = dialog_w,
-        -- tap_close_callback covers taps outside the dialog and the physical
-        -- Back key via ButtonDialog:onClose. onCloseWidget below covers all
-        -- remaining paths (programmatic close, stack teardown, etc.).
-        tap_close_callback = _clear,
-        onCloseWidget      = _clear,
-        buttons            = buttons,
-    }
-    UIManager:show(plugin._power_dialog)
 end
 
 return M

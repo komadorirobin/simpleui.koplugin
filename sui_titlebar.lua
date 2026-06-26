@@ -1239,6 +1239,7 @@ function M.applyToSub(widget)
                                 _reloadImage(tb_self.left_button.image)
                             end
                         end
+                        local UIManager = require("ui/uimanager")
                         UIManager:setDirty(tb_self.show_parent or widget, "ui", tb_self.dimen)
                     end
                 else

@@ -1,44 +1,42 @@
 # Simple UI — KOReader plugin
-# Czech translation
+# Translation template
 #
 msgid ""
 msgstr ""
 "Project-Id-Version: simpleui\n"
-"POT-Creation-Date: 2026-06-03 19:48\n"
-"Language: cs_CZ\n"
+"POT-Creation-Date: 2026-04-14 21:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : (n>=2 && n<=4 ? 1 : 2));\n"
 
 #: desktop_modules/module_reading_goals.lua:854
 msgid "  Set Goal  (%d hr/month)"
-msgstr "  Nastavit cíl  (%d hod/měsíc)"
+msgstr "  目標を設定  (%d 時間/月)"
 
 #: desktop_modules/module_reading_goals.lua:874
 msgid "  Set Goal  (%d min/day)"
-msgstr "  Nastavit cíl  (%d min/den)"
+msgstr "  目標を設定  (%d 分/日)"
 
 #: desktop_modules/module_reading_goals.lua:834
 msgid "  Set Goal  (%s)"
-msgstr "  Nastavit cíl  (%s)"
+msgstr "  目標を設定  (%s)"
 
 #: desktop_modules/module_reading_goals.lua:853
 #: desktop_modules/module_reading_goals.lua:873
 msgid "  Set Goal  (disabled)"
-msgstr "  Nastavit cíl  (vypnuto)"
+msgstr "  目標を設定  (無効)"
 
 #: sui_foldercovers.lua:2358
 msgid " p."
-msgstr " str."
+msgstr " p."
 
 #: desktop_modules/module_reading_goals.lua:953
 msgid "%d hr/month"
-msgstr "%d hod/měsíc"
+msgstr "%d 時間/月"
 
 #: desktop_modules/module_reading_goals.lua:968
 msgid "%d min/day"
-msgstr "%d min/den"
+msgstr "%d 分/日"
 
 #: desktop_modules/module_recent.lua:145
 #: desktop_modules/module_tbr.lua:372
@@ -52,11 +50,11 @@ msgstr "%d%%"
 #: desktop_modules/module_currently.lua:621
 #: desktop_modules/module_currently.lua:630
 msgid "%d%% Read"
-msgstr "Přečteno %d%%"
+msgstr "%d%% 読了"
 
 #: desktop_modules/module_currently.lua:724
 msgid "%s left"
-msgstr "zbývá %s"
+msgstr "残り %s"
 
 #: desktop_modules/module_reading_goals.lua:496
 #: desktop_modules/module_reading_goals.lua:524
@@ -66,108 +64,98 @@ msgstr "zbývá %s"
 #: desktop_modules/module_currently.lua:722
 #: desktop_modules/module_currently.lua:733
 msgid "%s read"
-msgstr "přečteno %s"
+msgstr "%s 読了"
 
 #: desktop_modules/module_coverdeck.lua:644
 #: desktop_modules/module_currently.lua:687
 #: desktop_modules/module_currently.lua:691
 msgid "%s remaining"
-msgstr "zbývá %s"
+msgstr "残り %s"
 
 #: desktop_modules/module_collections.lua:354
 #: desktop_modules/module_reading_stats.lua:276
 #: desktop_modules/module_quick_actions.lua:492
 msgid "(%d/%d — at limit)"
-msgstr "(%d/%d — na limitu)"
+msgstr "(%d/%d — 上限)"
 
 #: sui_menu.lua:2698
 msgid "4-Cover Grid (Mosaic View Only)"
-msgstr "Mřížka 4 obálek (pouze mozaikové zobrazení)"
+msgstr "4カバーグリッド（モザイク表示のみ）"
 
 #: sui_menu.lua:3863
 #: sui_menu.lua:3948
 #: sui_presets.lua:906
 #: sui_presets.lua:992
 msgid "A preset named \"%s\" already exists."
-msgstr "Předvolba s názvem \"%s\" již existuje."
+msgstr "「%s」という名前のプリセットは既に存在します。"
 
 #: sui_menu.lua:3809
 #: sui_presets.lua:847
-msgid ""
-"A preset named \"%s\" already exists.\n"
-"Overwrite it?"
-msgstr ""
-"Předvolba s názvem \"%s\" již existuje.\n"
-"Přepsat ji?"
+msgid "A preset named \"%s\" already exists.\nOverwrite it?"
+msgstr "「%s」という名前のプリセットは既に存在します。\n上書きしますか？"
 
 #: sui_menu.lua:1039
 #: sui_menu.lua:1316
-msgid ""
-"A restart is required to apply the new bar size across all layouts.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Pro použití nové velikosti lišty ve všech rozvrženích je nutný restart.\n"
-"\n"
-"Restartovat nyní?"
+msgid "A restart is required to apply the new bar size across all layouts.\n\nRestart now?"
+msgstr "すべてのレイアウトに新しいバーのサイズを適用するには再起動が必要です。\n\n今すぐ再起動しますか？"
 
 #: sui_stats_windows.lua:2092
 msgid "ALL TIME"
-msgstr "CELKEM"
+msgstr "全期間"
 
 #: sui_menu.lua:4341
 #: sui_settings_window.lua:290
 #: sui_settings_window.lua:847
 msgid "About"
-msgstr "O aplikaci"
+msgstr "について"
 
 #: desktop_modules/module_coverdeck.lua:870
 msgid "Above"
-msgstr "Nahoře"
+msgstr "上"
 
 #: sui_style.lua:1774
 msgid "Accent / Active Color"
-msgstr "Akcentní / aktivní barva"
+msgstr "アクセント / アクティブカラー"
 
 #: sui_quickactions.lua:1617
 #: sui_quickactions.lua:1660
 msgid "Action"
-msgstr "Akce"
+msgstr "アクション"
 
 #: desktop_modules/module_action_list.lua:329
 msgid "Action List"
-msgstr "Seznam akcí"
+msgstr "アクションリスト"
 
 #: sui_quickactions.lua:1781
 msgid "Action Type"
-msgstr "Typ akce"
+msgstr "アクションタイプ"
 
 #: sui_quickactions.lua:566
 msgid "Action error: %s"
-msgstr "Chyba akce: %s"
+msgstr "アクションエラー: %s"
 
 #: sui_quickactions.lua:1636
 msgid "Action name…"
-msgstr "Název akce…"
+msgstr "アクション名…"
 
 #: sui_quickactions.lua:559
 msgid "Action not available: %s"
-msgstr "Akce není k dispozici: %s"
+msgstr "アクションは利用できません: %s"
 
 #: sui_quicksettings_bar.lua:1179
 #: sui_quicksettings_bar.lua:1206
 msgid "Add Action"
-msgstr "Přidat akci"
+msgstr "アクションを追加"
 
 #: sui_menu.lua:1548
 #: sui_menu.lua:1586
 msgid "Add Button"
-msgstr "Přidat tlačítko"
+msgstr "ボタンを追加"
 
 #: desktop_modules/module_collections.lua:837
 #: desktop_modules/module_collections.lua:871
 msgid "Add Collection"
-msgstr "Přidat kolekci"
+msgstr "コレクションを追加"
 
 #: sui_homescreen.lua:1848
 #: sui_menu.lua:967
@@ -192,87 +180,87 @@ msgstr "Přidat kolekci"
 #: desktop_modules/module_quick_actions.lua:440
 #: desktop_modules/module_quick_actions.lua:476
 msgid "Add Item"
-msgstr "Přidat položku"
+msgstr "アイテムを追加"
 
 #: sui_settings_window.lua:849
 #: sui_settings_window.lua:965
 msgid "Add Module"
-msgstr "Přidat modul"
+msgstr "モジュールを追加"
 
 #: sui_settings_window.lua:931
 msgid "Add Page"
-msgstr "Přidat stránku"
+msgstr "ページを追加"
 
 #: sui_menu.lua:1905
 #: sui_quicksettings_bar.lua:1052
 #: desktop_modules/module_action_list.lua:424
 #: desktop_modules/module_quick_actions.lua:345
 msgid "Add at least 2 actions to arrange."
-msgstr "Pro uspořádání přidejte alespoň 2 akce."
+msgstr "配置するには少なくとも2つのアクションを追加してください。"
 
 #: desktop_modules/module_tbr.lua:582
 msgid "Add at least 2 books to arrange."
-msgstr "Pro uspořádání přidejte alespoň 2 knihy."
+msgstr "配置するには少なくとも2冊の本を追加してください。"
 
 #: desktop_modules/module_reading_stats.lua:557
 msgid "Add at least 2 stats to arrange."
-msgstr "Pro uspořádání přidejte alespoň 2 statistiky."
+msgstr "配置するには少なくとも2つの統計を追加してください。"
 
 #: desktop_modules/module_tbr.lua:294
 msgid "Add to To Be Read"
-msgstr "Přidat do K přečtení"
+msgstr "読みたいリストに追加"
 
 #: sui_window.lua:1832
 msgid "Advanced"
-msgstr "Pokročilé"
+msgstr "詳細"
 
 #: sui_window.lua:1741
 msgid "Advanced option"
-msgstr "Pokročilá volba"
+msgstr "詳細オプション"
 
 #: desktop_modules/module_quote.lua:1381
 #: desktop_modules/module_action_list.lua:587
 #: desktop_modules/module_reading_stats.lua:713
 #: desktop_modules/module_clock.lua:851
 msgid "Alignment"
-msgstr "Zarovnání"
+msgstr "配置"
 
 #: sui_window.lua:2862
 #: sui_settings_window.lua:625
 msgid "All items have already been added."
-msgstr "Všechny položky již byly přidány."
+msgstr "すべてのアイテムは既に追加されています。"
 
 #: sui_settings_window.lua:603
 msgid "All modules have already been added."
-msgstr "Všechny moduly již byly přidány."
+msgstr "すべてのモジュールは既に追加されています。"
 
 #: desktop_modules/module_reading_stats.lua:92
 msgid "All time — Books"
-msgstr "Celkem — Knihy"
+msgstr "全期間 — 本"
 
 #: desktop_modules/module_reading_stats.lua:91
 msgid "All time — Time"
-msgstr "Celkem — Čas"
+msgstr "全期間 — 時間"
 
 #: sui_menu.lua:2479
 msgid "Always"
-msgstr "Vždy"
+msgstr "常に"
 
 #: desktop_modules/module_reading_goals.lua:821
 #: desktop_modules/module_reading_goals.lua:887
 #: desktop_modules/module_reading_goals.lua:924
 #: desktop_modules/module_reading_goals.lua:941
 msgid "Annual Goal"
-msgstr "Roční cíl"
+msgstr "年間目標"
 
 #: desktop_modules/module_reading_goals.lua:387
 msgid "Annual Reading Goal"
-msgstr "Roční čtenářský cíl"
+msgstr "年間読書目標"
 
 #: sui_menu.lua:1764
 #: sui_menu.lua:1767
 msgid "Appearance"
-msgstr "Vzhled"
+msgstr "外観"
 
 #: sui_config.lua:818
 #: sui_config.lua:890
@@ -286,34 +274,34 @@ msgstr "Vzhled"
 #: desktop_modules/module_clock.lua:894
 #: desktop_modules/module_clock.lua:920
 msgid "Apply"
-msgstr "Použít"
+msgstr "適用"
 
 #: sui_style.lua:1848
 msgid "Apply Palette…"
-msgstr "Použít paletu…"
+msgstr "パレットを適用…"
 
 #: desktop_modules/module_clock.lua:60
 msgid "April"
-msgstr "Duben"
+msgstr "4月"
 
 #: desktop_modules/module_tbr.lua:570
 #: desktop_modules/module_tbr.lua:643
 #: desktop_modules/module_tbr.lua:666
 msgid "Arrange"
-msgstr "Uspořádat"
+msgstr "配置"
 
 #: sui_menu.lua:1909
 #: desktop_modules/module_action_list.lua:444
 #: desktop_modules/module_quick_actions.lua:363
 msgid "Arrange %s"
-msgstr "Uspořádat %s"
+msgstr "%sを配置"
 
 #: sui_menu.lua:1492
 #: sui_menu.lua:1499
 #: sui_menu.lua:1688
 #: sui_menu.lua:1703
 msgid "Arrange Buttons"
-msgstr "Uspořádat tlačítka"
+msgstr "ボタンを配置"
 
 #: sui_homescreen.lua:1847
 #: sui_menu.lua:679
@@ -331,181 +319,181 @@ msgstr "Uspořádat tlačítka"
 #: desktop_modules/module_currently.lua:1113
 #: desktop_modules/module_quick_actions.lua:336
 msgid "Arrange Items"
-msgstr "Uspořádat položky"
+msgstr "アイテムを配置"
 
 #: sui_quicksettings_bar.lua:1068
 msgid "Arrange Quick Settings"
-msgstr "Uspořádat rychlá nastavení"
+msgstr "クイック設定を配置"
 
 #: desktop_modules/module_reading_stats.lua:568
 msgid "Arrange Reading Stats"
-msgstr "Uspořádat statistiky čtení"
+msgstr "読書統計を配置"
 
 #: desktop_modules/module_coverdeck.lua:896
 #: desktop_modules/module_coverdeck.lua:923
 msgid "Arrange Statistics"
-msgstr "Uspořádat statistiky"
+msgstr "統計を配置"
 
 #: sui_menu.lua:286
 #: sui_menu.lua:304
 msgid "Arrange Tabs"
-msgstr "Uspořádat karty"
+msgstr "タブを配置"
 
 #: desktop_modules/module_tbr.lua:575
 #: desktop_modules/module_tbr.lua:613
 msgid "Arrange To Be Read List"
-msgstr "Uspořádat seznam K přečtení"
+msgstr "読みたいリストを配置"
 
 #: sui_presets.lua:130
 msgid "At a Glance"
-msgstr "Na první pohled"
+msgstr "概要"
 
 #: desktop_modules/module_clock.lua:61
 msgid "August"
-msgstr "Srpen"
+msgstr "8月"
 
 #: desktop_modules/module_currently.lua:247
 msgid "Author"
-msgstr "Autor"
+msgstr "著者"
 
 #: sui_menu.lua:4170
 msgid "Author: %s"
-msgstr "Autor: %s"
+msgstr "著者: %s"
 
 #: sui_quickactions.lua:399
 #: sui_config.lua:125
 #: sui_browsemeta.lua:70
 msgid "Authors"
-msgstr "Autoři"
+msgstr "著者"
 
 #: sui_menu.lua:2709
 msgid "Auto (Single ↔ 4-Cover Grid)"
-msgstr "Automaticky (jedna ↔ mřížka 4 obálek)"
+msgstr "自動（シングル ↔ 4カバーグリッド）"
 
 #: sui_foldercovers.lua:769
 #: sui_foldercovers.lua:826
 #: sui_browsemeta.lua:973
 #: desktop_modules/module_collections.lua:732
 msgid "Auto (first book)"
-msgstr "Automaticky (první kniha)"
+msgstr "自動（最初の本）"
 
 #: sui_menu.lua:2294
 msgid "Auto-rotate"
-msgstr "Automaticky otáčet"
+msgstr "自動回転"
 
 #: sui_menu.lua:4175
 msgid "Automatic Update Check"
-msgstr "Automatická kontrola aktualizací"
+msgstr "自動アップデートチェック"
 
 #: sui_stats_windows.lua:742
 #: sui_stats_windows.lua:1787
 msgid "Average per day"
-msgstr "Průměr za den"
+msgstr "1日あたり平均"
 
 #: sui_stats_windows.lua:744
 msgid "Average per page"
-msgstr "Průměr na stránku"
+msgstr "1ページあたり平均"
 
 #: sui_titlebar.lua:103
 #: sui_titlebar.lua:109
 msgid "Back"
-msgstr "Zpět"
+msgstr "戻る"
 
 #: sui_style.lua:87
 msgid "Back Button"
-msgstr "Tlačítko Zpět"
+msgstr "戻るボタン"
 
 #: sui_menu.lua:3011
 #: sui_menu.lua:3020
 #: sui_menu.lua:3026
 #: desktop_modules/module_collections.lua:913
 msgid "Badge"
-msgstr "Štítek"
+msgstr "バッジ"
 
 #: sui_menu.lua:2739
 msgid "Badge Size"
-msgstr "Velikost štítku"
+msgstr "バッジサイズ"
 
 #: sui_menu.lua:2727
 msgid "Badges"
-msgstr "Štítky"
+msgstr "バッジ"
 
 #: sui_foldercovers.lua:259
 #: sui_menu.lua:2944
 #: sui_menu.lua:2953
 #: sui_menu.lua:2959
 msgid "Banner"
-msgstr "Banner"
+msgstr "バナー"
 
 #: sui_menu.lua:545
 #: sui_menu.lua:1292
 msgid "Bar Size"
-msgstr "Velikost lišty"
+msgstr "バーのサイズ"
 
 #: sui_menu.lua:1250
 msgid "Bar Style"
-msgstr "Styl lišty"
+msgstr "バースタイル"
 
 #: sui_menu.lua:1277
 #: sui_quicksettings_bar.lua:1283
 #: desktop_modules/module_quick_actions.lua:595
 msgid "Bare"
-msgstr "Bez pozadí"
+msgstr "ベア"
 
 #: sui_menu.lua:4303
 #: sui_settings_window.lua:250
 #: sui_settings_window.lua:844
 msgid "Bars"
-msgstr "Lišty"
+msgstr "バー"
 
 #: sui_config.lua:161
 msgid "Battery"
-msgstr "Baterie"
+msgstr "バッテリー"
 
 #: desktop_modules/module_clock.lua:905
 #: desktop_modules/module_clock.lua:913
 msgid "Battery Spacing"
-msgstr "Rozestup baterie"
+msgstr "バッテリー間隔"
 
 #: sui_menu.lua:2574
 #: sui_settings_window.lua:322
 #: sui_settings_window.lua:855
 msgid "Behaviour"
-msgstr "Chování"
+msgstr "動作"
 
 #: desktop_modules/module_coverdeck.lua:879
 msgid "Below"
-msgstr "Dole"
+msgstr "下"
 
 #: sui_stats_windows.lua:1845
 #: sui_stats_windows.lua:1868
 msgid "Best streak"
-msgstr "Nejlepší série"
+msgstr "最高連続記録"
 
 #: sui_quickactions.lua:1403
 msgid "Book Info"
-msgstr "Informace o knize"
+msgstr "書籍情報"
 
 #: sui_settings_window.lua:258
 msgid "Book-browser settings"
-msgstr "Nastavení prohlížeče knih"
+msgstr "ブックブラウザ設定"
 
 #: sui_bottombar.lua:1419
 msgid "Bookmark browser"
-msgstr "Prohlížeč záložek"
+msgstr "ブックマークブラウザ"
 
 #: sui_bottombar.lua:1340
 msgid "Bookmark browser not available."
-msgstr "Prohlížeč záložek není k dispozici."
+msgstr "ブックマークブラウザは利用できません。"
 
 #: sui_quickactions.lua:301
 #: sui_config.lua:118
 msgid "Bookmarks"
-msgstr "Záložky"
+msgstr "ブックマーク"
 
 #: desktop_modules/module_reading_goals.lua:388
 msgid "Books to read in %s:"
-msgstr "Knihy k přečtení v %s:"
+msgstr "%sで読む本:"
 
 #: sui_menu.lua:2762
 #: sui_menu.lua:2769
@@ -514,94 +502,94 @@ msgstr "Knihy k přečtení v %s:"
 #: sui_menu.lua:3150
 #: desktop_modules/module_collections.lua:934
 msgid "Bottom"
-msgstr "Dole"
+msgstr "下"
 
 #: sui_bottombar.lua:887
 msgid "Bottom Bar"
-msgstr "Spodní lišta"
+msgstr "ボトムバー"
 
 #: sui_style.lua:1767
 msgid "Bottom Bar — Background"
-msgstr "Spodní lišta — pozadí"
+msgstr "ボトムバー — 背景"
 
 #: sui_style.lua:1770
 msgid "Bottom Bar — Text and Icons"
-msgstr "Spodní lišta — text a ikony"
+msgstr "ボトムバー — テキストとアイコン"
 
 #: sui_menu.lua:1349
 #: sui_menu.lua:1350
 msgid "Bottom Margin"
-msgstr "Spodní okraj"
+msgstr "下マージン"
 
 #: sui_quickactions.lua:343
 #: sui_config.lua:120
 #: sui_config.lua:160
 msgid "Brightness"
-msgstr "Jas"
+msgstr "明るさ"
 
 #: sui_titlebar.lua:105
 msgid "Browse"
-msgstr "Procházet"
+msgstr "ブラウズ"
 
 #: sui_style.lua:102
 msgid "Browse Button (author)"
-msgstr "Tlačítko Procházet (autor)"
+msgstr "ブラウズボタン（著者）"
 
 #: sui_style.lua:96
 msgid "Browse Button (default)"
-msgstr "Tlačítko Procházet (výchozí)"
+msgstr "ブラウズボタン（デフォルト）"
 
 #: sui_style.lua:108
 msgid "Browse Button (series)"
-msgstr "Tlačítko Procházet (série)"
+msgstr "ブラウズボタン（シリーズ）"
 
 #: sui_style.lua:114
 msgid "Browse Button (tags)"
-msgstr "Tlačítko Procházet (štítky)"
+msgstr "ブラウズボタン（タグ）"
 
 #: sui_style.lua:1081
 msgid "Browse Icons"
-msgstr "Ikony procházení"
+msgstr "ブラウズアイコン"
 
 #: sui_browsemeta.lua:442
 msgid "Browse by"
-msgstr "Procházet podle"
+msgstr "閲覧方法"
 
 #: sui_quickactions.lua:406
 #: sui_quickactions.lua:424
 #: sui_quickactions.lua:442
 msgid "Browse by Authors/Series/Tags not available."
-msgstr "Procházení podle autorů/sérií/štítků není k dispozici."
+msgstr "著者/シリーズ/タグ別閲覧は利用できません。"
 
 #: sui_titlebar.lua:993
 msgid "Browse library"
-msgstr "Procházet knihovnu"
+msgstr "ライブラリを閲覧"
 
 #: sui_quicksettings_bar.lua:1296
 #: desktop_modules/module_quick_actions.lua:608
 msgid "Button Background"
-msgstr "Pozadí tlačítka"
+msgstr "ボタン背景"
 
 #: sui_menu.lua:1775
 msgid "Button Size"
-msgstr "Velikost tlačítka"
+msgstr "ボタンサイズ"
 
 #: sui_quicksettings_bar.lua:1260
 #: desktop_modules/module_quick_actions.lua:572
 msgid "Button Type"
-msgstr "Typ tlačítka"
+msgstr "ボタンタイプ"
 
 #: sui_titlebar.lua:997
 msgid "By author"
-msgstr "Podle autora"
+msgstr "著者別"
 
 #: sui_titlebar.lua:998
 msgid "By series"
-msgstr "Podle série"
+msgstr "シリーズ別"
 
 #: sui_titlebar.lua:999
 msgid "By tags"
-msgstr "Podle štítků"
+msgstr "タグ別"
 
 #: sui_quickactions.lua:867
 #: sui_quickactions.lua:1146
@@ -664,15 +652,15 @@ msgstr "Podle štítků"
 #: desktop_modules/module_clock.lua:895
 #: desktop_modules/module_clock.lua:921
 msgid "Cancel"
-msgstr "Zrušit"
+msgstr "キャンセル"
 
 #: desktop_modules/module_reading_stats.lua:671
 msgid "Cards"
-msgstr "Karty"
+msgstr "カード"
 
 #: desktop_modules/module_reading_stats.lua:681
 msgid "Cards - Transparent"
-msgstr "Karty – průhledné"
+msgstr "カード - 透明"
 
 #: sui_menu.lua:695
 #: sui_menu.lua:930
@@ -687,69 +675,69 @@ msgstr "Karty – průhledné"
 #: desktop_modules/module_clock.lua:117
 #: desktop_modules/module_clock.lua:863
 msgid "Center"
-msgstr "Uprostřed"
+msgstr "中央"
 
 #: sui_menu.lua:4186
 msgid "Check for Updates"
-msgstr "Zkontrolovat aktualizace"
+msgstr "アップデートを確認"
 
 #: sui_updater.lua:616
 msgid "Checking for updates…"
-msgstr "Kontrolují se aktualizace…"
+msgstr "アップデートを確認中…"
 
 #: sui_onboarding.lua:51
 msgid "Choose your initial layout"
-msgstr "Vyberte počáteční rozvržení"
+msgstr "初期レイアウトを選択"
 
 #: sui_config.lua:158
 #: sui_presets.lua:131
 #: desktop_modules/module_clock.lua:534
 msgid "Clock"
-msgstr "Hodiny"
+msgstr "時計"
 
 #: desktop_modules/module_clock.lua:829
 msgid "Clock Style"
-msgstr "Styl hodin"
+msgstr "時計スタイル"
 
 #: sui_titlebar.lua:108
 msgid "Close"
-msgstr "Zavřít"
+msgstr "閉じる"
 
 #: sui_menu.lua:2475
 msgid "Closing Book Notice"
-msgstr "Upozornění při zavírání knihy"
+msgstr "本を閉じる通知"
 
 #: main.lua:1447
 msgid "Closing book…"
-msgstr "Zavírá se kniha…"
+msgstr "本を閉じています…"
 
 #: sui_quickactions.lua:1315
 msgid "Codepoint out of valid Unicode range (0–10FFFF)."
-msgstr "Kódový bod je mimo platný rozsah Unicode (0–10FFFF)."
+msgstr "コードポイントが有効なUnicode範囲（0–10FFFF）を超えています。"
 
 #: sui_quickactions.lua:1723
 #: sui_quickactions.lua:1784
 msgid "Collection"
-msgstr "Kolekce"
+msgstr "コレクション"
 
 #: sui_foldercovers.lua:740
 #: sui_browsemeta.lua:937
 msgid "Collection \"%1\" created with %2 books."
-msgstr "Kolekce \"%1\" byla vytvořena s %2 knihami."
+msgstr "コレクション「%1」が%2冊の本で作成されました。"
 
 #: sui_foldercovers.lua:725
 #: sui_browsemeta.lua:912
 msgid "Collection already exists: %1"
-msgstr "Kolekce již existuje: %1"
+msgstr "コレクションは既に存在します: %1"
 
 #: desktop_modules/module_collections.lua:719
 #: desktop_modules/module_collections.lua:725
 msgid "Collection is empty."
-msgstr "Kolekce je prázdná."
+msgstr "コレクションは空です。"
 
 #: sui_quickactions.lua:2134
 msgid "Collection not available: %s"
-msgstr "Kolekce není k dispozici: %s"
+msgstr "コレクションは利用できません: %s"
 
 #: sui_quickactions.lua:246
 #: sui_quickactions.lua:1405
@@ -764,19 +752,19 @@ msgstr "Kolekce není k dispozici: %s"
 #: desktop_modules/module_collections.lua:825
 #: desktop_modules/module_collections.lua:893
 msgid "Collections"
-msgstr "Kolekce"
+msgstr "コレクション"
 
 #: sui_patches.lua:1074
 msgid "Collections (%1)"
-msgstr "Kolekce (%1)"
+msgstr "コレクション (%1)"
 
 #: sui_quickactions.lua:253
 msgid "Collections not available."
-msgstr "Kolekce nejsou k dispozici."
+msgstr "コレクションは利用できません。"
 
 #: sui_style.lua:164
 msgid "Collections: Back Button"
-msgstr "Kolekce: tlačítko Zpět"
+msgstr "コレクション: 戻るボタン"
 
 #: sui_menu.lua:2807
 #: sui_menu.lua:2861
@@ -784,17 +772,17 @@ msgstr "Kolekce: tlačítko Zpět"
 #: sui_menu.lua:2982
 #: sui_menu.lua:3049
 msgid "Color"
-msgstr "Barva"
+msgstr "色"
 
 #: sui_menu.lua:1778
 #: desktop_modules/module_reading_goals.lua:1045
 #: desktop_modules/module_currently.lua:1524
 msgid "Compact"
-msgstr "Kompaktní"
+msgstr "コンパクト"
 
 #: sui_quickactions.lua:1266
 msgid "Confirm"
-msgstr "Potvrdit"
+msgstr "確認"
 
 #: sui_quickactions.lua:270
 #: sui_config.lua:116
@@ -802,49 +790,49 @@ msgstr "Potvrdit"
 #: sui_onboarding.lua:255
 #: sui_onboarding.lua:261
 msgid "Continue"
-msgstr "Pokračovat"
+msgstr "続ける"
 
 #: sui_style.lua:1723
 msgid "Cool Mist"
-msgstr "Chladná mlha"
+msgstr "クールミスト"
 
 #: sui_style.lua:2035
 msgid "Could not determine packs folder"
-msgstr "Nepodařilo se určit složku balíčků"
+msgstr "パックフォルダを特定できませんでした"
 
 #: sui_stats_windows.lua:145
 msgid "Could not open statistics database."
-msgstr "Nepodařilo se otevřít databázi statistik."
+msgstr "統計データベースを開けませんでした。"
 
 #: sui_style.lua:2037
 msgid "Could not open zip (invalid format or corrupted)"
-msgstr "Nepodařilo se otevřít ZIP (neplatný formát nebo poškozený soubor)"
+msgstr "ZIPを開けませんでした（無効な形式または破損）"
 
 #: sui_presets.lua:201
 #: sui_presets.lua:223
 #: desktop_modules/module_coverdeck.lua:313
 msgid "Cover Deck"
-msgstr "Přehled obálek"
+msgstr "カバーデッキ"
 
 #: sui_menu.lua:2679
 msgid "Cover Settings"
-msgstr "Nastavení obálek"
+msgstr "カバー設定"
 
 #: desktop_modules/module_collections.lua:884
 #: desktop_modules/module_collections.lua:886
 #: desktop_modules/module_tbr.lua:746
 #: desktop_modules/module_tbr.lua:748
 msgid "Cover Size"
-msgstr "Velikost obálky"
+msgstr "カバーサイズ"
 
 #: desktop_modules/module_currently.lua:1027
 #: desktop_modules/module_currently.lua:1029
 msgid "Cover Spacing"
-msgstr "Rozestup obálky"
+msgstr "カバー間隔"
 
 #: desktop_modules/module_collections.lua:762
 msgid "Cover for \"%s\""
-msgstr "Obálka pro \"%s\""
+msgstr "「%s」のカバー"
 
 #: desktop_modules/module_recent.lua:322
 #: desktop_modules/module_recent.lua:324
@@ -855,28 +843,28 @@ msgstr "Obálka pro \"%s\""
 #: desktop_modules/module_currently.lua:1000
 #: desktop_modules/module_currently.lua:1001
 msgid "Cover size"
-msgstr "Velikost obálky"
+msgstr "カバーサイズ"
 
 #: sui_foldercovers.lua:718
 #: sui_browsemeta.lua:904
 msgid "Create"
-msgstr "Vytvořit"
+msgstr "作成"
 
 #: sui_quickactions.lua:899
 #: sui_quickactions.lua:1969
 msgid "Create Quick Action"
-msgstr "Vytvořit rychlou akci"
+msgstr "クイックアクションを作成"
 
 #: sui_foldercovers.lua:931
 #: sui_foldercovers.lua:1215
 #: sui_browsemeta.lua:1207
 msgid "Create collection"
-msgstr "Vytvořit kolekci"
+msgstr "コレクションを作成"
 
 #: sui_stats_windows.lua:1843
 #: sui_stats_windows.lua:1866
 msgid "Current streak"
-msgstr "Aktuální série"
+msgstr "現在の連続記録"
 
 #: sui_presets.lua:131
 #: sui_presets.lua:166
@@ -885,57 +873,57 @@ msgstr "Aktuální série"
 #: desktop_modules/module_currently.lua:408
 #: desktop_modules/module_currently.lua:1466
 msgid "Currently Reading"
-msgstr "Právě čtené"
+msgstr "現在読んでいる本"
 
 #: sui_config.lua:1251
 msgid "Custom"
-msgstr "Vlastní"
+msgstr "カスタム"
 
 #: sui_quickactions.lua:1125
 #: sui_quickactions.lua:1128
 msgid "Custom Actions"
-msgstr "Vlastní akce"
+msgstr "カスタムアクション"
 
 #: desktop_modules/module_quote.lua:1327
 msgid "Custom File"
-msgstr "Vlastní soubor"
+msgstr "カスタムファイル"
 
 #: sui_config.lua:164
 #: sui_menu.lua:627
 #: sui_menu.lua:893
 msgid "Custom Text"
-msgstr "Vlastní text"
+msgstr "カスタムテキスト"
 
 #: sui_onboarding.lua:168
 msgid "Custom wallpapers and icons"
-msgstr "Vlastní tapety a ikony"
+msgstr "カスタム壁纸とアイコン"
 
 #: sui_onboarding.lua:160
 msgid "Customize even more"
-msgstr "Přizpůsobit ještě více"
+msgstr "さらにカスタマイズ"
 
 #: sui_stats_windows.lua:2064
 msgid "DAY STREAK"
-msgstr "SÉRIE DNŮ"
+msgstr "日連続"
 
 #: desktop_modules/module_reading_goals.lua:861
 #: desktop_modules/module_reading_goals.lua:889
 #: desktop_modules/module_reading_goals.lua:926
 #: desktop_modules/module_reading_goals.lua:971
 msgid "Daily Goal"
-msgstr "Denní cíl"
+msgstr "毎日の目標"
 
 #: desktop_modules/module_reading_goals.lua:439
 msgid "Daily Reading Goal"
-msgstr "Denní čtenářský cíl"
+msgstr "毎日の読書目標"
 
 #: desktop_modules/module_reading_stats.lua:88
 msgid "Daily avg — Pages"
-msgstr "Denní průměr — Stránky"
+msgstr "日平均 — ページ"
 
 #: desktop_modules/module_reading_stats.lua:87
 msgid "Daily avg — Time"
-msgstr "Denní průměr — Čas"
+msgstr "日平均 — 時間"
 
 #: sui_menu.lua:2809
 #: sui_menu.lua:2814
@@ -949,29 +937,29 @@ msgstr "Denní průměr — Čas"
 #: sui_menu.lua:3056
 #: desktop_modules/module_collections.lua:943
 msgid "Dark"
-msgstr "Tmavé"
+msgstr "ダーク"
 
 #: sui_style.lua:1709
 msgid "Dark Slate"
-msgstr "Tmavá břidlice"
+msgstr "ダークスレート"
 
 #: desktop_modules/module_clock.lua:879
 #: desktop_modules/module_clock.lua:887
 msgid "Date Spacing"
-msgstr "Rozestup data"
+msgstr "日付間隔"
 
 #: sui_stats_windows.lua:565
 msgid "Days"
-msgstr "Dny"
+msgstr "日"
 
 #: desktop_modules/module_coverdeck.lua:78
 #: desktop_modules/module_currently.lua:250
 msgid "Days of reading"
-msgstr "Dny čtení"
+msgstr "読書日数"
 
 #: desktop_modules/module_clock.lua:62
 msgid "December"
-msgstr "Prosinec"
+msgstr "12月"
 
 #: sui_quickactions.lua:1344
 #: sui_quickactions.lua:1594
@@ -983,35 +971,35 @@ msgstr "Prosinec"
 #: desktop_modules/module_reading_goals.lua:1037
 #: desktop_modules/module_currently.lua:1514
 msgid "Default"
-msgstr "Výchozí"
+msgstr "デフォルト"
 
 #: sui_quickactions.lua:1595
 msgid "Default (Folder)"
-msgstr "Výchozí (složka)"
+msgstr "デフォルト（フォルダ）"
 
 #: sui_quickactions.lua:1596
 msgid "Default (Plugin)"
-msgstr "Výchozí (plugin)"
+msgstr "デフォルト（プラグイン）"
 
 #: sui_quickactions.lua:1597
 msgid "Default (System)"
-msgstr "Výchozí (systém)"
+msgstr "デフォルト（システム）"
 
 #: desktop_modules/module_quote.lua:1263
 msgid "Default Quotes"
-msgstr "Výchozí citáty"
+msgstr "デフォルトの引用"
 
 #: sui_style.lua:171
 msgid "Default: Folder"
-msgstr "Výchozí: složka"
+msgstr "デフォルト: フォルダ"
 
 #: sui_style.lua:177
 msgid "Default: Plugin"
-msgstr "Výchozí: plugin"
+msgstr "デフォルト: プラグイン"
 
 #: sui_style.lua:183
 msgid "Default: System"
-msgstr "Výchozí: systém"
+msgstr "デフォルト: システム"
 
 #: sui_quickactions.lua:866
 #: sui_quickactions.lua:2050
@@ -1027,329 +1015,317 @@ msgstr "Výchozí: systém"
 #: sui_settings_window.lua:344
 #: sui_settings_window.lua:460
 msgid "Delete"
-msgstr "Smazat"
+msgstr "削除"
 
 #: sui_menu.lua:4209
 msgid "Delete Settings"
-msgstr "Smazat nastavení"
+msgstr "設定を削除"
 
 #: sui_menu.lua:3881
 #: sui_menu.lua:3922
 #: sui_presets.lua:922
 #: sui_presets.lua:962
 msgid "Delete preset \"%s\"?"
-msgstr "Smazat předvolbu \"%s\"?"
+msgstr "プリセット「%s」を削除しますか？"
 
 #: sui_quickactions.lua:865
 #: sui_quickactions.lua:2054
 msgid "Delete quick action \"%s\"?"
-msgstr "Smazat rychlou akci \"%s\"?"
+msgstr "クイックアクション「%s」を削除しますか？"
 
 #: sui_quickactions.lua:1408
 msgid "Dictionary Lookup"
-msgstr "Vyhledat ve slovníku"
+msgstr "辞書検索"
 
 #: desktop_modules/module_clock.lua:831
 #: desktop_modules/module_clock.lua:835
 msgid "Digital"
-msgstr "Digitální"
+msgstr "デジタル"
 
 #: sui_menu.lua:2416
 msgid "Disable \"Lock Scale\" first to set a custom label scale."
-msgstr "Pro nastavení vlastní velikosti popisků nejprve vypněte „Uzamknout měřítko“."
+msgstr "カスタムラベルスケールを設定するには、まず「スケールのロック」を無効にしてください。"
 
 #: sui_config.lua:803
 msgid "Disable \"Lock Scale\" first to set a per-module scale."
-msgstr "Pro nastavení měřítka jednotlivých modulů nejprve vypněte „Uzamknout měřítko“."
+msgstr "モジュールごとのスケールを設定するには、まず「スケールのロック」を無効にしてください。"
 
 #: sui_config.lua:162
 msgid "Disk Usage"
-msgstr "Využití disku"
+msgstr "ディスク使用量"
 
 #: sui_quickactions.lua:2102
 msgid "Dispatcher not available."
-msgstr "Dispatcher není k dispozici."
+msgstr "ディスパッチャーは利用できません。"
 
 #: sui_menu.lua:3308
 msgid "Display"
-msgstr "Zobrazení"
+msgstr "表示"
 
 #: sui_window.lua:67
 msgid "Do something"
-msgstr "Provést akci"
+msgstr "何かする"
 
 #: sui_menu.lua:481
 msgid "Dot Pager"
-msgstr "Tečkované stránkování"
+msgstr "ドットページャー"
 
 #: sui_updater.lua:499
 msgid "Download and install"
-msgstr "Stáhnout a nainstalovat"
+msgstr "ダウンロードしてインストール"
 
 #: sui_updater.lua:498
 msgid "Download and install now?"
-msgstr "Stáhnout a nainstalovat nyní?"
+msgstr "今すぐダウンロードしてインストールしますか？"
 
 #: sui_updater.lua:420
 msgid "Download error: "
-msgstr "Chyba při stahování: "
+msgstr "ダウンロードエラー: "
 
 #: sui_updater.lua:394
 msgid "Downloading Simple UI %s…"
-msgstr "Stahuje se Simple UI %s…"
+msgstr "Simple UI %s をダウンロード中…"
 
 #: sui_quickactions.lua:2039
 msgid "Edit"
-msgstr "Upravit"
+msgstr "編集"
 
 #: sui_menu.lua:619
 #: sui_menu.lua:621
 #: sui_menu.lua:887
 msgid "Edit Custom Text"
-msgstr "Upravit vlastní text"
+msgstr "カスタムテキストを編集"
 
 #: sui_menu.lua:2139
 #: sui_settings_window.lua:304
 msgid "Edit Layout"
-msgstr "Upravit rozvržení"
+msgstr "レイアウトを編集"
 
 #: sui_quickactions.lua:1527
 msgid "Edit Quick Action"
-msgstr "Upravit rychlou akci"
+msgstr "クイックアクションを編集"
 
 #: desktop_modules/module_clock.lua:199
 #: desktop_modules/module_clock.lua:248
 msgid "Eight"
-msgstr "Osm"
+msgstr "八"
 
 #: desktop_modules/module_clock.lua:209
 #: desktop_modules/module_clock.lua:251
 msgid "Eighteen"
-msgstr "Osmnáct"
+msgstr "十八"
 
 #: desktop_modules/module_clock.lua:202
 #: desktop_modules/module_clock.lua:249
 msgid "Eleven"
-msgstr "Jedenáct"
+msgstr "十一"
 
 #: sui_menu.lua:880
 msgid "Empty"
-msgstr "Prázdné"
+msgstr "空"
 
 #: sui_quickactions.lua:407
 #: sui_quickactions.lua:425
 #: sui_quickactions.lua:443
 msgid "Enable 'Browse by Author / Series / Tags' in the library menu first."
-msgstr "Nejprve v nabídce knihovny zapněte „Procházet podle autora / série / štítků“."
+msgstr "まずライブラリメニューで「著者/シリーズ/タグ別に参照」を有効にしてください。"
 
 #: sui_menu.lua:2630
 msgid "Enable Browse by Author / Series / Tags"
-msgstr "Zapnout procházení podle autora / série / štítků"
+msgstr "著者/シリーズ/タグ別閲覧を有効にする"
 
 #: sui_menu.lua:2614
 msgid "Enable Library Custom Covers"
-msgstr "Zapnout vlastní obálky knihovny"
+msgstr "ライブラリカスタムカバーを有効にする"
 
 #: sui_menu.lua:1093
 msgid "Enable Navigation Bar"
-msgstr "Zapnout navigační lištu"
+msgstr "ナビゲーションバーを有効にする"
 
 #: sui_quicksettings_bar.lua:1117
 msgid "Enable Quick Settings Bar"
-msgstr "Zapnout lištu rychlých nastavení"
+msgstr "クイック設定バーを有効にする"
 
 #: sui_menu.lua:827
 msgid "Enable Status Bar"
-msgstr "Zapnout stavovou lištu"
+msgstr "ステータスバーを有効にする"
 
 #: sui_menu.lua:1729
 msgid "Enable Title Bar"
-msgstr "Zapnout horní lištu"
+msgstr "タイトルバーを有効にする"
 
 #: sui_menu.lua:2187
 msgid "Enable Wallpaper"
-msgstr "Zapnout tapetu"
+msgstr "壁紙を有効にする"
 
 #: sui_style.lua:1458
 msgid "Enable custom UI font"
-msgstr "Zapnout vlastní písmo rozhraní"
+msgstr "カスタムUIフォントを有効にする"
 
 #: sui_style.lua:1791
 msgid "Enter a hex color (#RRGGBB). On greyscale e-ink the perceived brightness is used."
-msgstr "Zadejte hexadecimální barvu (#RRGGBB). Na černobílém e-inku se použije vnímaný jas."
+msgstr "16進カラーコード（#RRGGBB）を入力してください。グレースケールe-inkでは知覚輝度が使用されます。"
 
 #: sui_quickactions.lua:1286
-msgid ""
-"Enter the Unicode codepoint (hex) of a Nerd Fonts symbol.\n"
-"You can look up codes with wakamaifondue.com using the file:\n"
-"  /koreader/fonts/nerdfonts/symbols.ttf\n"
-"Leave blank and press OK to remove a Nerd Font icon."
-msgstr ""
-"Zadejte kódový bod Unicode (hex) symbolu Nerd Fonts.\n"
-"Kódy můžete vyhledat na wakamaifondue.com pomocí souboru:\n"
-"  /koreader/fonts/nerdfonts/symbols.ttf\n"
-"Ponechte prázdné a stiskněte OK pro odstranění ikony Nerd Font."
+msgid "Enter the Unicode codepoint (hex) of a Nerd Fonts symbol.\nYou can look up codes with wakamaifondue.com using the file:\n  /koreader/fonts/nerdfonts/symbols.ttf\nLeave blank and press OK to remove a Nerd Font icon."
+msgstr "Nerd FontsシンボルのUnicodeコードポイント（16進数）を入力してください。\nwakamaifondue.comでコードを確認できます（ファイル: /koreader/fonts/nerdfonts/symbols.ttf）。\n空のままOKを押すとNerd Fontアイコンが削除されます。"
 
 #: sui_menu.lua:3640
 msgid "Error applying pack:"
-msgstr "Chyba při použití balíčku:"
+msgstr "パック適用エラー:"
 
 #: sui_updater.lua:621
 msgid "Error checking for updates."
-msgstr "Chyba při kontrole aktualizací."
+msgstr "アップデート確認エラー。"
 
 #: sui_updater.lua:626
 msgid "Error checking for updates: "
-msgstr "Chyba při kontrole aktualizací: "
+msgstr "アップデート確認エラー: "
 
 #: sui_menu.lua:4061
 #: sui_presets.lua:1101
 msgid "Error exporting preset: "
-msgstr "Chyba při exportu předvolby: "
+msgstr "プリセットエクスポートエラー: "
 
 #: sui_style.lua:2084
 msgid "Error extracting zip: "
-msgstr "Chyba při rozbalování ZIPu: "
+msgstr "ZIP展開エラー: "
 
 #: sui_menu.lua:4028
 #: sui_presets.lua:1069
 msgid "Error importing preset: "
-msgstr "Chyba při importu předvolby: "
+msgstr "プリセットインポートエラー: "
 
 #: desktop_modules/module_reading_goals.lua:755
 msgid "Error in Reading Goals: check crash.log"
-msgstr "Chyba v Čtenářských cílech: zkontrolujte crash.log"
+msgstr "読書目標エラー: crash.logを確認してください"
 
 #: sui_menu.lua:3601
 msgid "Error installing pack:"
-msgstr "Chyba při instalaci balíčku:"
+msgstr "パックインストールエラー:"
 
 #: sui_menu.lua:4044
 #: sui_presets.lua:1085
 msgid "Export preset"
-msgstr "Exportovat předvolbu"
+msgstr "プリセットをエクスポート"
 
 #: sui_menu.lua:549
 msgid "Extra Small"
-msgstr "Velmi malé"
+msgstr "特小"
 
 #: sui_updater.lua:421
 msgid "Extraction error: "
-msgstr "Chyba při rozbalování: "
+msgstr "展開エラー: "
 
 #: sui_menu.lua:4202
 msgid "Factory Reset"
-msgstr "Tovární reset"
+msgstr "工場出荷時設定にリセット"
 
 #: sui_menu.lua:2331
-msgid ""
-"Fades the wallpaper towards white to improve text readability.\n"
-"0% is the default (no lightening)."
-msgstr ""
-"Zesvětlí tapetu směrem k bílé pro lepší čitelnost textu.\n"
-"0 % je výchozí hodnota (bez zesvětlení)."
+msgid "Fades the wallpaper towards white to improve text readability.\n0% is the default (no lightening)."
+msgstr "テキストの可読性を上げるため、壁紙を白に近づけています。\n0%がデフォルト（明るくしない）。"
 
 #: sui_quickactions.lua:288
 #: sui_quickactions.lua:1404
 #: sui_config.lua:117
 msgid "Favorites"
-msgstr "Oblíbené"
+msgstr "お気に入り"
 
 #: sui_quickactions.lua:295
 msgid "Favorites not available."
-msgstr "Oblíbené nejsou k dispozici."
+msgstr "お気に入りは利用できません。"
 
 #: desktop_modules/module_clock.lua:60
 msgid "February"
-msgstr "Únor"
+msgstr "2月"
 
 #: sui_bottombar.lua:1370
-msgid "Fetching bookmarksâ¦"
-msgstr "Načítají se záložky…"
+msgid "Fetching bookmarks\xe2\x80\xa6"
+msgstr "ブックマークを取得中…"
 
 #: desktop_modules/module_clock.lua:206
 #: desktop_modules/module_clock.lua:250
 msgid "Fifteen"
-msgstr "Patnáct"
+msgstr "十五"
 
 #: desktop_modules/module_clock.lua:218
 #: desktop_modules/module_clock.lua:256
 msgid "Fifty"
-msgstr "Padesát"
+msgstr "五十"
 
 #: sui_quickactions.lua:1406
 msgid "File Search"
-msgstr "Hledání souborů"
+msgstr "ファイル検索"
 
 #: sui_style.lua:2031
 msgid "File not found: "
-msgstr "Soubor nebyl nalezen: "
+msgstr "ファイルが見つかりません: "
 
 #: desktop_modules/module_clock.lua:196
 #: desktop_modules/module_clock.lua:247
 msgid "Five"
-msgstr "Pět"
+msgstr "五"
 
 #: sui_menu.lua:4104
 #: sui_quicksettings_bar.lua:1320
 #: desktop_modules/module_reading_stats.lua:691
 #: desktop_modules/module_quick_actions.lua:632
 msgid "Flat"
-msgstr "Ploché"
+msgstr "フラット"
 
 #: sui_quickactions.lua:1782
 msgid "Folder"
-msgstr "Složka"
+msgstr "フォルダ"
 
 #: sui_menu.lua:2684
 msgid "Folder Cover Type"
-msgstr "Typ obálky složky"
+msgstr "フォルダカバータイプ"
 
 #: sui_style.lua:1084
 msgid "Folder Covers"
-msgstr "Obálky složek"
+msgstr "フォルダカバー"
 
 #: sui_style.lua:190
 msgid "Folder Covers: Empty Folder"
-msgstr "Obálky složek: prázdná složka"
+msgstr "フォルダカバー: 空のフォルダ"
 
 #: sui_menu.lua:3077
 msgid "Folder Name"
-msgstr "Název složky"
+msgstr "フォルダ名"
 
 #: sui_menu.lua:3163
 msgid "Folder Name Text Size"
-msgstr "Velikost textu názvu složky"
+msgstr "フォルダ名テキストサイズ"
 
 #: sui_quickactions.lua:1407
 msgid "Folder Shortcuts"
-msgstr "Zástupci složek"
+msgstr "フォルダショートカット"
 
 #: sui_foldercovers.lua:801
 #: sui_foldercovers.lua:858
 #: sui_browsemeta.lua:1009
 msgid "Folder cover"
-msgstr "Obálka složky"
+msgstr "フォルダカバー"
 
 #: sui_window.lua:1764
 #: sui_window.lua:1769
 msgid "Font weight"
-msgstr "Tloušťka písma"
+msgstr "フォントウェイト"
 
 #: desktop_modules/module_clock.lua:217
 #: desktop_modules/module_clock.lua:256
 msgid "Forty"
-msgstr "Čtyřicet"
+msgstr "四十"
 
 #: desktop_modules/module_clock.lua:195
 #: desktop_modules/module_clock.lua:247
 msgid "Four"
-msgstr "Čtyři"
+msgstr "四"
 
 #: desktop_modules/module_clock.lua:205
 #: desktop_modules/module_clock.lua:250
 msgid "Fourteen"
-msgstr "Čtrnáct"
+msgstr "十四"
 
 #: desktop_modules/module_collections.lua:895
 #: desktop_modules/module_recent.lua:350
@@ -1358,89 +1334,71 @@ msgstr "Čtrnáct"
 #: desktop_modules/module_new_books.lua:360
 #: desktop_modules/module_currently.lua:1468
 msgid "Frame"
-msgstr "Rámeček"
+msgstr "フレーム"
 
 #: sui_menu.lua:1265
 #: sui_menu.lua:4115
 msgid "Framed"
-msgstr "Orámované"
+msgstr "フレーム付き"
 
 #: desktop_modules/module_clock.lua:57
 msgid "Friday"
-msgstr "Pátek"
+msgstr "金曜日"
 
 #: sui_quicksettings_bar.lua:392
 #: sui_quicksettings_bar.lua:414
 msgid "Frontlight"
-msgstr "Přední osvětlení"
+msgstr "フロントライト"
 
 #: sui_quicksettings_bar.lua:1215
 msgid "Frontlight Slider"
-msgstr "Posuvník předního osvětlení"
+msgstr "フロントライトスライダー"
 
 #: sui_bottombar.lua:1798
 msgid "Frontlight not available on this device."
-msgstr "Přední osvětlení není na tomto zařízení k dispozici."
+msgstr "このデバイスではフロントライトは利用できません。"
 
 #: sui_menu.lua:2492
 msgid "Gesture Only"
-msgstr "Pouze gesto"
+msgstr "ジェスチャーのみ"
 
 #: sui_settings_window.lua:275
 msgid "Global custom quick actions"
-msgstr "Globální vlastní rychlé akce"
+msgstr "グローバルカスタムクイックアクション"
 
 #: sui_settings_window.lua:276
 msgid "Global custom quick actions  (%d/%d)"
-msgstr "Globální vlastní rychlé akce  (%d/%d)"
+msgstr "グローバルカスタムクイックアクション (%d/%d)"
 
 #: sui_menu.lua:2390
-msgid ""
-"Global scale for all modules.\n"
-"Individual overrides in Module Settings take precedence.\n"
-"100% is the default size."
-msgstr ""
-"Globální měřítko pro všechny moduly.\n"
-"Individuální nastavení v Nastavení modulů mají přednost.\n"
-"100% je výchozí velikost."
+msgid "Global scale for all modules.\nIndividual overrides in Module Settings take precedence.\n100% is the default size."
+msgstr "すべてのモジュールのグローバルスケール。\nモジュール設定の個別オーバーライドが優先されます。\n100%がデフォルトサイズ。"
 
 #: sui_onboarding.lua:161
 msgid "Go to Settings > Home Screen to edit your layout whenever you want."
-msgstr "Rozvržení můžete kdykoli upravit v Nastavení > Domovská obrazovka."
+msgstr "設定 > ホーム画面に移動して、いつでもレイアウトを編集できます。"
 
 #: desktop_modules/module_reading_goals.lua:818
 #: desktop_modules/module_reading_goals.lua:883
 #: desktop_modules/module_reading_goals.lua:897
 msgid "Goals"
-msgstr "Cíle"
+msgstr "目標"
 
 #: sui_menu.lua:2666
 msgid "Group by Book Series"
-msgstr "Seskupit podle knižní série"
+msgstr "書籍シリーズでグループ化"
 
 #: sui_menu.lua:1300
-msgid ""
-"Height of the bottom navigation bar.\n"
-"100% is the default size."
-msgstr ""
-"Výška spodní navigační lišty.\n"
-"100% je výchozí velikost."
+msgid "Height of the bottom navigation bar.\n100% is the default size."
+msgstr "ボトムナビゲーションバーの高さ。\n100%がデフォルトサイズ。"
 
 #: desktop_modules/module_spacer.lua:89
-msgid ""
-"Height of the spacer.\n"
-"100% is the default size."
-msgstr ""
-"Výška mezery.\n"
-"100 % je výchozí velikost."
+msgid "Height of the spacer.\n100% is the default size."
+msgstr "スペーサーの高さ。\n100%がデフォルトサイズ。"
 
 #: sui_menu.lua:1023
-msgid ""
-"Height of the top status bar.\n"
-"100% is the default size."
-msgstr ""
-"Výška horní stavové lišty.\n"
-"100% je výchozí velikost."
+msgid "Height of the top status bar.\n100% is the default size."
+msgstr "トップステータスバーの高さ。\n100%がデフォルトサイズ。"
 
 #: sui_menu.lua:465
 #: sui_menu.lua:524
@@ -1457,54 +1415,50 @@ msgstr ""
 #: sui_menu.lua:3114
 #: desktop_modules/module_collections.lua:916
 msgid "Hidden"
-msgstr "Skryté"
+msgstr "非表示"
 
 #: sui_menu.lua:3265
 msgid "Hide Folder Book Spine"
-msgstr "Skrýt hřbet knihy u složky"
+msgstr "フォルダの本の背表紙を隠す"
 
 #: sui_menu.lua:1932
 #: sui_quicksettings_bar.lua:1248
 #: desktop_modules/module_quick_actions.lua:387
 #: desktop_modules/module_quick_actions.lua:540
 msgid "Hide Label"
-msgstr "Skrýt popisek"
+msgstr "ラベルを隠す"
 
 #: sui_menu.lua:3259
 msgid "Hide Selection Underline"
-msgstr "Skrýt podtržení výběru"
+msgstr "選択下線を隠す"
 
 #: sui_menu.lua:1062
 msgid "Hide Wi-Fi Icon When Off"
-msgstr "Skrýt ikonu Wi‑Fi, když je vypnutá"
+msgstr "オフ時にWi-Fiアイコンを隠す"
 
 #: sui_menu.lua:532
-msgid ""
-"Hides the pagination bar on the homescreen.\n"
-"Not available when Navpager is active."
-msgstr ""
-"Skryje stránkovací lištu na domovské obrazovce.\n"
-"Není dostupné, když je aktivní Navpager."
+msgid "Hides the pagination bar on the homescreen.\nNot available when Navpager is active."
+msgstr "ホーム画面のページネーションバーを非表示にします。\nNavpagerが有効な場合は利用できません。"
 
 #: sui_stats_windows.lua:746
 msgid "Highlights"
-msgstr "Zvýraznění"
+msgstr "ハイライト"
 
 #: sui_quickactions.lua:258
 #: sui_quickactions.lua:1402
 #: sui_config.lua:115
 #: sui_bottombar.lua:1423
 msgid "History"
-msgstr "Historie"
+msgstr "履歴"
 
 #: sui_quickactions.lua:265
 msgid "History not available."
-msgstr "Historie není k dispozici."
+msgstr "履歴は利用できません。"
 
 #: sui_quickactions.lua:209
 #: sui_config.lua:113
 msgid "Home"
-msgstr "Domů"
+msgstr "ホーム"
 
 #: sui_menu.lua:4308
 #: sui_patches.lua:790
@@ -1512,133 +1466,121 @@ msgstr "Domů"
 #: sui_settings_window.lua:243
 #: sui_settings_window.lua:843
 msgid "Home Screen"
-msgstr "Domovská obrazovka"
+msgstr "ホーム画面"
 
 #: sui_settings_window.lua:856
 msgid "Home Screen Presets"
-msgstr "Předvolby domovské obrazovky"
+msgstr "ホーム画面プリセット"
 
 #: sui_menu.lua:478
 msgid "Home Screen Style"
-msgstr "Styl domovské obrazovky"
+msgstr "ホーム画面スタイル"
 
 #: sui_style.lua:1766
 msgid "Home Screen — Background"
-msgstr "Domovská obrazovka — pozadí"
+msgstr "ホーム画面 — 背景"
 
 #: sui_style.lua:1769
 msgid "Home Screen — Text"
-msgstr "Domovská obrazovka — text"
+msgstr "ホーム画面 — テキスト"
 
 #: sui_bottombar.lua:1440
 msgid "Home folder"
-msgstr "Domovská složka"
+msgstr "ホームフォルダ"
 
 #: sui_bottombar.lua:1442
 msgid "Home folder + subfolders"
-msgstr "Domovská složka + podsložky"
+msgstr "ホームフォルダ + サブフォルダ"
 
 #: sui_homescreen.lua:1174
 msgid "Homescreen"
-msgstr "Domovská obrazovka"
+msgstr "ホーム画面"
 
 #: sui_quickactions.lua:240
 msgid "Homescreen not available."
-msgstr "Domovská obrazovka není k dispozici."
+msgstr "ホーム画面は利用できません。"
 
 #: desktop_modules/module_currently.lua:1030
-msgid ""
-"Horizontal space between the cover and the text.\n"
-"100% is the default spacing."
-msgstr ""
-"Vodorovný prostor mezi obálkou a textem.\n"
-"100 % je výchozí rozestup."
+msgid "Horizontal space between the cover and the text.\n100% is the default spacing."
+msgstr "カバーとテキスト間の水平間隔。\n100%がデフォルト間隔。"
 
 #: desktop_modules/module_reading_goals.lua:422
 msgid "Hours per month:"
-msgstr "Hodin měsíčně:"
+msgstr "月あたり時間:"
 
 #: sui_quickactions.lua:1559
 #: sui_quickactions.lua:1563
 msgid "Icon"
-msgstr "Ikona"
+msgstr "アイコン"
 
 #: sui_menu.lua:3490
 msgid "Icon Packs"
-msgstr "Balíčky ikon"
+msgstr "アイコンパック"
 
 #: sui_menu.lua:3657
 msgid "Icon Presets"
-msgstr "Předvolby ikon"
+msgstr "アイコンプリセット"
 
 #: sui_menu.lua:1329
 #: sui_menu.lua:1330
 msgid "Icon Size"
-msgstr "Velikost ikon"
+msgstr "アイコンサイズ"
 
 #: sui_quickactions.lua:1555
 msgid "Icon: Default"
-msgstr "Ikona: Výchozí"
+msgstr "アイコン: デフォルト"
 
 #: sui_menu.lua:194
 #: sui_menu.lua:3394
 msgid "Icons"
-msgstr "Ikony"
+msgstr "アイコン"
 
 #: sui_menu.lua:195
 msgid "Icons only"
-msgstr "Pouze ikony"
+msgstr "アイコンのみ"
 
 #: sui_settings_window.lua:265
 msgid "Icons, fonts and appearance"
-msgstr "Ikony, písma a vzhled"
+msgstr "アイコン、フォント、外観"
 
 #: sui_onboarding.lua:165
 msgid "If you selected the Momentum Preset, long press the Reading Goal module to choose and set your reading goals."
-msgstr "Pokud jste vybrali předvolbu Momentum, dlouhým stiskem modulu Čtenářské cíle vyberete a nastavíte své čtenářské cíle."
+msgstr "モメンタムプリセットを選択した場合、読書目標モジュールを長押しして読書目標を選択・設定してください。"
 
 #: sui_menu.lua:4000
 #: sui_presets.lua:1042
 msgid "Import preset"
-msgstr "Importovat předvolbu"
+msgstr "プリセットをインポート"
 
 #: sui_menu.lua:3564
 msgid "Install pack from ZIP"
-msgstr "Nainstalovat balíček ze ZIPu"
+msgstr "ZIPからパックをインストール"
 
 #: sui_menu.lua:1458
-msgid ""
-"Invalid arrangement.\n"
-"Keep items between the Left and Right separators."
-msgstr ""
-"Neplatné uspořádání.\n"
-"Ponechte položky mezi oddělovači Vlevo a Vpravo."
+msgid "Invalid arrangement.\nKeep items between the Left and Right separators."
+msgstr "無効な配置です。\nアイテムを左と右の区切りの間にしてください。"
 
 #: sui_menu.lua:720
-msgid ""
-"Invalid arrangement.\n"
-"Keep the Left, Center and Right separators in order."
-msgstr ""
-"Neplatné uspořádání.\n"
-"Ponechte oddělovače Vlevo, Uprostřed a Vpravo v tomto pořadí."
+msgid "Invalid arrangement.\nKeep the Left, Center and Right separators in order."
+msgstr "無効な配置です。\n左、中央、右の区切りを正しい順番にしてください。"
 
 #: sui_presets.lua:410
 #: sui_presets.lua:590
 msgid "Invalid data"
-msgstr "Neplatná data"
+msgstr "無効なデータ"
 
 #: sui_quickactions.lua:1321
 msgid "Invalid input. Please enter 1–6 hexadecimal digits (0–9, A–F)."
-msgstr "Neplatný vstup. Zadejte prosím 1–6 hexadecimálních číslic (0–9, A–F)."
+msgstr "無効な入力です。1〜6桁の16進数（0〜9、A〜F）を入力してください。"
 
 #: sui_presets.lua:406
 #: sui_presets.lua:586
 msgid "Invalid preset file"
-msgstr "Neplatný soubor předvolby"
+msgstr "無効なプリセットファイル"
 
 #: sui_menu.lua:2305
 msgid "Invert in Night Mode"
-msgstr "Invertovat v nočním režimu"
+msgstr "ナイトモードで反転"
 
 #: sui_menu.lua:846
 #: sui_menu.lua:851
@@ -1656,19 +1598,19 @@ msgstr "Invertovat v nočním režimu"
 #: desktop_modules/module_currently.lua:1172
 #: desktop_modules/module_currently.lua:1195
 msgid "Items"
-msgstr "Položky"
+msgstr "アイテム"
 
 #: desktop_modules/module_clock.lua:60
 msgid "January"
-msgstr "Leden"
+msgstr "1月"
 
 #: desktop_modules/module_clock.lua:61
 msgid "July"
-msgstr "Červenec"
+msgstr "7月"
 
 #: desktop_modules/module_clock.lua:61
 msgid "June"
-msgstr "Červen"
+msgstr "6月"
 
 #: sui_menu.lua:502
 msgid "KOReader"
@@ -1676,29 +1618,29 @@ msgstr "KOReader"
 
 #: sui_stats_windows.lua:2076
 msgid "LAST 7 DAYS"
-msgstr "POSLEDNÍCH 7 DNÍ"
+msgstr "過去7日間"
 
 #: sui_quicksettings_bar.lua:1237
 #: desktop_modules/module_quick_actions.lua:557
 msgid "Label"
-msgstr "Popisek"
+msgstr "ラベル"
 
 #: sui_menu.lua:2424
 msgid "Label Scale"
-msgstr "Měřítko popisků"
+msgstr "ラベルスケール"
 
 #: sui_menu.lua:1339
 #: sui_menu.lua:1340
 msgid "Label Size"
-msgstr "Velikost popisků"
+msgstr "ラベルサイズ"
 
 #: sui_menu.lua:2409
 msgid "Labels"
-msgstr "Popisky"
+msgstr "ラベル"
 
 #: sui_menu.lua:1780
 msgid "Large"
-msgstr "Velké"
+msgstr "大きい"
 
 #: sui_menu.lua:429
 #: sui_menu.lua:836
@@ -1713,19 +1655,19 @@ msgstr "Velké"
 #: sui_quicksettings_bar.lua:1131
 #: sui_updater.lua:432
 msgid "Later"
-msgstr "Později"
+msgstr "後で"
 
 #: desktop_modules/module_reading_goals.lua:1035
 msgid "Layout"
-msgstr "Rozvržení"
+msgstr "レイアウト"
 
 #: sui_settings_window.lua:848
 msgid "Layout Editor"
-msgstr "Editor rozvržení"
+msgstr "レイアウトエディタ"
 
 #: sui_settings_window.lua:244
 msgid "Layout, wallpaper and behaviour"
-msgstr "Rozvržení, tapeta a chování"
+msgstr "レイアウト、壁紙、動作"
 
 #: sui_menu.lua:689
 #: sui_menu.lua:926
@@ -1740,7 +1682,7 @@ msgstr "Rozvržení, tapeta a chování"
 #: desktop_modules/module_clock.lua:115
 #: desktop_modules/module_clock.lua:856
 msgid "Left"
-msgstr "Vlevo"
+msgstr "左"
 
 #: sui_quickactions.lua:195
 #: sui_titlebar.lua:1078
@@ -1750,16 +1692,16 @@ msgstr "Vlevo"
 #: sui_settings_window.lua:257
 #: sui_settings_window.lua:845
 msgid "Library"
-msgstr "Knihovna"
+msgstr "ライブラリ"
 
 #: sui_menu.lua:1752
 #: sui_menu.lua:1755
 msgid "Library Buttons"
-msgstr "Tlačítka knihovny"
+msgstr "ライブラリボタン"
 
 #: sui_presets.lua:222
 msgid "Library View"
-msgstr "Zobrazení knihovny"
+msgstr "ライブラリビュー"
 
 #: sui_menu.lua:2809
 #: sui_menu.lua:2821
@@ -1773,38 +1715,38 @@ msgstr "Zobrazení knihovny"
 #: sui_menu.lua:3063
 #: desktop_modules/module_collections.lua:950
 msgid "Light"
-msgstr "Světlé"
+msgstr "ライト"
 
 #: sui_menu.lua:2317
 msgid "Lighten"
-msgstr "Zesvětlit"
+msgstr "明るくする"
 
 #: sui_menu.lua:2330
 msgid "Lighten Wallpaper"
-msgstr "Zesvětlit tapetu"
+msgstr "壁紙を明るくする"
 
 #: desktop_modules/module_reading_stats.lua:701
 msgid "List"
-msgstr "Seznam"
+msgstr "リスト"
 
 #: sui_menu.lua:2369
 msgid "Lock Scale"
-msgstr "Uzamknout měřítko"
+msgstr "スケールのロック"
 
 #: sui_onboarding.lua:156
 msgid "Long press to customize"
-msgstr "Přizpůsobení dlouhým stiskem"
+msgstr "長押しでカスタマイズ"
 
 #: sui_presets.lua:389
 #: sui_presets.lua:401
 #: sui_presets.lua:569
 #: sui_presets.lua:581
 msgid "LuaSettings module unavailable"
-msgstr "Modul LuaSettings není k dispozici"
+msgstr "LuaSettingsモジュールは利用できません"
 
 #: sui_onboarding.lua:122
 msgid "Make it yours"
-msgstr "Přizpůsobte si to"
+msgstr "カスタマイズ"
 
 #: sui_menu.lua:3828
 #: sui_menu.lua:3902
@@ -1813,306 +1755,280 @@ msgstr "Přizpůsobte si to"
 #: sui_presets.lua:943
 #: sui_presets.lua:948
 msgid "Manage presets"
-msgstr "Spravovat předvolby"
+msgstr "プリセット管理"
 
 #: desktop_modules/module_reading_goals.lua:1028
 msgid "Manually Tracked Books"
-msgstr "Ručně sledované knihy"
+msgstr "手動追跡の本"
 
 #: desktop_modules/module_reading_goals.lua:1016
 msgid "Manually Tracked Books  (%s)"
-msgstr "Ručně sledované knihy  (%s)"
+msgstr "手動追跡の本 (%s)"
 
 #: desktop_modules/module_clock.lua:60
 msgid "March"
-msgstr "Březen"
+msgstr "3月"
 
 #: sui_quicksettings_bar.lua:439
 #: sui_quicksettings_bar.lua:545
 msgid "Max"
-msgstr "Max"
+msgstr "最大"
 
 #: desktop_modules/module_collections.lua:856
 #: desktop_modules/module_collections.lua:996
 msgid "Maximum 5 collections. Remove one first."
-msgstr "Maximum je 5 kolekcí. Nejprve jednu odeberte."
+msgstr "最大5つのコレクション。先に1つ削除してください。"
 
 #: sui_quicksettings_bar.lua:1193
 msgid "Maximum slots reached."
-msgstr "Bylo dosaženo maximálního počtu slotů."
+msgstr "最大スロット数に達しました。"
 
 #: desktop_modules/module_clock.lua:61
 msgid "May"
-msgstr "Květen"
+msgstr "5月"
 
 #: sui_titlebar.lua:102
 #: sui_titlebar.lua:107
 msgid "Menu"
-msgstr "Menu"
+msgstr "メニュー"
 
 #: sui_style.lua:75
 msgid "Menu Button"
-msgstr "Tlačítko Menu"
+msgstr "メニューボタン"
 
 #: desktop_modules/module_clock.lua:222
 #: desktop_modules/module_clock.lua:304
 msgid "Midnight"
-msgstr "Půlnoc"
+msgstr "真夜中"
 
 #: sui_presets.lua:165
 msgid "Mindful Reading"
-msgstr "Vědomé čtení"
+msgstr "マインドフル読書"
 
 #: sui_menu.lua:353
 msgid "Minimum 1 tab required in navpager mode."
-msgstr "V režimu navpager je vyžadována minimálně 1 karta."
+msgstr "Navpagerモードでは少なくとも1つのタブが必要です。"
 
 #: sui_menu.lua:354
 msgid "Minimum 2 tabs required. Select another tab first."
-msgstr "Jsou vyžadovány minimálně 2 karty. Nejprve vyberte jinou kartu."
+msgstr "少なくとも2つのタブが必要です。先に別のタブを選択してください。"
 
 #: desktop_modules/module_reading_goals.lua:440
 msgid "Minutes per day:"
-msgstr "Minut denně:"
+msgstr "日あたり分:"
 
 #: sui_menu.lua:441
 msgid "Mode"
-msgstr "Režim"
+msgstr "モード"
 
 #: sui_menu.lua:2387
 msgid "Module Scale"
-msgstr "Měřítko modulu"
+msgstr "モジュールスケール"
 
 #: sui_menu.lua:2146
 msgid "Module Settings"
-msgstr "Nastavení modulů"
+msgstr "モジュール設定"
 
 #: sui_menu.lua:3494
 msgid "Module unavailable"
-msgstr "Modul není k dispozici"
+msgstr "モジュールは利用できません"
 
 #: sui_menu.lua:2380
 #: sui_menu.lua:2549
 msgid "Modules"
-msgstr "Moduly"
+msgstr "モジュール"
 
 #: sui_menu.lua:2134
 msgid "Modules  (%d)"
-msgstr "Moduly  (%d)"
+msgstr "モジュール (%d)"
 
 #: sui_homescreen.lua:2415
-msgid ""
-"Modules exceed the visible area.\n"
-"Move some to another page or adjust the scale."
-msgstr ""
-"Moduly přesahují viditelnou oblast.\n"
-"Přesuňte některé na jinou stránku nebo upravte měřítko."
+msgid "Modules exceed the visible area.\nMove some to another page or adjust the scale."
+msgstr "モジュールが表示領域を超えています。\n一部を別のページに移動するか、スケールを調整してください。"
 
 #: sui_presets.lua:200
 msgid "Momentum"
-msgstr "Momentum"
+msgstr "モメンタム"
 
 #: desktop_modules/module_clock.lua:56
 msgid "Monday"
-msgstr "Pondělí"
+msgstr "月曜日"
 
 #: desktop_modules/module_reading_goals.lua:841
 #: desktop_modules/module_reading_goals.lua:888
 #: desktop_modules/module_reading_goals.lua:925
 #: desktop_modules/module_reading_goals.lua:956
 msgid "Monthly Goal"
-msgstr "Měsíční cíl"
+msgstr "月間目標"
 
 #: desktop_modules/module_reading_goals.lua:421
 msgid "Monthly Reading Goal"
-msgstr "Měsíční čtenářský cíl"
+msgstr "月間読書目標"
 
 #: main.lua:935
 msgid "More by %s (%d)"
-msgstr "Další od %s (%d)"
+msgstr "%sの他の作品 (%d)"
 
 #: sui_window.lua:2334
 msgid "Move down"
-msgstr "Přesunout dolů"
+msgstr "下に移動"
 
 #: sui_window.lua:2328
 #: sui_settings_window.lua:479
 #: sui_settings_window.lua:515
 msgid "Move to page"
-msgstr "Přesunout na stránku"
+msgstr "ページに移動"
 
 #: sui_window.lua:2331
 msgid "Move up"
-msgstr "Přesunout nahoru"
+msgstr "上に移動"
 
 #: sui_quickactions.lua:22
 msgid "My Action"
-msgstr "Moje akce"
+msgstr "マイアクション"
 
 #: desktop_modules/module_quote.lua:1283
 msgid "My Highlights"
-msgstr "Moje zvýraznění"
+msgstr "私のハイライト"
 
 #: sui_presets.lua:757
 #: sui_presets.lua:762
 msgid "My Presets"
-msgstr "Moje předvolby"
+msgstr "マイプリセット"
 
 #: sui_quickactions.lua:1636
 msgid "Name"
-msgstr "Název"
+msgstr "名前"
 
 #: sui_foldercovers.lua:264
 #: sui_menu.lua:2945
 #: sui_menu.lua:2954
 #: sui_menu.lua:2966
 msgid "Native"
-msgstr "Nativní"
+msgstr "ネイティブ"
 
 #: sui_menu.lua:2583
 msgid "Navigation Bar"
-msgstr "Navigační lišta"
+msgstr "ナビゲーションバー"
 
 #: sui_menu.lua:1299
 msgid "Navigation Bar Size"
-msgstr "Velikost navigační lišty"
+msgstr "ナビゲーションバーサイズ"
 
 #: sui_menu.lua:1101
-msgid ""
-"Navigation Bar will be %s after restart.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Navigační lišta bude po restartu %s.\n"
-"\n"
-"Restartovat nyní?"
+msgid "Navigation Bar will be %s after restart.\n\nRestart now?"
+msgstr "ナビゲーションバーは再起動後に%sになります。\n\n今すぐ再起動しますか？"
 
 #: sui_menu.lua:454
 #: sui_style.lua:1083
 msgid "Navpager"
-msgstr "Navpager"
+msgstr "ナビページャー"
 
 #: sui_menu.lua:461
-msgid ""
-"Navpager enabled.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Navpager je zapnutý.\n"
-"\n"
-"Restartovat nyní?"
+msgid "Navpager enabled.\n\nRestart now?"
+msgstr "ナビページャーが有効になりました。\n\n今すぐ再起動しますか？"
 
 #: sui_style.lua:155
 msgid "Navpager: Next"
-msgstr "Navpager: další"
+msgstr "ナビページャー: 次へ"
 
 #: sui_style.lua:149
 msgid "Navpager: Previous"
-msgstr "Navpager: předchozí"
+msgstr "ナビページャー: 前へ"
 
 #: sui_quickactions.lua:1283
 msgid "Nerd Font Icon"
-msgstr "Ikona Nerd Font"
+msgstr "Nerd Fontアイコン"
 
 #: sui_quickactions.lua:1354
 msgid "Nerd Font symbol…"
-msgstr "Symbol Nerd Font…"
+msgstr "Nerd Fontシンボル…"
 
 #: sui_bottombar.lua:1722
 msgid "Network manager unavailable."
-msgstr "Správce sítě není k dispozici."
+msgstr "ネットワークマネージャーは利用できません。"
 
 #: sui_menu.lua:2503
 msgid "Never"
-msgstr "Nikdy"
+msgstr "しない"
 
 #: sui_foldercovers.lua:2399
 #: sui_foldercovers.lua:3047
 #: desktop_modules/module_new_books.lua:216
 msgid "New"
-msgstr "Nové"
+msgstr "新規"
 
 #: sui_menu.lua:3008
 msgid "New Book"
-msgstr "Nová kniha"
+msgstr "新しい本"
 
 #: sui_menu.lua:3088
 msgid "Finished Books"
-msgstr "Dokončené knihy"
+msgstr "読了した本"
 
 #: sui_menu.lua:3095
 msgid "Fade Finished Books"
-msgstr "Zesvětlit dokončené knihy"
+msgstr "読了した本をフェード"
 
 #: sui_menu.lua:3104
 msgid "Intensity"
-msgstr "Intenzita"
+msgstr "強度"
 
 #: sui_menu.lua:3110
 msgid "Fade Intensity"
-msgstr "Intenzita zesvětlení"
+msgstr "フェード強度"
 
 #: sui_menu.lua:3111
-msgid ""
-"Fades finished book covers towards white.\n"
-"50% is the default."
-msgstr ""
-"Zesvětlí obálky dokončených knih směrem k bílé.\n"
-"50 % je výchozí hodnota."
+msgid "Fades finished book covers towards white.\n50% is the default."
+msgstr "読了した本のカバーを白に近づけてフェードします。\n50%がデフォルト。"
 
 #: desktop_modules/module_new_books.lua:50
 #: desktop_modules/module_new_books.lua:51
 #: desktop_modules/module_new_books.lua:130
 #: desktop_modules/module_new_books.lua:381
 msgid "New Books"
-msgstr "Nové knihy"
+msgstr "新しい本"
 
 #: sui_quickactions.lua:1527
 msgid "New Quick Action"
-msgstr "Nová rychlá akce"
+msgstr "新しいクイックアクション"
 
 #: sui_foldercovers.lua:709
 #: sui_browsemeta.lua:893
 msgid "New collection name"
-msgstr "Název nové kolekce"
+msgstr "新しいコレクション名"
 
 #: sui_bottombar.lua:566
 msgid "Next"
-msgstr "Další"
+msgstr "次へ"
 
 #: sui_quickactions.lua:352
 #: sui_config.lua:121
 msgid "Night Mode"
-msgstr "Noční režim"
+msgstr "ナイトモード"
 
 #: desktop_modules/module_clock.lua:200
 #: desktop_modules/module_clock.lua:248
 msgid "Nine"
-msgstr "Devět"
+msgstr "九"
 
 #: desktop_modules/module_clock.lua:210
 #: desktop_modules/module_clock.lua:252
 msgid "Nineteen"
-msgstr "Devatenáct"
+msgstr "十九"
 
 #: desktop_modules/module_quote.lua:1340
 msgid "No .lua files found in sui_quotes/"
-msgstr "Ve složce sui_quotes/ nebyly nalezeny žádné soubory .lua"
+msgstr "sui_quotes/に.luaファイルが見つかりません"
 
 #: sui_menu.lua:3582
-msgid ""
-"No .zip files found.\n"
-"Place .zip files in:\n"
-"%1"
-msgstr ""
-"Nebyly nalezeny žádné soubory .zip.\n"
-"Umístěte soubory .zip do:\n"
-"%1"
+msgid "No .zip files found.\nPlace .zip files in:\n%1"
+msgstr ".zipファイルが見つかりません。\n.zipファイルを以下に配置してください:\n%1"
 
 #: sui_quicksettings_bar.lua:1149
 #: sui_quicksettings_bar.lua:1169
 msgid "No actions active yet."
-msgstr "Zatím nejsou aktivní žádné akce."
+msgstr "まだアクティブなアクションはありません。"
 
 #: sui_quickactions.lua:898
 #: sui_settings_window.lua:445
@@ -2120,112 +2036,98 @@ msgstr "Zatím nejsou aktivní žádné akce."
 #: desktop_modules/module_action_list.lua:135
 #: desktop_modules/module_quick_actions.lua:90
 msgid "No actions configured"
-msgstr "Nejsou nastaveny žádné akce"
+msgstr "アクションが設定されていません"
 
 #: desktop_modules/module_action_list.lua:107
 #: desktop_modules/module_action_list.lua:134
 #: desktop_modules/module_quick_actions.lua:89
 msgid "No actions configured  —  long press to configure"
-msgstr "Nejsou nastaveny žádné akce  —  nastavíte je dlouhým stiskem"
+msgstr "アクションが設定されていません — 長押しで設定"
 
 #: sui_quicksettings_bar.lua:351
-msgid ""
-"No actions configured.\n"
-"Go to Bars → Quick Settings Bar."
-msgstr ""
-"Nejsou nastaveny žádné akce.\n"
-"Přejděte na Lišty → Lišta rychlých nastavení."
+msgid "No actions configured.\nGo to Bars → Quick Settings Bar."
+msgstr "アクションが設定されていません。\nバー → クイック設定バーに移動してください。"
 
 #: sui_quickactions.lua:282
 msgid "No book in history."
-msgstr "V historii není žádná kniha."
+msgstr "履歴に本がありません。"
 
 #: sui_stats_windows.lua:425
 msgid "No books finished in %s"
-msgstr "V %s nebyly dokončeny žádné knihy"
+msgstr "%sに読了した本はありません"
 
 #: sui_foldercovers.lua:816
 msgid "No books found in this folder."
-msgstr "V této složce nebyly nalezeny žádné knihy."
+msgstr "このフォルダに本が見つかりません。"
 
 #: sui_foldercovers.lua:702
 #: sui_foldercovers.lua:759
 msgid "No books found in this series."
-msgstr "V této sérii nebyly nalezeny žádné knihy."
+msgstr "このシリーズに本が見つかりません。"
 
 #: sui_browsemeta.lua:962
 msgid "No books found."
-msgstr "Nebyly nalezeny žádné knihy."
+msgstr "本が見つかりません。"
 
 #: desktop_modules/module_tbr.lua:621
 #: desktop_modules/module_tbr.lua:646
 #: desktop_modules/module_tbr.lua:721
 msgid "No books in To Be Read list."
-msgstr "V seznamu K přečtení nejsou žádné knihy."
+msgstr "読みたいリストに本がありません。"
 
 #: sui_homescreen.lua:406
 msgid "No books opened yet"
-msgstr "Zatím nebyla otevřena žádná kniha"
+msgstr "まだ本を開いていません"
 
 #: desktop_modules/module_collections.lua:960
 msgid "No collections found."
-msgstr "Nebyly nalezeny žádné kolekce."
+msgstr "コレクションが見つかりません。"
 
 #: desktop_modules/module_collections.lua:431
 msgid "No collections selected"
-msgstr "Nejsou vybrány žádné kolekce"
+msgstr "コレクションが選択されていません"
 
 #: desktop_modules/module_collections.lua:430
 msgid "No collections selected  —  long press to configure"
-msgstr "Nejsou vybrány žádné kolekce  —  nastavíte je dlouhým stiskem"
+msgstr "コレクションが選択されていません — 長押しで設定"
 
 #: desktop_modules/module_quote.lua:854
 msgid "No custom quotes found. Add a .lua file to the plugin's sui_quotes/ folder and select it in Settings."
-msgstr "Nebyly nalezeny žádné vlastní citáty. Přidejte soubor .lua do složky sui_quotes/ pluginu a vyberte jej v Nastavení."
+msgstr "カスタム引用が見つかりません。プラグインのsui_quotes/フォルダに.luaファイルを追加し、設定で選択してください。"
 
 #: sui_updater.lua:481
-msgid ""
-"No download file found.\n"
-"\n"
-"Open the releases page?"
-msgstr ""
-"Nebyl nalezen žádný soubor ke stažení.\n"
-"\n"
-"Otevřít stránku vydání?"
+msgid "No download file found.\n\nOpen the releases page?"
+msgstr "ダウンロードファイルが見つかりません。\n\nリリースページを開きますか？"
 
 #: sui_presets.lua:381
 #: sui_presets.lua:561
 msgid "No export directory"
-msgstr "Chybí exportní složka"
+msgstr "エクスポートディレクトリがありません"
 
 #: sui_stats_windows.lua:132
 msgid "No filepath."
-msgstr "Chybí cesta k souboru."
+msgstr "ファイルパスがありません。"
 
 #: sui_quickactions.lua:2141
-msgid ""
-"No folder, collection or plugin configured.\n"
-"Go to Simple UI → Settings → Quick Actions to set one."
-msgstr ""
-"Není nastavena žádná složka, kolekce ani plugin.\n"
-"Přejděte do Simple UI → Nastavení → Rychlé akce a jednu nastavte."
+msgid "No folder, collection or plugin configured.\nGo to Simple UI → Settings → Quick Actions to set one."
+msgstr "フォルダ、コレクション、プラグインが設定されていません。\nSimple UI → 設定 → クイックアクションに移動して設定してください。"
 
 #: sui_style.lua:1473
 msgid "No fonts found."
-msgstr "Nebyla nalezena žádná písma."
+msgstr "フォントが見つかりません。"
 
 #: desktop_modules/module_quote.lua:926
 msgid "No highlights found. Open a book and highlight some passages."
-msgstr "Nebyla nalezena žádná zvýraznění. Otevřete knihu a zvýrazněte některé pasáže."
+msgstr "ハイライトが見つかりません。本を開いてテキストをハイライトしてください。"
 
 #: sui_quickactions.lua:1367
 msgid "No icons found in:"
-msgstr "V tomto umístění nebyly nalezeny žádné ikony:"
+msgstr "アイコンが見つかりません:"
 
 #: sui_window.lua:2028
 #: sui_window.lua:2624
 msgid "No items available."
-msgstr "Nejsou dostupné žádné položky."
+msgstr "利用可能なアイテムがありません。"
 
 #: sui_menu.lua:864
 #: sui_menu.lua:942
@@ -2253,65 +2155,59 @@ msgstr "Nejsou dostupné žádné položky."
 #: desktop_modules/module_quick_actions.lua:405
 #: desktop_modules/module_quick_actions.lua:430
 msgid "No items selected."
-msgstr "Nejsou vybrány žádné položky."
+msgstr "アイテムが選択されていません。"
 
 #: sui_settings_window.lua:364
 #: sui_settings_window.lua:526
 msgid "No modules"
-msgstr "Žádné moduly"
+msgstr "モジュールがありません"
 
 #: sui_settings_window.lua:512
 msgid "No other pages available."
-msgstr "Nejsou dostupné žádné další stránky."
+msgstr "他のページはありません。"
 
 #: sui_menu.lua:3618
 msgid "No packs found."
-msgstr "Nebyly nalezeny žádné balíčky."
+msgstr "パックが見つかりません。"
 
 #: sui_quickactions.lua:1730
 msgid "No plugins found."
-msgstr "Nebyly nalezeny žádné pluginy."
+msgstr "プラグインが見つかりません。"
 
 #: sui_menu.lua:4008
 #: sui_presets.lua:1049
-msgid ""
-"No preset files found.\n"
-"Place .lua files in:\n"
-"%1"
-msgstr ""
-"Nebyly nalezeny žádné soubory předvoleb.\n"
-"Umístěte soubory .lua do:\n"
-"%1"
+msgid "No preset files found.\nPlace .lua files in:\n%1"
+msgstr "プリセットファイルが見つかりません。\n.luaファイルを以下に配置してください:\n%1"
 
 #: sui_menu.lua:3984
 #: sui_presets.lua:1026
 msgid "No presets found."
-msgstr "Nebyly nalezeny žádné předvolby."
+msgstr "プリセットが見つかりません。"
 
 #: desktop_modules/module_quote.lua:888
 msgid "No quotes found."
-msgstr "Nebyly nalezeny žádné citáty."
+msgstr "引用が見つかりません。"
 
 #: sui_stats_windows.lua:141
 #: sui_stats_windows.lua:176
 msgid "No statistics found for this book."
-msgstr "Pro tuto knihu nebyly nalezeny žádné statistiky."
+msgstr "この本の統計が見つかりません。"
 
 #: desktop_modules/module_reading_stats.lua:332
 msgid "No stats selected"
-msgstr "Nejsou vybrány žádné statistiky"
+msgstr "統計が選択されていません"
 
 #: desktop_modules/module_reading_stats.lua:331
 msgid "No stats selected  —  long press to configure"
-msgstr "Nejsou vybrány žádné statistiky  —  nastavíte je dlouhým stiskem"
+msgstr "統計が選択されていません — 長押しで設定"
 
 #: sui_quickactions.lua:1756
 msgid "No system actions found."
-msgstr "Nebyly nalezeny žádné systémové akce."
+msgstr "システムアクションが見つかりません。"
 
 #: sui_menu.lua:2218
 msgid "No wallpapers found."
-msgstr "Nebyly nalezeny žádné tapety."
+msgstr "壁紙が見つかりません。"
 
 #: sui_quickactions.lua:1629
 #: sui_foldercovers.lua:269
@@ -2322,39 +2218,39 @@ msgstr "Nebyly nalezeny žádné tapety."
 #: sui_menu.lua:3022
 #: sui_menu.lua:3040
 msgid "None"
-msgstr "Žádné"
+msgstr "なし"
 
 #: desktop_modules/module_clock.lua:223
 #: desktop_modules/module_clock.lua:307
 msgid "Noon"
-msgstr "Poledne"
+msgstr "正午"
 
 #: desktop_modules/module_reading_goals.lua:939
 #: desktop_modules/module_reading_goals.lua:954
 #: desktop_modules/module_reading_goals.lua:969
 msgid "Not set"
-msgstr "Nenastaveno"
+msgstr "未設定"
 
 #: sui_stats_windows.lua:748
 msgid "Notes"
-msgstr "Poznámky"
+msgstr "ノート"
 
 #: desktop_modules/module_clock.lua:62
 msgid "November"
-msgstr "Listopad"
+msgstr "11月"
 
 #: sui_menu.lua:2759
 msgid "Number of Books in Folder"
-msgstr "Počet knih ve složce"
+msgstr "フォルダ内の本数"
 
 #: sui_menu.lua:2833
 msgid "Number of Pages"
-msgstr "Počet stránek"
+msgstr "ページ数"
 
 #: desktop_modules/module_clock.lua:226
 #: desktop_modules/module_clock.lua:325
 msgid "O'Clock"
-msgstr "hodin"
+msgstr "時"
 
 #: sui_quickactions.lua:1296
 msgid "OK"
@@ -2362,7 +2258,7 @@ msgstr "OK"
 
 #: desktop_modules/module_clock.lua:62
 msgid "October"
-msgstr "Říjen"
+msgstr "10月"
 
 #: sui_quickactions.lua:995
 #: sui_quickactions.lua:1885
@@ -2371,12 +2267,12 @@ msgstr "Říjen"
 #: sui_menu.lua:3177
 #: sui_menu.lua:4274
 msgid "Off"
-msgstr "Vypnuto"
+msgstr "オフ"
 
 #: desktop_modules/module_clock.lua:227
 #: desktop_modules/module_clock.lua:270
 msgid "Oh"
-msgstr "nula"
+msgstr "お"
 
 #: sui_quickactions.lua:994
 #: sui_quickactions.lua:1884
@@ -2384,40 +2280,40 @@ msgstr "nula"
 #: sui_menu.lua:1599
 #: sui_menu.lua:4274
 msgid "On"
-msgstr "Zapnuto"
+msgstr "オン"
 
 #: desktop_modules/module_clock.lua:192
 #: desktop_modules/module_clock.lua:246
 msgid "One"
-msgstr "Jedna"
+msgstr "一"
 
 #: sui_homescreen.lua:693
 #: sui_stats_windows.lua:409
 #: desktop_modules/module_quote.lua:1179
 msgid "Open"
-msgstr "Otevřít"
+msgstr "開く"
 
 #: sui_homescreen.lua:415
 msgid "Open a book to get started"
-msgstr "Začněte otevřením knihy"
+msgstr "本を開いて始めましょう"
 
 #: sui_updater.lua:482
 msgid "Open in browser"
-msgstr "Otevřít v prohlížeči"
+msgstr "ブラウザで開く"
 
 #: sui_homescreen.lua:692
 #: sui_stats_windows.lua:407
 #: desktop_modules/module_quote.lua:1178
 msgid "Open this file?"
-msgstr "Otevřít tento soubor?"
+msgstr "このファイルを開きますか？"
 
 #: sui_menu.lua:2518
 msgid "Overflow Warning"
-msgstr "Upozornění na přesah"
+msgstr "オーバーフロー警告"
 
 #: sui_menu.lua:2723
 msgid "Overlays"
-msgstr "Překryvy"
+msgstr "オーバーレイ"
 
 #: sui_menu.lua:3810
 #: sui_menu.lua:3839
@@ -2426,292 +2322,262 @@ msgstr "Překryvy"
 #: sui_presets.lua:878
 #: sui_presets.lua:1010
 msgid "Overwrite"
-msgstr "Přepsat"
+msgstr "上書き"
 
 #: sui_presets.lua:877
 #: sui_presets.lua:1009
 msgid "Overwrite preset \"%s\" with the current homescreen settings?"
-msgstr "Přepsat předvolbu \"%s\" aktuálním nastavením domovské obrazovky?"
+msgstr "現在のホーム画面設定でプリセット「%s」を上書きしますか？"
 
 #: sui_menu.lua:3838
 #: sui_menu.lua:3967
 msgid "Overwrite preset \"%s\" with the current icon settings?"
-msgstr "Přepsat předvolbu \"%s\" aktuálním nastavením ikon?"
+msgstr "現在のアイコン設定でプリセット「%s」を上書きしますか？"
 
 #: sui_menu.lua:3634
-msgid ""
-"Pack \"%s\" applied.\n"
-"%d icons replaced."
-msgstr ""
-"Balíček \"%s\" byl použit.\n"
-"Nahrazeno ikon: %d."
+msgid "Pack \"%s\" applied.\n%d icons replaced."
+msgstr "パック「%s」を適用しました。\n%d個のアイコンを置換しました。"
 
 #: sui_menu.lua:3595
-msgid ""
-"Pack \"%s\" installed.\n"
-"You can now apply it from the list."
-msgstr ""
-"Balíček \"%s\" byl nainstalován.\n"
-"Nyní jej můžete použít ze seznamu."
+msgid "Pack \"%s\" installed.\nYou can now apply it from the list."
+msgstr "パック「%s」をインストールしました。\nリストから適用できます。"
 
 #: sui_style.lua:2089
 msgid "Pack folder not accessible: "
-msgstr "Složka balíčku není přístupná: "
+msgstr "パックフォルダにアクセスできません: "
 
 #: sui_homescreen.lua:1742
 #: sui_patches.lua:1486
 #: sui_patches.lua:1951
 #: sui_window.lua:1043
 msgid "Page %1 of %2"
-msgstr "Strana %1 z %2"
+msgstr "ページ %1 / %2"
 
 #: sui_settings_window.lua:338
 #: sui_settings_window.lua:488
 #: sui_settings_window.lua:862
 msgid "Page %d"
-msgstr "Strana %d"
+msgstr "ページ %d"
 
 #: sui_settings_window.lua:337
 #: sui_settings_window.lua:487
 #: sui_settings_window.lua:861
 msgid "Page 1 (Home)"
-msgstr "Strana 1 (Domů)"
+msgstr "ページ1（ホーム）"
 
 #: sui_stats_windows.lua:567
 msgid "Pages"
-msgstr "Stránky"
+msgstr "ページ"
 
 #: sui_stats_windows.lua:1789
 msgid "Pages per day"
-msgstr "Stránek za den"
+msgstr "1日あたりページ"
 
 #: sui_stats_windows.lua:1806
 #: sui_stats_windows.lua:1822
 msgid "Pages read"
-msgstr "Přečtené stránky"
+msgstr "読んだページ"
 
 #: sui_menu.lua:2585
 #: sui_style.lua:1082
 msgid "Pagination Bar"
-msgstr "Stránkovací lišta"
+msgstr "ページネーションバー"
 
 #: sui_menu.lua:471
-msgid ""
-"Pagination bar hidden.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Stránkovací lišta je skrytá.\n"
-"\n"
-"Restartovat nyní?"
+msgid "Pagination bar hidden.\n\nRestart now?"
+msgstr "ページネーションバーを非表示にしました。\n\n今すぐ再起動しますか？"
 
 #: sui_menu.lua:450
-msgid ""
-"Pagination bar set to Default.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Stránkovací lišta je nastavena na Výchozí.\n"
-"\n"
-"Restartovat nyní?"
+msgid "Pagination bar set to Default.\n\nRestart now?"
+msgstr "ページネーションバーをデフォルトに設定しました。\n\n今すぐ再起動しますか？"
 
 #: sui_menu.lua:557
 #: sui_menu.lua:569
 #: sui_menu.lua:581
-msgid ""
-"Pagination bar size will change after restart.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Velikost stránkovací lišty se změní po restartu.\n"
-"\n"
-"Restartovat nyní?"
+msgid "Pagination bar size will change after restart.\n\nRestart now?"
+msgstr "ページネーションバーサイズが再起動後に変更されます。\n\n今すぐ再起動しますか？"
 
 #: sui_style.lua:136
 msgid "Pagination: First Page"
-msgstr "Stránkování: první stránka"
+msgstr "ページネーション: 最初のページ"
 
 #: sui_style.lua:142
 msgid "Pagination: Last Page"
-msgstr "Stránkování: poslední stránka"
+msgstr "ページネーション: 最後のページ"
 
 #: sui_style.lua:130
 msgid "Pagination: Next Page"
-msgstr "Stránkování: další stránka"
+msgstr "ページネーション: 次のページ"
 
 #: sui_style.lua:124
 msgid "Pagination: Previous Page"
-msgstr "Stránkování: předchozí stránka"
+msgstr "ページネーション: 前のページ"
 
 #: sui_quickactions.lua:1684
 msgid "Path chooser not available."
-msgstr "Výběr cesty není k dispozici."
+msgstr "パス選択は利用できません。"
 
 #: sui_style.lua:2078
 msgid "Path does not exist: "
-msgstr "Cesta neexistuje: "
+msgstr "パスが存在しません: "
 
 #: desktop_modules/module_tbr.lua:795
 msgid "Percentage Overlay on Cover"
-msgstr "Překryv procent na obálce"
+msgstr "カバー上のパーセンテージオーバーレイ"
 
 #: desktop_modules/module_tbr.lua:785
 msgid "Percentage Text"
-msgstr "Text s procenty"
+msgstr "パーセンテージテキスト"
 
 #: desktop_modules/module_recent.lua:388
 msgid "Percentage overlay on cover"
-msgstr "Překryv procent na obálce"
+msgstr "カバー上のパーセンテージオーバーレイ"
 
 #: desktop_modules/module_coverdeck.lua:77
 #: desktop_modules/module_currently.lua:249
 #: desktop_modules/module_currently.lua:1148
 msgid "Percentage read"
-msgstr "Procent přečteno"
+msgstr "読了率"
 
 #: desktop_modules/module_recent.lua:378
 msgid "Percentage text"
-msgstr "Text s procenty"
+msgstr "パーセンテージテキスト"
 
 #: desktop_modules/module_reading_goals.lua:404
 msgid "Physical Books — %s"
-msgstr "Fyzické knihy — %s"
+msgstr "紙の本 — %s"
 
 #: desktop_modules/module_reading_goals.lua:405
 msgid "Physical books read this year:"
-msgstr "Počet fyzických knih přečtených letos:"
+msgstr "今年読んだ紙の本:"
 
 #: desktop_modules/module_quote.lua:1365
 msgid "Place .lua files in the plugin's sui_quotes/ folder"
-msgstr "Umístěte soubory .lua do složky sui_quotes/ pluginu"
+msgstr "プラグインのsui_quotes/フォルダに.luaファイルを配置してください"
 
 #: sui_menu.lua:3619
 msgid "Place a folder or .zip in:"
-msgstr "Umístěte složku nebo .zip do:"
+msgstr "フォルダまたは.zipを以下に配置:"
 
 #: sui_menu.lua:2220
 msgid "Place images in:"
-msgstr "Umístěte obrázky do:"
+msgstr "画像を以下に配置:"
 
 #: sui_onboarding.lua:169
 msgid "Place your files in koreader/settings/simpleui/sui_wallpapers or sui_icons."
-msgstr "Umístěte soubory do koreader/settings/simpleui/sui_wallpapers nebo sui_icons."
+msgstr "ファイルをkoreader/settings/simpleui/sui_wallpapersまたはsui_iconsに配置してください。"
 
 #: sui_menu.lua:3275
 msgid "Placeholder Cover for Bookless Folders"
-msgstr "Zástupná obálka pro složky bez knih"
+msgstr "本がないフォルダ用プレースホルダーカバー"
 
 #: sui_menu.lua:3789
 #: sui_presets.lua:822
 msgid "Please enter a name for the preset."
-msgstr "Zadejte prosím název předvolby."
+msgstr "プリセット名を入力してください。"
 
 #: sui_quickactions.lua:1656
 msgid "Please select an action."
-msgstr "Vyberte prosím akci."
+msgstr "アクションを選択してください。"
 
 #: sui_quickactions.lua:1749
 #: sui_quickactions.lua:1786
 msgid "Plugin"
-msgstr "Plugin"
+msgstr "プラグイン"
 
 #: sui_quickactions.lua:2126
 msgid "Plugin error: %s"
-msgstr "Chyba pluginu: %s"
+msgstr "プラグインエラー: %s"
 
 #: sui_quickactions.lua:2128
 msgid "Plugin not available: %s"
-msgstr "Plugin není k dispozici: %s"
+msgstr "プラグインは利用できません: %s"
 
 #: sui_menu.lua:2766
 #: sui_menu.lua:3126
 msgid "Position"
-msgstr "Pozice"
+msgstr "位置"
 
 #: sui_quickactions.lua:379
 #: sui_config.lua:123
 msgid "Power"
-msgstr "Napájení"
+msgstr "電源"
 
 #: sui_menu.lua:4020
 #: sui_presets.lua:1063
 msgid "Preset \"%s\" imported."
-msgstr "Předvolba \"%s\" byla importována."
+msgstr "プリセット「%s」をインポートしました。"
 
 #: sui_menu.lua:3749
 #: sui_presets.lua:704
 #: sui_presets.lua:782
 msgid "Preset \"%s\" not found."
-msgstr "Předvolba \"%s\" nebyla nalezena."
+msgstr "プリセット「%s」が見つかりません。"
 
 #: sui_menu.lua:3799
 #: sui_presets.lua:839
 msgid "Preset \"%s\" saved."
-msgstr "Předvolba \"%s\" byla uložena."
+msgstr "プリセット「%s」を保存しました。"
 
 #: sui_menu.lua:3845
 #: sui_menu.lua:3974
 #: sui_presets.lua:884
 #: sui_presets.lua:1016
 msgid "Preset \"%s\" updated."
-msgstr "Předvolba \"%s\" byla aktualizována."
+msgstr "プリセット「%s」を更新しました。"
 
 #: sui_menu.lua:4056
 #: sui_presets.lua:1096
-msgid ""
-"Preset exported to:\n"
-"%s"
-msgstr ""
-"Předvolba exportována do:\n"
-"%s"
+msgid "Preset exported to:\n%s"
+msgstr "プリセットをエクスポートしました:\n%s"
 
 #: sui_menu.lua:3774
 #: sui_presets.lua:807
 msgid "Preset name"
-msgstr "Název předvolby"
+msgstr "プリセット名"
 
 #: sui_presets.lua:383
 #: sui_presets.lua:563
 msgid "Preset not found"
-msgstr "Předvolba nebyla nalezena"
+msgstr "プリセットが見つかりません"
 
 #: sui_menu.lua:2557
 #: sui_settings_window.lua:316
 msgid "Presets"
-msgstr "Předvolby"
+msgstr "プリセット"
 
 #: sui_settings_window.lua:676
 msgid "Presets module unavailable."
-msgstr "Modul předvoleb není k dispozici."
+msgstr "プリセットモジュールは利用できません。"
 
 #: sui_onboarding.lua:157
 msgid "Press and hold any element on the screen (like modules or bars) to quickly customize its settings."
-msgstr "Stisknutím a podržením libovolného prvku na obrazovce (například modulů nebo lišt) rychle upravíte jeho nastavení."
+msgstr "画面上の任意の要素（モジュールやバーなど）を長押しして、その設定を素早くカスタマイズできます。"
 
 #: sui_bottombar.lua:566
 msgid "Prev"
-msgstr "Předch."
+msgstr "前へ"
 
 #: sui_menu.lua:2941
 msgid "Progress"
-msgstr "Průběh"
+msgstr "進捗"
 
 #: desktop_modules/module_tbr.lua:775
 msgid "Progress Bar"
-msgstr "Ukazatel průběhu"
+msgstr "プログレスバー"
 
 #: sui_menu.lua:4101
 msgid "Progress Bar Type"
-msgstr "Typ ukazatele průběhu"
+msgstr "プログレスバータイプ"
 
 #: desktop_modules/module_recent.lua:368
 #: desktop_modules/module_currently.lua:248
 msgid "Progress bar"
-msgstr "Ukazatel průběhu"
+msgstr "プログレスバー"
 
 #: desktop_modules/module_currently.lua:1486
 msgid "Progress bar style"
-msgstr "Styl ukazatele průběhu"
+msgstr "プログレスバースタイル"
 
 #: sui_quickactions.lua:896
 #: sui_menu.lua:2123
@@ -2728,58 +2594,58 @@ msgstr "Styl ukazatele průběhu"
 #: desktop_modules/module_quick_actions.lua:428
 #: desktop_modules/module_quick_actions.lua:539
 msgid "Quick Actions"
-msgstr "Rychlé akce"
+msgstr "クイックアクション"
 
 #: sui_menu.lua:4333
 msgid "Quick Actions  (%d/%d — %d left)"
-msgstr "Rychlé akce  (%d/%d — zbývá %d)"
+msgstr "クイックアクション (%d/%d — 残り%d)"
 
 #: sui_menu.lua:4331
 msgid "Quick Actions  (%d/%d — at limit)"
-msgstr "Rychlé akce  (%d/%d — na limitu)"
+msgstr "クイックアクション (%d/%d — 上限)"
 
 #: sui_quickactions.lua:1137
 #: sui_menu.lua:3468
 msgid "Quick Actions Icons"
-msgstr "Ikony rychlých akcí"
+msgstr "クイックアクションアイコン"
 
 #: sui_menu.lua:1875
 #: desktop_modules/module_quick_actions.lua:251
 #: desktop_modules/module_quick_actions.lua:301
 #: desktop_modules/module_quick_actions.lua:654
 msgid "Quick Actions Row"
-msgstr "Řádek rychlých akcí"
+msgstr "クイックアクション行"
 
 #: sui_menu.lua:2587
 #: sui_quicksettings_bar.lua:994
 msgid "Quick Settings Bar"
-msgstr "Lišta rychlých nastavení"
+msgstr "クイック設定バー"
 
 #: sui_onboarding.lua:231
 #: sui_onboarding.lua:232
 msgid "Quick Tips"
-msgstr "Rychlé tipy"
+msgstr "クイックヒント"
 
 #: sui_window.lua:1797
 msgid "Quick toggles"
-msgstr "Rychlé přepínače"
+msgstr "クイックトグル"
 
 #: sui_bottombar.lua:2051
 msgid "Quit"
-msgstr "Ukončit"
+msgstr "終了"
 
 #: sui_presets.lua:166
 #: desktop_modules/module_quote.lua:1008
 msgid "Quote of the Day"
-msgstr "Citát dne"
+msgstr "今日の名言"
 
 #: desktop_modules/module_quote.lua:1305
 msgid "Quotes + My Highlights"
-msgstr "Citáty + moje zvýraznění"
+msgstr "引用 + マイハイライト"
 
 #: sui_config.lua:163
 msgid "RAM Usage"
-msgstr "Využití RAM"
+msgstr "RAM使用量"
 
 #: sui_presets.lua:201
 #: desktop_modules/module_reading_goals.lua:540
@@ -2787,20 +2653,20 @@ msgstr "Využití RAM"
 #: desktop_modules/module_reading_goals.lua:567
 #: desktop_modules/module_reading_goals.lua:1055
 msgid "Reading Goals"
-msgstr "Čtenářské cíle"
+msgstr "読書目標"
 
 #: sui_stats_windows.lua:2128
 msgid "Reading Insights"
-msgstr "Přehled čtení"
+msgstr "読書インサイト"
 
 #: sui_presets.lua:201
 #: desktop_modules/module_reading_stats.lua:258
 msgid "Reading Stats"
-msgstr "Statistiky čtení"
+msgstr "読書統計"
 
 #: sui_bottombar.lua:2028
 msgid "Reboot"
-msgstr "Restartovat zařízení"
+msgstr "再起動"
 
 #: sui_presets.lua:131
 #: sui_presets.lua:166
@@ -2811,11 +2677,11 @@ msgstr "Restartovat zařízení"
 #: desktop_modules/module_recent.lua:348
 #: desktop_modules/module_coverdeck.lua:846
 msgid "Recent Books"
-msgstr "Nedávné knihy"
+msgstr "最近の本"
 
 #: desktop_modules/module_tbr.lua:294
 msgid "Remove from To Be Read"
-msgstr "Odebrat z K přečtení"
+msgstr "読みたいリストから削除"
 
 #: sui_menu.lua:3851
 #: sui_menu.lua:3858
@@ -2826,63 +2692,57 @@ msgstr "Odebrat z K přečtení"
 #: sui_presets.lua:897
 #: sui_presets.lua:983
 msgid "Rename"
-msgstr "Přejmenovat"
+msgstr "名前を変更"
 
 #: sui_menu.lua:3854
 #: sui_menu.lua:3939
 #: sui_presets.lua:893
 #: sui_presets.lua:979
 msgid "Rename \"%s\""
-msgstr "Přejmenovat \"%s\""
+msgstr "「%s」の名前を変更"
 
 #: sui_menu.lua:457
-msgid ""
-"Replaces the pagination bar with Prev/Next arrows at the edges of the bottom bar.\n"
-"The arrows dim when there is no previous or next page.\n"
-"With navpager active, as few as 1 tab and at most 4 tabs can be configured."
-msgstr ""
-"Nahradí stránkovací lištu šipkami Předch./Další na okrajích spodní lišty.\n"
-"Šipky se ztlumí, pokud není předchozí nebo další stránka.\n"
-"Při aktivním navpageru lze nastavit minimálně 1 a maximálně 4 karty."
+msgid "Replaces the pagination bar with Prev/Next arrows at the edges of the bottom bar.\nThe arrows dim when there is no previous or next page.\nWith navpager active, as few as 1 tab and at most 4 tabs can be configured."
+msgstr "ページネーションバーをボトムバーの端にある前へ/次へ矢印に置き換えます。\n前または次のページがない場合、矢印は暗くなります。\nNavpagerが有効な場合、1〜4つのタブを設定できます。"
 
 #: sui_quickactions.lua:1145
 #: sui_menu.lua:2450
 #: sui_style.lua:1097
 msgid "Reset"
-msgstr "Obnovit"
+msgstr "リセット"
 
 #: sui_quickactions.lua:1139
 #: sui_style.lua:1091
 msgid "Reset All"
-msgstr "Obnovit vše"
+msgstr "すべてリセット"
 
 #: sui_quickactions.lua:1811
 msgid "Reset All Quick Action Icons"
-msgstr "Obnovit všechny ikony rychlých akcí"
+msgstr "すべてのクイックアクションアイコンをリセット"
 
 #: sui_style.lua:864
 msgid "Reset All System Icons"
-msgstr "Obnovit všechny systémové ikony"
+msgstr "すべてのシステムアイコンをリセット"
 
 #: sui_style.lua:1878
 msgid "Reset All Theme Colors"
-msgstr "Obnovit všechny barvy motivu"
+msgstr "すべてのテーマカラーをリセット"
 
 #: sui_quickactions.lua:1144
 msgid "Reset all Quick Actions icons to default?"
-msgstr "Obnovit všechny ikony rychlých akcí na výchozí?"
+msgstr "すべてのクイックアクションアイコンをデフォルトにリセットしますか？"
 
 #: sui_menu.lua:2449
 msgid "Reset all scales to default (100%)? This cannot be undone."
-msgstr "Obnovit všechna měřítka na výchozí hodnotu (100 %)? Tuto akci nelze vrátit."
+msgstr "すべてのスケールをデフォルト（100%）にリセットしますか？元に戻せません。"
 
 #: sui_style.lua:1096
 msgid "Reset all system icons to default?"
-msgstr "Obnovit všechny systémové ikony na výchozí?"
+msgstr "すべてのシステムアイコンをデフォルトにリセットしますか？"
 
 #: sui_menu.lua:2444
 msgid "Reset to Default Scale"
-msgstr "Obnovit výchozí měřítko"
+msgstr "デフォルトスケールにリセット"
 
 #: sui_menu.lua:429
 #: sui_menu.lua:836
@@ -2899,22 +2759,22 @@ msgstr "Obnovit výchozí měřítko"
 #: sui_window.lua:1733
 #: sui_updater.lua:431
 msgid "Restart"
-msgstr "Restartovat"
+msgstr "再起動"
 
 #: sui_style.lua:1465
 #: sui_style.lua:1509
 msgid "Restart to fully apply the UI font change."
-msgstr "Pro úplné použití změny písma rozhraní restartujte aplikaci."
+msgstr "UIフォントの変更を完全に適用するには再起動してください。"
 
 #: sui_menu.lua:2463
 msgid "Return to Book Folder"
-msgstr "Vrátit se do složky knihy"
+msgstr "本のフォルダに戻る"
 
 #: sui_menu.lua:3012
 #: sui_menu.lua:3021
 #: sui_menu.lua:3033
 msgid "Ribbon"
-msgstr "Stuha"
+msgstr "リボン"
 
 #: sui_menu.lua:701
 #: sui_menu.lua:934
@@ -2929,21 +2789,21 @@ msgstr "Stuha"
 #: desktop_modules/module_clock.lua:116
 #: desktop_modules/module_clock.lua:870
 msgid "Right"
-msgstr "Vpravo"
+msgstr "右"
 
 #: sui_quicksettings_bar.lua:1263
 #: desktop_modules/module_quick_actions.lua:575
 msgid "Round"
-msgstr "Kulaté"
+msgstr "ラウンド"
 
 #: sui_quicksettings_bar.lua:1273
 #: desktop_modules/module_quick_actions.lua:585
 msgid "Rounded Square"
-msgstr "Zaoblený čtverec"
+msgstr "角丸"
 
 #: desktop_modules/module_clock.lua:57
 msgid "Saturday"
-msgstr "Sobota"
+msgstr "土曜日"
 
 #: sui_quickactions.lua:1653
 #: sui_menu.lua:3782
@@ -2953,20 +2813,20 @@ msgstr "Sobota"
 #: desktop_modules/module_reading_goals.lua:424
 #: desktop_modules/module_reading_goals.lua:442
 msgid "Save"
-msgstr "Uložit"
+msgstr "保存"
 
 #: sui_menu.lua:3767
 #: sui_presets.lua:800
 msgid "Save as new preset"
-msgstr "Uložit jako novou předvolbu"
+msgstr "新しいプリセットとして保存"
 
 #: sui_menu.lua:3772
 msgid "Save icon preset"
-msgstr "Uložit předvolbu ikon"
+msgstr "アイコンプリセットを保存"
 
 #: sui_presets.lua:805
 msgid "Save preset"
-msgstr "Uložit předvolbu"
+msgstr "プリセットを保存"
 
 #: sui_menu.lua:2365
 #: desktop_modules/module_quote.lua:1225
@@ -2994,108 +2854,60 @@ msgstr "Uložit předvolbu"
 #: desktop_modules/module_quick_actions.lua:545
 #: desktop_modules/module_quick_actions.lua:547
 msgid "Scale"
-msgstr "Měřítko"
+msgstr "スケール"
 
 #: desktop_modules/module_currently.lua:1015
-msgid ""
-"Scale for all text elements (title, author, progress, time).\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pro všechny textové prvky (název, autor, průběh, čas).\n"
-"100% je výchozí velikost."
+msgid "Scale for all text elements (title, author, progress, time).\n100% is the default size."
+msgstr "すべてのテキスト要素（タイトル、著者、進捗、時間）のスケール。\n100%がデフォルトサイズ。"
 
 #: desktop_modules/module_quick_actions.lua:562
-msgid ""
-"Scale for the button label text.\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pro text popisku tlačítka.\n"
-"100% je výchozí velikost."
+msgid "Scale for the button label text.\n100% is the default size."
+msgstr "ボタンラベルテキストのスケール。\n100%がデフォルトサイズ。"
 
 #: desktop_modules/module_collections.lua:657
-msgid ""
-"Scale for the collection name text.\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pro text názvu kolekce.\n"
-"100% je výchozí velikost."
+msgid "Scale for the collection name text.\n100% is the default size."
+msgstr "コレクション名テキストのスケール。\n100%がデフォルトサイズ。"
 
 #: desktop_modules/module_collections.lua:887
-msgid ""
-"Scale for the collection thumbnails only.\n"
-"The label text follows the module scale.\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pouze pro miniatury kolekcí.\n"
-"Text popisku se řídí měřítkem modulu.\n"
-"100% je výchozí velikost."
+msgid "Scale for the collection thumbnails only.\nThe label text follows the module scale.\n100% is the default size."
+msgstr "コレクションサムネイルのみのスケール。\nラベルテキストはモジュールスケールに従います。\n100%がデフォルトサイズ。"
 
 #: desktop_modules/module_currently.lua:1002
-msgid ""
-"Scale for the cover thumbnail only.\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pouze pro miniaturu obálky.\n"
-"100% je výchozí velikost."
+msgid "Scale for the cover thumbnail only.\n100% is the default size."
+msgstr "カバーサムネイルのみのスケール。\n100%がデフォルトサイズ。"
 
 #: desktop_modules/module_coverdeck.lua:827
-msgid ""
-"Scale for the cover thumbnails only.\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pouze pro miniatury obálek.\n"
-"100% je výchozí velikost."
+msgid "Scale for the cover thumbnails only.\n100% is the default size."
+msgstr "カバーサムネイルのみのスケール。\n100%がデフォルトサイズ。"
 
 #: desktop_modules/module_recent.lua:325
 #: desktop_modules/module_tbr.lua:749
 #: desktop_modules/module_new_books.lua:342
-msgid ""
-"Scale for the cover thumbnails only.\n"
-"Text and progress bar follow the module scale.\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pouze pro miniatury obálek.\n"
-"Text a ukazatel průběhu se řídí měřítkem modulu.\n"
-"100% je výchozí velikost."
+msgid "Scale for the cover thumbnails only.\nText and progress bar follow the module scale.\n100% is the default size."
+msgstr "カバーサムネイルのみのスケール。\nテキストとプログレスバーはモジュールスケールに従います。\n100%がデフォルトサイズ。"
 
 #: sui_menu.lua:3164
-msgid ""
-"Scale for the folder name overlay text.\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pro text překryvu názvu složky.\n"
-"100% je výchozí velikost."
+msgid "Scale for the folder name overlay text.\n100% is the default size."
+msgstr "フォルダ名オーバーレイテキストのスケール。\n100%がデフォルトサイズ。"
 
 #: sui_quicksettings_bar.lua:1242
 #: desktop_modules/module_action_list.lua:571
 #: desktop_modules/module_new_books.lua:354
-msgid ""
-"Scale for the label text.\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pro text popisku.\n"
-"100% je výchozí velikost."
+msgid "Scale for the label text.\n100% is the default size."
+msgstr "ラベルテキストのスケール。\n100%がデフォルトサイズ。"
 
 #: sui_menu.lua:2740
-msgid ""
-"Scale for the library badges (progress, pages, etc.).\n"
-"100% is the default size."
-msgstr ""
-"Měřítko štítků knihovny (průběh, stránky atd.).\n"
-"100 % je výchozí velikost."
+msgid "Scale for the library badges (progress, pages, etc.).\n100% is the default size."
+msgstr "ライブラリバッジ（進捗、ページなど）のスケール。\n100%がデフォルトサイズ。"
 
 #: desktop_modules/module_recent.lua:339
 #: desktop_modules/module_tbr.lua:740
-msgid ""
-"Scale for the percentage read text.\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pro text s procenty přečtení.\n"
-"100% je výchozí velikost."
+msgid "Scale for the percentage read text.\n100% is the default size."
+msgstr "読了率テキストのスケール。\n100%がデフォルトサイズ。"
 
 #: desktop_modules/module_coverdeck.lua:819
 msgid "Scale for this module."
-msgstr "Měřítko pro tento modul."
+msgstr "このモジュールのスケール。"
 
 #: desktop_modules/module_quote.lua:1231
 #: desktop_modules/module_collections.lua:644
@@ -3108,217 +2920,175 @@ msgstr "Měřítko pro tento modul."
 #: desktop_modules/module_new_books.lua:328
 #: desktop_modules/module_currently.lua:989
 #: desktop_modules/module_quick_actions.lua:548
-msgid ""
-"Scale for this module.\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pro tento modul.\n"
-"100% je výchozí velikost."
+msgid "Scale for this module.\n100% is the default size."
+msgstr "このモジュールのスケール。\n100%がデフォルトサイズ。"
 
 #: desktop_modules/module_coverdeck.lua:835
-msgid ""
-"Scale for title and statistics text.\n"
-"100% is the default size."
-msgstr ""
-"Měřítko pro text názvu a statistik.\n"
-"100% je výchozí velikost."
+msgid "Scale for title and statistics text.\n100% is the default size."
+msgstr "タイトルと統計テキストのスケール。\n100%がデフォルトサイズ。"
 
 #: sui_menu.lua:2389
-msgid ""
-"Scales all modules and labels together.\n"
-"100% is the default size."
-msgstr ""
-"Mění měřítko všech modulů a popisků zároveň.\n"
-"100% je výchozí velikost."
+msgid "Scales all modules and labels together.\n100% is the default size."
+msgstr "すべてのモジュールとラベルを一緒にスケーリング。\n100%がデフォルトサイズ。"
 
 #: sui_menu.lua:2425
-msgid ""
-"Scales the section label text above each module.\n"
-"100% is the default size."
-msgstr ""
-"Mění měřítko textu popisku sekce nad každým modulem.\n"
-"100% je výchozí velikost."
+msgid "Scales the section label text above each module.\n100% is the default size."
+msgstr "各モジュール上のセクションラベルテキストのスケール。\n100%がデフォルトサイズ。"
 
 #: sui_menu.lua:3288
 msgid "Scan Subfolders for Covers"
-msgstr "Hledat obálky i v podsložkách"
+msgstr "サブフォルダをスキャンしてカバーを検索"
 
 #: sui_titlebar.lua:104
 msgid "Search"
-msgstr "Hledat"
+msgstr "検索"
 
 #: sui_style.lua:81
 msgid "Search Button"
-msgstr "Tlačítko Hledat"
+msgstr "検索ボタン"
 
 #: sui_style.lua:1772
 msgid "Secondary / Dim Text"
-msgstr "Sekundární / ztlumený text"
+msgstr "セカンダリ / ダイムテキスト"
 
 #: sui_window.lua:1493
 #: sui_window.lua:2325
 msgid "Select"
-msgstr "Vybrat"
+msgstr "選択"
 
 #: sui_menu.lua:3758
 #: sui_presets.lua:713
 #: sui_presets.lua:721
 #: sui_presets.lua:726
 msgid "Select Preset"
-msgstr "Vybrat předvolbu"
+msgstr "プリセットを選択"
 
 #: sui_menu.lua:2198
 msgid "Select Wallpaper"
-msgstr "Vybrat tapetu"
+msgstr "壁紙を選択"
 
 #: desktop_modules/module_collections.lua:775
 msgid "Select at least 2 collections to arrange."
-msgstr "Pro uspořádání vyberte alespoň 2 kolekce."
+msgstr "配置するには少なくとも2つのコレクションを選択してください。"
 
 #: sui_style.lua:1773
 msgid "Separator Line"
-msgstr "Oddělovací čára"
+msgstr "区切り線"
 
 #: sui_style.lua:1737
 msgid "Sepia Classic"
-msgstr "Klasická sépie"
+msgstr "セピアクラシック"
 
 #: desktop_modules/module_clock.lua:62
 msgid "September"
-msgstr "Září"
+msgstr "9月"
 
 #: sui_quickactions.lua:417
 #: sui_config.lua:127
 #: sui_browsemeta.lua:71
 msgid "Series"
-msgstr "Série"
+msgstr "シリーズ"
 
 #: sui_menu.lua:2887
 msgid "Series Index"
-msgstr "Pořadí v sérii"
+msgstr "シリーズインデックス"
 
 #: sui_menu.lua:640
 #: sui_menu.lua:901
 msgid "Set"
-msgstr "Nastavit"
+msgstr "設定"
 
 #: desktop_modules/module_reading_goals.lua:945
 #: desktop_modules/module_reading_goals.lua:960
 #: desktop_modules/module_reading_goals.lua:975
 msgid "Set Goal"
-msgstr "Nastavit cíl"
+msgstr "目標を設定"
 
 #: sui_foldercovers.lua:890
 #: sui_foldercovers.lua:1203
 #: sui_browsemeta.lua:1198
 msgid "Set folder cover"
-msgstr "Nastavit obálku složky"
+msgstr "フォルダカバーを設定"
 
 #: sui_onboarding.lua:164
 msgid "Set your reading goal"
-msgstr "Nastavte si čtenářský cíl"
+msgstr "読書目標を設定"
 
 #: sui_quickactions.lua:388
 #: sui_config.lua:124
 msgid "Settings"
-msgstr "Nastavení"
+msgstr "設定"
 
 #: sui_settings_window.lua:228
 #: sui_settings_window.lua:233
 msgid "Settings not found."
-msgstr "Nastavení nebylo nalezeno."
+msgstr "設定が見つかりません。"
 
 #: sui_menu.lua:1071
 #: sui_menu.lua:1363
 #: sui_menu.lua:2530
 #: sui_quicksettings_bar.lua:1333
 msgid "Settings on Long Tap"
-msgstr "Nastavení při dlouhém stisku"
-
-#: sui_menu.lua:2541
-msgid "Preserve Deleted Books in Statistics"
-msgstr "Zachovat smazané knihy ve statistikách"
-
-#: sui_menu.lua:2541
-msgid ""
-"When a finished book is deleted from the device, keep it counted in the Books Read statistics on the Home Screen.\n"
-"\n"
-"Books changed back to Reading or Abandoned are automatically removed from this list."
-msgstr ""
-"Pokud je dokončená kniha smazána ze zařízení, zůstane započítaná ve statistice přečtených knih na domovské obrazovce.\n"
-"\n"
-"Knihy změněné zpět na rozečtené nebo opuštěné se z tohoto seznamu automaticky odeberou."
+msgstr "長押しで設定"
 
 #: desktop_modules/module_clock.lua:198
 #: desktop_modules/module_clock.lua:248
 msgid "Seven"
-msgstr "Sedm"
+msgstr "七"
 
 #: desktop_modules/module_clock.lua:208
 #: desktop_modules/module_clock.lua:251
 msgid "Seventeen"
-msgstr "Sedmnáct"
+msgstr "十七"
 
 #: desktop_modules/module_clock.lua:821
 msgid "Show Battery"
-msgstr "Zobrazit baterii"
+msgstr "バッテリーを表示"
 
 #: desktop_modules/module_clock.lua:809
 msgid "Show Clock"
-msgstr "Zobrazit hodiny"
+msgstr "時計を表示"
 
 #: desktop_modules/module_clock.lua:815
 msgid "Show Date"
-msgstr "Zobrazit datum"
+msgstr "日付を表示"
 
 #: desktop_modules/module_action_list.lua:578
 msgid "Show Icon"
-msgstr "Zobrazit ikonu"
+msgstr "アイコンを表示"
 
 #: sui_menu.lua:588
 msgid "Show Page Count in Title Bar"
-msgstr "Zobrazit počet stránek v horní liště"
+msgstr "タイトルバーにページ数を表示"
 
 #: sui_menu.lua:2476
 msgid "Show a brief \"Closing book…\" notice when closing a book, preventing accidental double-taps while e-ink refreshes."
-msgstr "Při zavírání knihy zobrazí krátké upozornění „Zavírá se kniha…“, aby se během obnovy e-inku předešlo nechtěnému dvojitému klepnutí."
+msgstr "本を閉じる際に簡潔な「本を閉じています…」通知を表示し、e-ink更新中の誤ったダブルタップを防止します。"
 
 #: desktop_modules/module_recent.lua:397
 #: desktop_modules/module_coverdeck.lua:1038
 msgid "Show finished books"
-msgstr "Zobrazit dokončené knihy"
+msgstr "読了した本を表示"
 
 #: sui_config.lua:921
 msgid "Show section label"
-msgstr "Zobrazit popisek sekce"
+msgstr "セクションラベルを表示"
 
 #: sui_menu.lua:2265
 msgid "Show wallpaper on all screens"
-msgstr "Zobrazit tapetu na všech obrazovkách"
+msgstr "すべての画面で壁紙を表示"
 
 #: sui_menu.lua:593
-msgid ""
-"Shows \"Page X of Y\" in the title bar subtitle when browsing the library, history or collections.\n"
-"Navpager enables this automatically.\n"
-"Not available when Navpager is active."
-msgstr ""
-"Při procházení knihovny, historie nebo kolekcí zobrazuje v podtitulku horní lišty „Strana X z Y“.\n"
-"Navpager tuto volbu zapíná automaticky.\n"
-"Není dostupné, když je aktivní Navpager."
+msgid "Shows \"Page X of Y\" in the title bar subtitle when browsing the library, history or collections.\nNavpager enables this automatically.\nNot available when Navpager is active."
+msgstr "ライブラリ、履歴、コレクションを閲覧中にタイトルバーのサブタイトルに「ページ X / Y」を表示します。\nNavpagerが自動的に有効にします。\nNavpagerが有効な場合は利用できません。"
 
 #: sui_menu.lua:489
-msgid ""
-"Shows a row of dots at the bottom of the homescreen.\n"
-"The active page dot is filled; the others are dimmed.\n"
-"Always active when Navpager is selected."
-msgstr ""
-"Zobrazuje řadu teček ve spodní části domovské obrazovky.\n"
-"Tečka aktivní stránky je vyplněná, ostatní jsou ztlumené.\n"
-"Při zvoleném Navpageru je vždy aktivní."
+msgid "Shows a row of dots at the bottom of the homescreen.\nThe active page dot is filled; the others are dimmed.\nAlways active when Navpager is selected."
+msgstr "ホーム画面の下部にドットの行を表示します。\nアクティブなページのドットは塗りつぶされ、他のドットは暗くなります。\nNavpagerが選択されている場合は常に有効です。"
 
 #: desktop_modules/module_currently.lua:1489
 msgid "Simple"
-msgstr "Jednoduchý"
+msgstr "シンプル"
 
 #: sui_menu.lua:4269
 #: sui_menu.lua:4274
@@ -3328,74 +3098,58 @@ msgid "Simple UI"
 msgstr "Simple UI"
 
 #: sui_updater.lua:428
-msgid ""
-"Simple UI %s installed.\n"
-"\n"
-"Restart KOReader to apply the update?"
-msgstr ""
-"Simple UI %s bylo nainstalováno.\n"
-"\n"
-"Restartovat KOReader pro použití aktualizace?"
+msgid "Simple UI %s installed.\n\nRestart KOReader to apply the update?"
+msgstr "Simple UI %sをインストールしました。\n\nKOReaderを再起動して更新を適用しますか？"
 
 #: sui_updater.lua:475
-msgid ""
-"Simple UI %s is available!\n"
-"You have %s."
-msgstr ""
-"Simple UI %s je k dispozici!\n"
-"Máte %s."
+msgid "Simple UI %s is available!\nYou have %s."
+msgstr "Simple UI %sが利用可能です！\n現在 %s を使用中。"
 
 #: sui_settings_window.lua:842
 msgid "Simple UI Settings"
-msgstr "Nastavení Simple UI"
+msgstr "Simple UI設定"
 
 #: sui_onboarding.lua:129
 msgid "Simple UI is designed to be simple and flexible. Here are a few tips to get the most out of it."
-msgstr "Simple UI je navrženo tak, aby bylo jednoduché a flexibilní. Zde je několik tipů, jak z něj vytěžit maximum."
+msgstr "Simple UIはシンプルで柔軟にデザインされています。最大限に活用するためのヒントを紹介します。"
 
 #: sui_updater.lua:469
 msgid "Simple UI is up to date (%s)."
-msgstr "Simple UI je aktuální (%s)."
+msgstr "Simple UIは最新です（%s）。"
 
 #: sui_menu.lua:4291
-msgid ""
-"Simple UI will be %s after restart.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Simple UI bude po restartu %s.\n"
-"\n"
-"Restartovat nyní?"
+msgid "Simple UI will be %s after restart.\n\nRestart now?"
+msgstr "Simple UIは再起動後に%sになります。\n\n今すぐ再起動しますか？"
 
 #: main.lua:751
 msgid "Simple UI: Go to Homescreen"
-msgstr "Simple UI: přejít na domovskou obrazovku"
+msgstr "Simple UI: ホーム画面へ"
 
 #: main.lua:757
 msgid "Simple UI: Go to Library"
-msgstr "Simple UI: přejít do knihovny"
+msgstr "Simple UI: ライブラリへ"
 
 #: main.lua:769
 msgid "Simple UI: Settings"
-msgstr "Simple UI: nastavení"
+msgstr "Simple UI: 設定"
 
 #: main.lua:763
 msgid "Simple UI: Toggle Homescreen / Library"
-msgstr "Simple UI: přepnout domovskou obrazovku / knihovnu"
+msgstr "Simple UI: ホーム画面/ライブラリ切替"
 
 #: sui_menu.lua:2687
 msgid "Single Cover"
-msgstr "Jedna obálka"
+msgstr "シングルカバー"
 
 #: desktop_modules/module_clock.lua:197
 #: desktop_modules/module_clock.lua:247
 msgid "Six"
-msgstr "Šest"
+msgstr "六"
 
 #: desktop_modules/module_clock.lua:207
 #: desktop_modules/module_clock.lua:251
 msgid "Sixteen"
-msgstr "Šestnáct"
+msgstr "十六"
 
 #: sui_menu.lua:1015
 #: sui_menu.lua:2731
@@ -3406,48 +3160,34 @@ msgstr "Šestnáct"
 #: desktop_modules/module_quick_actions.lua:560
 #: desktop_modules/module_quick_actions.lua:561
 msgid "Size"
-msgstr "Velikost"
+msgstr "サイズ"
 
 #: sui_menu.lua:1331
-msgid ""
-"Size of the tab icons.\n"
-"100% is the default size."
-msgstr ""
-"Velikost ikon karet.\n"
-"100% je výchozí velikost."
+msgid "Size of the tab icons.\n100% is the default size."
+msgstr "タブアイコンのサイズ。\n100%がデフォルトサイズ。"
 
 #: sui_menu.lua:1341
-msgid ""
-"Size of the tab label text.\n"
-"100% is the default size."
-msgstr ""
-"Velikost textu popisku karty.\n"
-"100% je výchozí velikost."
+msgid "Size of the tab label text.\n100% is the default size."
+msgstr "タブラベルテキストのサイズ。\n100%がデフォルトサイズ。"
 
 #: desktop_modules/module_reading_stats.lua:658
-msgid ""
-"Size of the text inside the stat cards.\n"
-"Does not affect card size or padding.\n"
-"100% is the default size."
-msgstr ""
-"Velikost textu uvnitř karet statistik.\n"
-"Neovlivňuje velikost karet ani jejich odsazení.\n"
-"100% je výchozí velikost."
+msgid "Size of the text inside the stat cards.\nDoes not affect card size or padding.\n100% is the default size."
+msgstr "統計カード内のテキストのサイズ。\nカードサイズやパディングには影響しません。\n100%がデフォルトサイズ。"
 
 #: sui_bottombar.lua:2041
 msgid "Sleep"
-msgstr "Uspat"
+msgstr "スリープ"
 
 #: sui_menu.lua:561
 msgid "Small"
-msgstr "Malé"
+msgstr "小さい"
 
 #: sui_menu.lua:3084
 #: sui_menu.lua:3088
 #: sui_quicksettings_bar.lua:1310
 #: desktop_modules/module_quick_actions.lua:622
 msgid "Solid"
-msgstr "Plné"
+msgstr "ソリッド"
 
 #: desktop_modules/module_collections.lua:904
 #: desktop_modules/module_recent.lua:359
@@ -3456,55 +3196,51 @@ msgstr "Plné"
 #: desktop_modules/module_new_books.lua:369
 #: desktop_modules/module_currently.lua:1477
 msgid "Solid Background"
-msgstr "Plné pozadí"
+msgstr "ソリッド背景"
 
 #: desktop_modules/module_quote.lua:1257
 #: desktop_modules/module_coverdeck.lua:843
 msgid "Source"
-msgstr "Zdroj"
+msgstr "ソース"
 
 #: sui_menu.lua:1351
-msgid ""
-"Space below the bottom navigation bar.\n"
-"100% is the default spacing."
-msgstr ""
-"Prostor pod spodní navigační lištou.\n"
-"100% je výchozí rozestup."
+msgid "Space below the bottom navigation bar.\n100% is the default spacing."
+msgstr "ボトムナビゲーションバー下のスペース。\n100%がデフォルト間隔。"
 
 #: desktop_modules/module_spacer.lua:56
 #: desktop_modules/module_spacer.lua:109
 msgid "Spacer"
-msgstr "Mezera"
+msgstr "スペーサー"
 
 #: desktop_modules/module_spacer.lua:87
 #: desktop_modules/module_spacer.lua:88
 msgid "Spacer Size"
-msgstr "Velikost mezery"
+msgstr "スペーサーサイズ"
 
 #: sui_onboarding.lua:267
 msgid "Start using Simple UI"
-msgstr "Začít používat Simple UI"
+msgstr "Simple UIを使い始める"
 
 #: sui_patches.lua:817
 #: sui_patches.lua:819
 msgid "Start with"
-msgstr "Spustit s"
+msgstr "開始画面"
 
 #: sui_menu.lua:2354
 msgid "Start with Home Screen"
-msgstr "Spustit s domovskou obrazovkou"
+msgstr "ホーム画面から開始"
 
 #: sui_onboarding.lua:58
 msgid "Start with a ready-made layout. You can change everything later."
-msgstr "Začněte s hotovým rozvržením. Vše můžete později změnit."
+msgstr "既製のレイアウトから始めましょう。後ですべて変更できます。"
 
 #: sui_stats_windows.lua:136
 msgid "Statistics database library not available."
-msgstr "Knihovna databáze statistik není k dispozici."
+msgstr "統計データベースライブラリは利用できません。"
 
 #: sui_quickactions.lua:373
 msgid "Statistics plugin not available."
-msgstr "Plugin statistik není k dispozici."
+msgstr "統計プラグインは利用できません。"
 
 #: sui_quickactions.lua:361
 #: sui_config.lua:122
@@ -3512,141 +3248,135 @@ msgstr "Plugin statistik není k dispozici."
 #: desktop_modules/module_currently.lua:1265
 #: desktop_modules/module_currently.lua:1326
 msgid "Stats"
-msgstr "Statistiky"
+msgstr "統計"
 
 #: desktop_modules/module_currently.lua:1511
 msgid "Stats layout"
-msgstr "Rozvržení statistik"
+msgstr "統計レイアウト"
 
 #: desktop_modules/module_reading_stats.lua:791
 #: desktop_modules/module_reading_goals.lua:1099
 #: desktop_modules/module_coverdeck.lua:1071
 #: desktop_modules/module_currently.lua:1560
 msgid "Stats updated successfully."
-msgstr "Statistiky byly úspěšně aktualizovány."
+msgstr "統計を正常に更新しました。"
 
 #: sui_menu.lua:2582
 msgid "Status Bar"
-msgstr "Stavová lišta"
+msgstr "ステータスバー"
 
 #: sui_menu.lua:1022
 msgid "Status Bar Size"
-msgstr "Velikost stavové lišty"
+msgstr "ステータスバーサイズ"
 
 #: sui_menu.lua:835
-msgid ""
-"Status Bar will be %s after restart.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Stavová lišta bude po restartu %s.\n"
-"\n"
-"Restartovat nyní?"
+msgid "Status Bar will be %s after restart.\n\nRestart now?"
+msgstr "ステータスバーは再起動後に%sになります。\n\n今すぐ再起動しますか？"
 
 #: sui_style.lua:1768
 msgid "Status Bar — Background"
-msgstr "Stavová lišta — pozadí"
+msgstr "ステータスバー — 背景"
 
 #: sui_style.lua:1771
 msgid "Status Bar — Text"
-msgstr "Stavová lišta — text"
+msgstr "ステータスバー — テキスト"
 
 #: sui_settings_window.lua:251
 msgid "Status, title, navigation and pagination"
-msgstr "Stav, název, navigace a stránkování"
+msgstr "ステータス、タイトル、ナビゲーション、ページネーション"
 
 #: desktop_modules/module_reading_stats.lua:93
 msgid "Streak"
-msgstr "Série"
+msgstr "連続記録"
 
 #: sui_menu.lua:2283
 msgid "Stretch to fill screen"
-msgstr "Roztáhnout přes celou obrazovku"
+msgstr "画面を埋めるように伸縮"
 
 #: sui_menu.lua:4320
 #: sui_settings_window.lua:264
 #: sui_settings_window.lua:846
 #: desktop_modules/module_reading_stats.lua:668
 msgid "Style"
-msgstr "Styl"
+msgstr "スタイル"
 
 #: sui_menu.lua:1758
 #: sui_menu.lua:1761
 msgid "Sub-page Buttons"
-msgstr "Tlačítka podstránek"
+msgstr "サブページボタン"
 
 #: desktop_modules/module_clock.lua:56
 msgid "Sunday"
-msgstr "Neděle"
+msgstr "日曜日"
 
 #: sui_menu.lua:1052
 msgid "Swipe Indicator"
-msgstr "Indikátor přejetí"
+msgstr "スワイプインジケーター"
 
 #: sui_quickactions.lua:1115
 #: sui_quickactions.lua:1118
 #: sui_quickactions.lua:1774
 #: sui_quickactions.lua:1788
 msgid "System Actions"
-msgstr "Systémové akce"
+msgstr "システムアクション"
 
 #: sui_menu.lua:3400
 #: sui_menu.lua:3408
 #: sui_style.lua:1089
 msgid "System Icons"
-msgstr "Systémové ikony"
+msgstr "システムアイコン"
 
 #: sui_quickactions.lua:2099
 msgid "System action error: %s"
-msgstr "Chyba systémové akce: %s"
+msgstr "システムアクションエラー: %s"
 
 #: sui_stats_windows.lua:2084
 msgid "THIS MONTH"
-msgstr "TENTO MĚSÍC"
+msgstr "今月"
 
 #: sui_stats_windows.lua:2080
 msgid "THIS WEEK"
-msgstr "TENTO TÝDEN"
+msgstr "今週"
 
 #: sui_stats_windows.lua:2060
 msgid "TODAY'S SUMMARY"
-msgstr "DNEŠNÍ SOUHRN"
+msgstr "本日のまとめ"
 
 #: sui_menu.lua:1246
 msgid "Tab Style"
-msgstr "Styl karet"
+msgstr "タブスタイル"
 
 #: sui_window.lua:1782
 msgid "Tab order"
-msgstr "Pořadí karet"
+msgstr "タブの順序"
 
 #: sui_menu.lua:1125
 #: sui_menu.lua:1177
 msgid "Tabs"
-msgstr "Karty"
+msgstr "タブ"
 
 #: sui_menu.lua:1119
 msgid "Tabs  (%d/%d — %d left)"
-msgstr "Karty  (%d/%d — zbývá %d)"
+msgstr "タブ (%d/%d — 残り%d)"
 
 #: sui_menu.lua:1117
 msgid "Tabs  (%d/%d — at limit)"
-msgstr "Karty  (%d/%d — na limitu)"
+msgstr "タブ (%d/%d — 上限)"
 
 #: sui_quickactions.lua:435
 #: sui_config.lua:129
 #: sui_browsemeta.lua:72
 msgid "Tags"
-msgstr "Štítky"
+msgstr "タグ"
 
 #: desktop_modules/module_clock.lua:201
 #: desktop_modules/module_clock.lua:249
 msgid "Ten"
-msgstr "Deset"
+msgstr "十"
 
 #: sui_menu.lua:194
 msgid "Text"
-msgstr "Text"
+msgstr "テキスト"
 
 #: sui_menu.lua:3161
 #: desktop_modules/module_collections.lua:655
@@ -3664,163 +3394,129 @@ msgstr "Text"
 #: desktop_modules/module_currently.lua:1013
 #: desktop_modules/module_currently.lua:1014
 msgid "Text Size"
-msgstr "Velikost textu"
+msgstr "テキストサイズ"
 
 #: desktop_modules/module_reading_stats.lua:655
 msgid "Text Size — %d%%"
-msgstr "Velikost textu — %d%%"
+msgstr "テキストサイズ — %d%%"
 
 #: sui_menu.lua:196
 msgid "Text only"
-msgstr "Pouze text"
+msgstr "テキストのみ"
 
 #: desktop_modules/module_coverdeck.lua:833
 #: desktop_modules/module_coverdeck.lua:834
 msgid "Text size"
-msgstr "Velikost textu"
+msgstr "テキストサイズ"
 
 #: sui_quicksettings_bar.lua:1128
-msgid ""
-"The Quick Settings Bar will be %s after restart.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Lišta rychlých nastavení bude po restartu %s.\n"
-"\n"
-"Restartovat nyní?"
+msgid "The Quick Settings Bar will be %s after restart.\n\nRestart now?"
+msgstr "クイック設定バーは再起動後に%sになります。\n\n今すぐ再起動しますか？"
 
 #: sui_patches.lua:963
 msgid "The «To Be Read» collection cannot be renamed."
-msgstr "Kolekci «K přečtení» nelze přejmenovat."
+msgstr "「読みたい」コレクションの名前は変更できません。"
 
 #: sui_menu.lua:4142
 msgid "Theme Colors"
-msgstr "Barvy motivu"
+msgstr "テーマカラー"
 
 #: desktop_modules/module_clock.lua:204
 #: desktop_modules/module_clock.lua:250
 msgid "Thirteen"
-msgstr "Třináct"
+msgstr "十三"
 
 #: desktop_modules/module_clock.lua:216
 #: desktop_modules/module_clock.lua:255
 msgid "Thirty"
-msgstr "Třicet"
+msgstr "三十"
 
 #: desktop_modules/module_reading_stats.lua:90
 msgid "This month — Pages"
-msgstr "Tento měsíc — Stránky"
+msgstr "今月 — ページ"
 
 #: desktop_modules/module_reading_stats.lua:89
 msgid "This month — Time"
-msgstr "Tento měsíc — Čas"
+msgstr "今月 — 時間"
 
 #: sui_presets.lua:829
 #: sui_presets.lua:902
 #: sui_presets.lua:988
 msgid "This name is reserved by a built-in preset."
-msgstr "Tento název je vyhrazen pro vestavěnou předvolbu."
+msgstr "この名前は組み込みプリセットで使用されています。"
 
 #: desktop_modules/module_reading_stats.lua:86
 msgid "This week — Pages"
-msgstr "Tento týden — Stránky"
+msgstr "今週 — ページ"
 
 #: desktop_modules/module_reading_stats.lua:85
 msgid "This week — Time"
-msgstr "Tento týden — Čas"
+msgstr "今週 — 時間"
 
 #: sui_menu.lua:4208
-msgid ""
-"This will delete all Simple UI settings and restart KOReader.\n"
-"Are you sure?"
-msgstr ""
-"Tímto se smažou všechna nastavení Simple UI a KOReader se restartuje.\n"
-"Opravdu pokračovat?"
+msgid "This will delete all Simple UI settings and restart KOReader.\nAre you sure?"
+msgstr "すべてのSimple UI設定を削除してKOReaderを再起動します。\nよろしいですか？"
 
 #: desktop_modules/module_clock.lua:194
 #: desktop_modules/module_clock.lua:246
 msgid "Three"
-msgstr "Tři"
+msgstr "三"
 
 #: desktop_modules/module_clock.lua:57
 msgid "Thursday"
-msgstr "Čtvrtek"
+msgstr "木曜日"
 
 #: desktop_modules/module_coverdeck.lua:79
 #: desktop_modules/module_currently.lua:251
 msgid "Time read"
-msgstr "Čas čtení"
+msgstr "読了時間"
 
 #: desktop_modules/module_coverdeck.lua:80
 #: desktop_modules/module_currently.lua:252
 msgid "Time remaining"
-msgstr "Zbývající čas"
+msgstr "残り時間"
 
 #: sui_titlebar.lua:106
 #: desktop_modules/module_currently.lua:246
 msgid "Title"
-msgstr "Název"
+msgstr "タイトル"
 
 #: sui_menu.lua:2584
 #: sui_style.lua:1080
 msgid "Title Bar"
-msgstr "Horní lišta"
+msgstr "タイトルバー"
 
 #: sui_menu.lua:1740
-msgid ""
-"Title Bar will be %s after restart.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Horní lišta bude po restartu %s.\n"
-"\n"
-"Restartovat nyní?"
+msgid "Title Bar will be %s after restart.\n\nRestart now?"
+msgstr "タイトルバーは再起動後に%sになります。\n\n今すぐ再起動しますか？"
 
 #: desktop_modules/module_coverdeck.lua:867
 msgid "Title Position"
-msgstr "Pozice názvu"
+msgstr "タイトル位置"
 
 #: sui_menu.lua:3223
 msgid "Title and Author"
-msgstr "Název a autor"
+msgstr "タイトルと著者"
 
 #: sui_menu.lua:3174
 msgid "Title and Author Below Covers"
-msgstr "Název a autor pod obálkami"
+msgstr "カバー下にタイトルと著者"
 
 #: sui_menu.lua:3235
-msgid ""
-"Title and author strip enabled.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Pruh s názvem a autorem je zapnutý.\n"
-"\n"
-"Restartovat nyní?"
+msgid "Title and author strip enabled.\n\nRestart now?"
+msgstr "タイトルと著者ストリップが有効になりました。\n\n今すぐ再起動しますか？"
 
 #: sui_menu.lua:3201
 msgid "Title only"
-msgstr "Pouze název"
+msgstr "タイトルのみ"
 
 #: sui_menu.lua:3190
-msgid ""
-"Title strip disabled.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Pruh s názvem je vypnutý.\n"
-"\n"
-"Restartovat nyní?"
+msgid "Title strip disabled.\n\nRestart now?"
+msgstr "タイトルストリップが無効になりました。\n\n今すぐ再起動しますか？"
 
 #: sui_menu.lua:3213
-msgid ""
-"Title strip enabled.\n"
-"\n"
-"Restart now?"
-msgstr ""
-"Pruh s názvem je zapnutý.\n"
-"\n"
-"Restartovat nyní?"
+msgid "Title strip enabled.\n\nRestart now?"
+msgstr "タイトルストリップが有効になりました。\n\n今すぐ再起動しますか？"
 
 #: desktop_modules/module_tbr.lua:257
 #: desktop_modules/module_tbr.lua:258
@@ -3829,30 +3525,30 @@ msgstr ""
 #: desktop_modules/module_tbr.lua:755
 #: desktop_modules/module_coverdeck.lua:855
 msgid "To Be Read"
-msgstr "K přečtení"
+msgstr "読みたい"
 
 #: desktop_modules/module_tbr.lua:617
 msgid "To Be Read Books"
-msgstr "Knihy k přečtení"
+msgstr "読みたい本"
 
 #: sui_patches.lua:1005
 msgid "To Be Read list is full (max. 5 books)."
-msgstr "Seznam K přečtení je plný (max. 5 knih)."
+msgstr "読みたいリストがいっぱいです（最大5冊）。"
 
 #: desktop_modules/module_reading_goals.lua:651
 #: desktop_modules/module_reading_goals.lua:653
 #: desktop_modules/module_reading_goals.lua:706
 #: desktop_modules/module_reading_goals.lua:709
 msgid "Today"
-msgstr "Dnes"
+msgstr "今日"
 
 #: desktop_modules/module_reading_stats.lua:84
 msgid "Today — Pages"
-msgstr "Dnes — Stránky"
+msgstr "今日 — ページ"
 
 #: desktop_modules/module_reading_stats.lua:83
 msgid "Today — Time"
-msgstr "Dnes — Čas"
+msgstr "今日 — 時間"
 
 #: sui_menu.lua:2762
 #: sui_menu.lua:2769
@@ -3861,178 +3557,158 @@ msgstr "Dnes — Čas"
 #: sui_menu.lua:3136
 #: desktop_modules/module_collections.lua:926
 msgid "Top"
-msgstr "Nahoře"
+msgstr "上"
 
 #: sui_topbar.lua:515
 msgid "Top Bar"
-msgstr "Horní lišta"
+msgstr "トップバー"
 
 #: sui_homescreen.lua:1817
 msgid "Top Margin"
-msgstr "Horní okraj"
+msgstr "上マージン"
 
 #: sui_stats_windows.lua:563
 msgid "Total"
-msgstr "Celkem"
+msgstr "合計"
 
 #: sui_stats_windows.lua:1804
 #: sui_stats_windows.lua:1820
 msgid "Total time"
-msgstr "Celkový čas"
+msgstr "合計時間"
 
 #: sui_menu.lua:3084
 #: sui_menu.lua:3101
 #: sui_quicksettings_bar.lua:1300
 #: desktop_modules/module_quick_actions.lua:612
 msgid "Transparent"
-msgstr "Průhledné"
+msgstr "透明"
 
 #: sui_menu.lua:2245
 msgid "Transparent navigation bar"
-msgstr "Průhledná navigační lišta"
+msgstr "透明なナビゲーションバー"
 
 #: sui_menu.lua:2227
 msgid "Transparent status bar"
-msgstr "Průhledná stavová lišta"
+msgstr "透明なステータスバー"
 
 #: desktop_modules/module_clock.lua:56
 msgid "Tuesday"
-msgstr "Úterý"
+msgstr "火曜日"
 
 #: desktop_modules/module_clock.lua:203
 #: desktop_modules/module_clock.lua:249
 msgid "Twelve"
-msgstr "Dvanáct"
+msgstr "十二"
 
 #: desktop_modules/module_clock.lua:215
 #: desktop_modules/module_clock.lua:255
 msgid "Twenty"
-msgstr "Dvacet"
+msgstr "二十"
 
 #: desktop_modules/module_clock.lua:193
 #: desktop_modules/module_clock.lua:246
 msgid "Two"
-msgstr "Dvě"
+msgstr "二"
 
 #: sui_menu.lua:2950
 #: sui_menu.lua:3017
 msgid "Type"
-msgstr "Typ"
+msgstr "タイプ"
 
 #: sui_menu.lua:4081
 #: sui_menu.lua:4084
 msgid "UI Font"
-msgstr "Písmo rozhraní"
+msgstr "UIフォント"
 
 #: sui_menu.lua:4088
 msgid "UI Font  (default)"
-msgstr "Písmo rozhraní  (výchozí)"
+msgstr "UIフォント（デフォルト）"
 
 #: sui_menu.lua:4090
 msgid "UI Font  [%s]"
-msgstr "Písmo rozhraní  [%s]"
+msgstr "UIフォント [%s]"
 
 #: sui_menu.lua:3250
 msgid "Uniformize Covers (2:3)"
-msgstr "Sjednotit obálky (2:3)"
+msgstr "カバーを統一 (2:3)"
 
 #: sui_stats_windows.lua:489
 msgid "Unknown error."
-msgstr "Neznámá chyba."
+msgstr "不明なエラー。"
 
 #: sui_style.lua:2087
 msgid "Unsupported format (use a folder or a .zip file)"
-msgstr "Nepodporovaný formát (použijte složku nebo soubor .zip)"
+msgstr "サポートされていないフォーマット（フォルダまたは.zipファイルを使用）"
 
 #: sui_quickactions.lua:73
 #: sui_quickactions.lua:1073
 #: sui_style.lua:845
 #: sui_style.lua:1047
-msgid ""
-"Unsupported icon format.\n"
-"Please use a PNG or SVG file."
-msgstr ""
-"Nepodporovaný formát ikony.\n"
-"Použijte prosím soubor PNG nebo SVG."
+msgid "Unsupported icon format.\nPlease use a PNG or SVG file."
+msgstr "サポートされていないアイコンフォーマットです。\nPNGまたはSVGファイルを使用してください。"
 
 #: sui_window.lua:1501
 #: sui_window.lua:2337
 msgid "Update"
-msgstr "Aktualizovat"
+msgstr "更新"
 
 #: desktop_modules/module_reading_stats.lua:767
 #: desktop_modules/module_reading_goals.lua:1075
 #: desktop_modules/module_coverdeck.lua:1047
 #: desktop_modules/module_currently.lua:1536
 msgid "Update Stats Now"
-msgstr "Aktualizovat statistiky nyní"
+msgstr "統計を今すぐ更新"
 
 #: sui_updater.lua:448
 msgid "Update cancelled."
-msgstr "Aktualizace zrušena."
+msgstr "更新がキャンセルされました。"
 
 #: sui_updater.lua:649
 msgid "Update check cancelled."
-msgstr "Kontrola aktualizací zrušena."
+msgstr "更新チェックがキャンセルされました。"
 
 #: sui_menu.lua:3836
 #: sui_presets.lua:875
 msgid "Update with current settings"
-msgstr "Aktualizovat aktuálním nastavením"
+msgstr "現在の設定で更新"
 
 #: sui_menu.lua:4193
 msgid "Updater module not found."
-msgstr "Modul aktualizací nebyl nalezen."
+msgstr "アップデーターモジュールが見つかりません。"
 
 #: sui_quickactions.lua:1265
 msgid "Use this Nerd Font icon?"
-msgstr "Použít tuto ikonu Nerd Font?"
+msgstr "このNerd Fontアイコンを使用しますか？"
 
 #: sui_menu.lua:511
-msgid ""
-"Uses the standard KOReader pagination bar on the homescreen.\n"
-"Not available when Navpager is active."
-msgstr ""
-"Na domovské obrazovce používá standardní stránkovací lištu KOReaderu.\n"
-"Není dostupné, když je aktivní Navpager."
+msgid "Uses the standard KOReader pagination bar on the homescreen.\nNot available when Navpager is active."
+msgstr "ホーム画面で標準のKOReaderページネーションバーを使用します。\nNavpagerが有効な場合は利用できません。"
 
 #: sui_settings_window.lua:291
 msgid "Version, author and updates"
-msgstr "Verze, autor a aktualizace"
+msgstr "バージョン、著者、アップデート"
 
 #: sui_menu.lua:4165
 msgid "Version: %s"
-msgstr "Verze: %s"
+msgstr "バージョン: %s"
 
 #: sui_homescreen.lua:1820
-msgid ""
-"Vertical space above this module.\n"
-"100% is the default spacing."
-msgstr ""
-"Svislý prostor nad tímto modulem.\n"
-"100% je výchozí rozestup."
+msgid "Vertical space above this module.\n100% is the default spacing."
+msgstr "このモジュール上の垂直スペース。\n100%がデフォルト間隔。"
 
 #: desktop_modules/module_clock.lua:888
-msgid ""
-"Vertical space between the clock and the date.\n"
-"100% is the default spacing."
-msgstr ""
-"Svislý prostor mezi hodinami a datem.\n"
-"100 % je výchozí rozestup."
+msgid "Vertical space between the clock and the date.\n100% is the default spacing."
+msgstr "時計と日付間の垂直スペース。\n100%がデフォルト間隔。"
 
 #: desktop_modules/module_clock.lua:914
-msgid ""
-"Vertical space between the date (or clock) and the battery.\n"
-"100% is the default spacing."
-msgstr ""
-"Svislý prostor mezi datem (nebo hodinami) a baterií.\n"
-"100 % je výchozí rozestup."
+msgid "Vertical space between the date (or clock) and the battery.\n100% is the default spacing."
+msgstr "日付（または時計）とバッテリー間の垂直スペース。\n100%がデフォルト間隔。"
 
 #: sui_menu.lua:2839
 #: sui_menu.lua:2893
 #: sui_menu.lua:3081
 msgid "Visibility"
-msgstr "Viditelnost"
+msgstr "表示"
 
 #: sui_menu.lua:2835
 #: sui_menu.lua:2841
@@ -4041,89 +3717,73 @@ msgstr "Viditelnost"
 #: sui_menu.lua:2895
 #: sui_menu.lua:2899
 msgid "Visible"
-msgstr "Viditelné"
+msgstr "表示"
 
 #: sui_stats_windows.lua:2068
 msgid "WEEK STREAK"
-msgstr "SÉRIE TÝDNŮ"
+msgstr "週連続"
 
 #: desktop_modules/module_clock.lua:234
 #: desktop_modules/module_clock.lua:259
 msgid "WORD_CLOCK_TENS_SEP"
-msgstr " "
+msgstr "WORD_CLOCK_TENS_SEP"
 
 #: sui_menu.lua:2553
 #: sui_settings_window.lua:310
 #: sui_settings_window.lua:854
 msgid "Wallpaper"
-msgstr "Tapeta"
+msgstr "壁紙"
 
 #: sui_style.lua:1695
 msgid "Warm Paper"
-msgstr "Teplý papír"
+msgstr "ウォームペーパー"
 
 #: sui_quicksettings_bar.lua:496
 #: sui_quicksettings_bar.lua:517
 #: sui_quicksettings_bar.lua:528
 msgid "Warmth"
-msgstr "Teplota barev"
+msgstr "暖かさ"
 
 #: sui_quicksettings_bar.lua:1226
 msgid "Warmth Slider"
-msgstr "Posuvník teploty barev"
+msgstr "暖かさスライダー"
 
 #: sui_menu.lua:2519
 msgid "Warn when modules on a page exceed the available screen height."
-msgstr "Upozornit, když moduly na stránce přesáhnou dostupnou výšku obrazovky."
+msgstr "ページ上のモジュールが利用可能な画面の高さを超えた場合に警告します。"
 
 #: desktop_modules/module_clock.lua:56
 msgid "Wednesday"
-msgstr "Středa"
+msgstr "水曜日"
 
 #: sui_onboarding.lua:229
 #: sui_onboarding.lua:230
 msgid "Welcome to Simple UI"
-msgstr "Vítejte v Simple UI"
+msgstr "Simple UIへようこそ"
 
 #: sui_updater.lua:476
 msgid "What's new:"
-msgstr "Co je nového:"
+msgstr "新機能:"
 
 #: sui_menu.lua:2464
 msgid "When closing a book from the Home Screen, go back to the folder where the book is located instead of the Library home folder."
-msgstr "Při zavření knihy z domovské obrazovky se místo domovské složky knihovny vraťte do složky, ve které se kniha nachází."
+msgstr "ホーム画面から本を閉じる際、ライブラリのホームフォルダではなく、本が 있는フォルダに戻ります。"
 
 #: sui_menu.lua:2531
-msgid ""
-"When enabled, long-pressing a module on the home screen opens its settings menu.\n"
-"Disable this to prevent settings from appearing on long tap."
-msgstr ""
-"Je-li zapnuto, dlouhý stisk modulu na domovské obrazovce otevře jeho nabídku nastavení.\n"
-"Vypněte tuto volbu, pokud nechcete, aby se při dlouhém stisku zobrazovalo nastavení."
+msgid "When enabled, long-pressing a module on the home screen opens its settings menu.\nDisable this to prevent settings from appearing on long tap."
+msgstr "有効にすると、ホーム画面のモジュールを長押しして設定メニューを開けます。\n無効にすると、長押しで設定が表示されなくなります。"
 
 #: sui_quicksettings_bar.lua:1334
-msgid ""
-"When enabled, long-pressing the Quick Settings Bar opens its settings menu.\n"
-"Disable this to prevent the settings menu from appearing on long tap."
-msgstr ""
-"Je-li zapnuto, dlouhý stisk lišty rychlých nastavení otevře její nabídku nastavení.\n"
-"Vypněte tuto volbu, pokud nechcete, aby se při dlouhém stisku zobrazovalo menu nastavení."
+msgid "When enabled, long-pressing the Quick Settings Bar opens its settings menu.\nDisable this to prevent the settings menu from appearing on long tap."
+msgstr "有効にすると、クイック設定バーを長押しして設定メニューを開けます。\n無効にすると、長押しで設定メニューが表示されなくなります。"
 
 #: sui_menu.lua:1364
-msgid ""
-"When enabled, long-pressing the bottom bar opens its settings menu.\n"
-"Disable this to prevent the settings menu from appearing on long tap."
-msgstr ""
-"Je-li zapnuto, dlouhý stisk spodní lišty otevře její nabídku nastavení.\n"
-"Vypněte tuto volbu, pokud nechcete, aby se při dlouhém stisku zobrazovalo menu nastavení."
+msgid "When enabled, long-pressing the bottom bar opens its settings menu.\nDisable this to prevent the settings menu from appearing on long tap."
+msgstr "有効にすると、ボトムバーを長押しして設定メニューを開けます。\n無効にすると、長押しで設定メニューが表示されなくなります。"
 
 #: sui_menu.lua:1072
-msgid ""
-"When enabled, long-pressing the top bar opens its settings menu.\n"
-"Disable this to prevent the settings menu from appearing on long tap."
-msgstr ""
-"Je-li zapnuto, dlouhý stisk horní lišty otevře její nabídku nastavení.\n"
-"Vypněte tuto volbu, pokud nechcete, aby se při dlouhém stisku zobrazovalo menu nastavení."
+msgid "When enabled, long-pressing the top bar opens its settings menu.\nDisable this to prevent the settings menu from appearing on long tap."
+msgstr "有効にすると、トップバーを長押しして設定メニューを開けます。\n無効にすると、長押しで設定メニューが表示されなくなります。"
 
 #: sui_quickactions.lua:327
 #: sui_config.lua:119
@@ -4132,7 +3792,7 @@ msgstr "Wi-Fi"
 
 #: sui_bottombar.lua:1730
 msgid "Wi-Fi off"
-msgstr "Wi‑Fi vypnuta"
+msgstr "Wi-Fiオフ"
 
 #: sui_config.lua:159
 msgid "WiFi"
@@ -4140,58 +3800,58 @@ msgstr "WiFi"
 
 #: sui_bottombar.lua:1717
 msgid "WiFi not available on this device."
-msgstr "WiFi není na tomto zařízení k dispozici."
+msgstr "このデバイスではWiFiは利用できません。"
 
 #: sui_quickactions.lua:1409
 msgid "Wikipedia Lookup"
-msgstr "Vyhledat na Wikipedii"
+msgstr "Wikipedia検索"
 
 #: desktop_modules/module_currently.lua:1499
 msgid "With percentage"
-msgstr "S procenty"
+msgstr "パーセンテージ付き"
 
 #: desktop_modules/module_clock.lua:831
 #: desktop_modules/module_clock.lua:842
 msgid "Word"
-msgstr "Slovně"
+msgstr "ワード"
 
 #: desktop_modules/module_quote.lua:928
 msgid "Your highlights"
-msgstr "Vaše zvýraznění"
+msgstr "あなたのハイライト"
 
 #: sui_stats_windows.lua:340
 msgid "apr"
-msgstr "dub"
+msgstr "4月"
 
 #: sui_stats_windows.lua:341
 msgid "aug"
-msgstr "srp"
+msgstr "8月"
 
 #: sui_stats_windows.lua:1678
 #: desktop_modules/module_reading_stats.lua:92
 msgid "books finished"
-msgstr "dokončených knih"
+msgstr "読了した本"
 
 #: desktop_modules/module_reading_stats.lua:87
 msgid "daily avg (7 days)"
-msgstr "denní průměr (7 dní)"
+msgstr "日平均（7日間）"
 
 #: desktop_modules/module_reading_stats.lua:94
 msgid "day streak"
-msgstr "den v řadě"
+msgstr "日連続"
 
 #: desktop_modules/module_reading_stats.lua:94
 msgid "days streak"
-msgstr "dny v řadě"
+msgstr "日連続"
 
 #: sui_stats_windows.lua:341
 msgid "dec"
-msgstr "pro"
+msgstr "12月"
 
 #: sui_quickactions.lua:1065
 #: sui_quickactions.lua:1923
 msgid "default"
-msgstr "výchozí"
+msgstr "デフォルト"
 
 #: sui_menu.lua:835
 #: sui_menu.lua:1101
@@ -4199,11 +3859,11 @@ msgstr "výchozí"
 #: sui_menu.lua:4291
 #: sui_quicksettings_bar.lua:1129
 msgid "disabled"
-msgstr "vypnuto"
+msgstr "無効"
 
 #: sui_style.lua:1790
 msgid "e.g. #F5F0E8  or #1C1C1E  (empty = reset)"
-msgstr "např. #F5F0E8  nebo #1C1C1E  (prázdné = obnovit)"
+msgstr "例: #F5F0E8 または #1C1C1E（空 = リセット）"
 
 #: sui_menu.lua:835
 #: sui_menu.lua:1101
@@ -4211,119 +3871,119 @@ msgstr "např. #F5F0E8  nebo #1C1C1E  (prázdné = obnovit)"
 #: sui_menu.lua:4291
 #: sui_quicksettings_bar.lua:1129
 msgid "enabled"
-msgstr "zapnuto"
+msgstr "有効"
 
 #: sui_stats_windows.lua:340
 msgid "feb"
-msgstr "úno"
+msgstr "2月"
 
 #: sui_style.lua:2033
 msgid "ffi/archiver not available in this KOReader version"
-msgstr "ffi/archiver není v této verzi KOReaderu k dispozici"
+msgstr "このKOReaderバージョンではffi/archiverは利用できません"
 
 #: sui_quickactions.lua:1285
 msgid "hex code, e.g. E001"
-msgstr "hex kód, např. E001"
+msgstr "16進コード、例: E001"
 
 #: sui_stats_windows.lua:1457
 #: sui_stats_windows.lua:1676
 msgid "hours read"
-msgstr "přečtených hodin"
+msgstr "読了時間"
 
 #: sui_stats_windows.lua:340
 msgid "jan"
-msgstr "led"
+msgstr "1月"
 
 #: sui_stats_windows.lua:341
 msgid "jul"
-msgstr "čvc"
+msgstr "7月"
 
 #: sui_stats_windows.lua:340
 msgid "jun"
-msgstr "čvn"
+msgstr "6月"
 
 #: sui_updater.lua:663
 msgid "latest"
-msgstr "nejnovější"
+msgstr "最新"
 
 #: sui_stats_windows.lua:340
 msgid "mar"
-msgstr "bře"
+msgstr "3月"
 
 #: sui_stats_windows.lua:340
 msgid "may"
-msgstr "kvě"
+msgstr "5月"
 
 #: desktop_modules/module_reading_stats.lua:94
 msgid "no streak"
-msgstr "žádná série"
+msgstr "連続なし"
 
 #: sui_quickactions.lua:847
 #: sui_quickactions.lua:2015
 #: sui_quickactions.lua:2031
 msgid "not configured"
-msgstr "nenastaveno"
+msgstr "未設定"
 
 #: sui_stats_windows.lua:341
 msgid "nov"
-msgstr "lis"
+msgstr "11月"
 
 #: sui_stats_windows.lua:341
 msgid "oct"
-msgstr "říj"
+msgstr "10月"
 
 #: desktop_modules/module_reading_stats.lua:89
 msgid "of reading this month"
-msgstr "čtení tento měsíc"
+msgstr "今月の読書"
 
 #: desktop_modules/module_reading_stats.lua:85
 msgid "of reading this week"
-msgstr "čtení tento týden"
+msgstr "今週の読書"
 
 #: desktop_modules/module_reading_stats.lua:83
 msgid "of reading today"
-msgstr "čtení dnes"
+msgstr "今日の読書"
 
 #: desktop_modules/module_reading_stats.lua:91
 msgid "of reading, all time"
-msgstr "čtení celkem"
+msgstr "全期間の読書"
 
 #: sui_style.lua:2076
 msgid "pack_path not provided"
-msgstr "pack_path nebyl zadán"
+msgstr "pack_pathが指定されていません"
 
 #: sui_stats_windows.lua:1677
 #: sui_stats_windows.lua:2019
 msgid "pages read"
-msgstr "přečtených stránek"
+msgstr "読んだページ"
 
 #: desktop_modules/module_reading_stats.lua:90
 msgid "pages read this month"
-msgstr "stránek přečtených tento měsíc"
+msgstr "今月読んだページ"
 
 #: desktop_modules/module_reading_stats.lua:86
 msgid "pages read this week"
-msgstr "stránek přečtených tento týden"
+msgstr "今週読んだページ"
 
 #: desktop_modules/module_reading_stats.lua:84
 msgid "pages read today"
-msgstr "dnes přečtených stránek"
+msgstr "今日読んだページ"
 
 #: desktop_modules/module_reading_stats.lua:88
 msgid "pages/day (7 days)"
-msgstr "stran/den (7 dní)"
+msgstr "ページ/日（7日間）"
 
 #: sui_stats_windows.lua:2017
 msgid "reading time"
-msgstr "čas čtení"
+msgstr "読書時間"
 
 #: sui_stats_windows.lua:341
 msgid "sep"
-msgstr "zář"
+msgstr "9月"
 
 #: sui_updater.lua:665
 msgid "⬆ Update available: %s"
-msgstr "⬆ Dostupná aktualizace: %s"
+msgstr "⬆ アップデートがあります: %s"
 
 #: sui_menu.lua:330
 #: sui_menu.lua:1922
@@ -4333,45 +3993,39 @@ msgstr "⬆ Dostupná aktualizace: %s"
 #: desktop_modules/module_quick_actions.lua:377
 msgid "  (%d left)"
 msgid_plural "  (%d left)"
-msgstr[0] "  (zbývá %d)"
-msgstr[1] "  (zbývají %d)"
-msgstr[2] "  (zbývá %d)"
+msgstr[0] "  (残り%d)"
+msgstr[1] "  (残り%d)"
 
 #: desktop_modules/module_reading_goals.lua:833
 msgid "  Set Goal  (%d book in %s)"
 msgid_plural "  Set Goal  (%d books in %s)"
-msgstr[0] "  Nastavit cíl  (%d kniha v %s)"
-msgstr[1] "  Nastavit cíl  (%d knihy v %s)"
-msgstr[2] "  Nastavit cíl  (%d knih v %s)"
+msgstr[0] "  目標を設定  (%d冊 in %s)"
+msgstr[1] "  目標を設定  (%d冊 in %s)"
 
 #: desktop_modules/module_reading_goals.lua:472
 msgid "%d book"
 msgid_plural "%d books"
-msgstr[0] "%d kniha"
-msgstr[1] "%d knihy"
-msgstr[2] "%d knih"
+msgstr[0] "%d冊"
+msgstr[1] "%d冊"
 
 #: desktop_modules/module_reading_goals.lua:938
 msgid "%d book in %s"
 msgid_plural "%d books in %s"
-msgstr[0] "%d kniha v %s"
-msgstr[1] "%d knihy v %s"
-msgstr[2] "%d knih v %s"
+msgstr[0] "%d冊 in %s"
+msgstr[1] "%d冊 in %s"
 
 #: sui_stats_windows.lua:814
 msgid "%d book read in %s"
 msgid_plural "%d books read in %s"
-msgstr[0] "%d přečtená kniha v %s"
-msgstr[1] "%d přečtené knihy v %s"
-msgstr[2] "%d přečtených knih v %s"
+msgstr[0] "%d冊を%sで読了"
+msgstr[1] "%d冊を%sで読了"
 
 #: sui_stats_windows.lua:1827
 #: sui_stats_windows.lua:1830
 msgid "%d day"
 msgid_plural "%d days"
-msgstr[0] "%d den"
-msgstr[1] "%d dny"
-msgstr[2] "%d dní"
+msgstr[0] "%d日"
+msgstr[1] "%d日"
 
 #: desktop_modules/module_coverdeck.lua:636
 #: desktop_modules/module_currently.lua:647
@@ -4379,72 +4033,54 @@ msgstr[2] "%d dní"
 #: desktop_modules/module_currently.lua:726
 msgid "%d day of reading"
 msgid_plural "%d days of reading"
-msgstr[0] "%d den čtení"
-msgstr[1] "%d dny čtení"
-msgstr[2] "%d dní čtení"
+msgstr[0] "%d日間の読書"
+msgstr[1] "%d日間の読書"
 
 #: desktop_modules/module_reading_goals.lua:1024
 msgid "%d in %s"
 msgid_plural "%d in %s"
-msgstr[0] "%d v %s"
-msgstr[1] "%d v %s"
-msgstr[2] "%d v %s"
+msgstr[0] "%d in %s"
+msgstr[1] "%d in %s"
 
 #: sui_stats_windows.lua:1850
 #: sui_stats_windows.lua:1853
 msgid "%d week"
 msgid_plural "%d weeks"
-msgstr[0] "%d týden"
-msgstr[1] "%d týdny"
-msgstr[2] "%d týdnů"
+msgstr[0] "%d週"
+msgstr[1] "%d週"
 
 #: desktop_modules/module_reading_goals.lua:470
 msgid "%d/%d book"
 msgid_plural "%d/%d books"
-msgstr[0] "%d/%d kniha"
-msgstr[1] "%d/%d knihy"
-msgstr[2] "%d/%d knih"
+msgstr[0] "%d/%d冊"
+msgstr[1] "%d/%d冊"
 
 #: desktop_modules/module_collections.lua:355
 #: desktop_modules/module_reading_stats.lua:277
 #: desktop_modules/module_quick_actions.lua:493
 msgid "(%d/%d — %d left)"
 msgid_plural "(%d/%d — %d left)"
-msgstr[0] "(%d/%d — zbývá %d)"
-msgstr[1] "(%d/%d — zbývají %d)"
-msgstr[2] "(%d/%d — zbývá %d)"
+msgstr[0] "(%d/%d — 残り%d)"
+msgstr[1] "(%d/%d — 残り%d)"
 
 #: desktop_modules/module_reading_goals.lua:1015
 msgid "Manually Tracked Books  (%d in %s)"
 msgid_plural "Manually Tracked Books  (%d in %s)"
-msgstr[0] "Ručně sledované knihy  (%d v %s)"
-msgstr[1] "Ručně sledované knihy  (%d v %s)"
-msgstr[2] "Ručně sledované knihy  (%d v %s)"
+msgstr[0] "手動追跡の本 (%d冊 in %s)"
+msgstr[1] "手動追跡の本 (%d冊 in %s)"
 
 #: sui_quicksettings_bar.lua:1103
 msgid "Maximum of %d slot reached. Remove one first."
 msgid_plural "Maximum of %d slots reached. Remove one first."
-msgstr[0] "Bylo dosaženo maxima %d slotu. Nejprve jeden odeberte."
-msgstr[1] "Bylo dosaženo maxima %d slotů. Nejprve jeden odeberte."
-msgstr[2] "Bylo dosaženo maxima %d slotů. Nejprve jeden odeberte."
+msgstr[0] "最大%d個のスロットに達しました。先に1つ削除してください。"
+msgstr[1] "最大%d個のスロットに達しました。先に1つ削除してください。"
 
 #: sui_menu.lua:629
 #: sui_menu.lua:895
-msgid ""
-"Text shown in the top bar.\n"
-"Maximum %d character."
-msgid_plural ""
-"Text shown in the top bar.\n"
-"Maximum %d characters."
-msgstr[0] ""
-"Text zobrazený v horní liště.\n"
-"Maximum %d znak."
-msgstr[1] ""
-"Text zobrazený v horní liště.\n"
-"Maximum %d znaky."
-msgstr[2] ""
-"Text zobrazený v horní liště.\n"
-"Maximum %d znaků."
+msgid "Text shown in the top bar.\nMaximum %d character."
+msgid_plural "Text shown in the top bar.\nMaximum %d characters."
+msgstr[0] "トップバーに表示されるテキスト。\n最大%d文字。"
+msgstr[1] "トップバーに表示されるテキスト。\n最大%d文字。"
 
 #: sui_menu.lua:1886
 #: sui_menu.lua:2005
@@ -4454,48 +4090,42 @@ msgstr[2] ""
 #: desktop_modules/module_quick_actions.lua:460
 msgid "The maximum of %d action per module has been reached. Remove one first."
 msgid_plural "The maximum of %d actions per module has been reached. Remove one first."
-msgstr[0] "Bylo dosaženo maxima %d akce na modul. Nejprve jednu odeberte."
-msgstr[1] "Bylo dosaženo maxima %d akcí na modul. Nejprve jednu odeberte."
-msgstr[2] "Bylo dosaženo maxima %d akcí na modul. Nejprve jednu odeberte."
+msgstr[0] "モジュールあたり最大%d個のアクションに達しました。先に1つ削除してください。"
+msgstr[1] "モジュールあたり最大%d個のアクションに達しました。先に1つ削除してください。"
 
 #: sui_quickactions.lua:905
 #: sui_quickactions.lua:1974
 msgid "The maximum of %d quick action has been reached. Delete one first."
 msgid_plural "The maximum of %d quick actions has been reached. Delete one first."
-msgstr[0] "Bylo dosaženo maxima %d rychlé akce. Nejprve jednu smažte."
-msgstr[1] "Bylo dosaženo maxima %d rychlých akcí. Nejprve jednu smažte."
-msgstr[2] "Bylo dosaženo maxima %d rychlých akcí. Nejprve jednu smažte."
+msgstr[0] "最大%d個のクイックアクションに達しました。先に1つ削除してください。"
+msgstr[1] "最大%d個のクイックアクションに達しました。先に1つ削除してください。"
 
 #: desktop_modules/module_reading_stats.lua:542
 #: desktop_modules/module_reading_stats.lua:624
 msgid "The maximum of %d stat per row has been reached. Remove one first."
 msgid_plural "The maximum of %d stats per row has been reached. Remove one first."
-msgstr[0] "Bylo dosaženo maxima %d statistiky na řádek. Nejprve jednu odeberte."
-msgstr[1] "Bylo dosaženo maxima %d statistik na řádek. Nejprve jednu odeberte."
-msgstr[2] "Bylo dosaženo maxima %d statistik na řádek. Nejprve jednu odeberte."
+msgstr[0] "行あたり最大%d個の統計に達しました。先に1つ削除してください。"
+msgstr[1] "行あたり最大%d個の統計に達しました。先に1つ削除してください。"
 
 #: sui_menu.lua:363
 #: sui_menu.lua:1216
 msgid "The maximum of %d tab has been reached. Remove one first."
 msgid_plural "The maximum of %d tabs has been reached. Remove one first."
-msgstr[0] "Bylo dosaženo maxima %d karty. Nejprve jednu odeberte."
-msgstr[1] "Bylo dosaženo maxima %d karet. Nejprve jednu odeberte."
-msgstr[2] "Bylo dosaženo maxima %d karet. Nejprve jednu odeberte."
+msgstr[0] "最大%d個のタブに達しました。先に1つ削除してください。"
+msgstr[1] "最大%d個のタブに達しました。先に1つ削除してください。"
 
 #: sui_stats_windows.lua:1460
 msgid "day read"
 msgid_plural "days read"
-msgstr[0] "přečtený den"
-msgstr[1] "přečtené dny"
-msgstr[2] "přečtených dní"
+msgstr[0] "読了日"
+msgstr[1] "読了日"
 
 #: sui_stats_windows.lua:1475
 msgid "page read"
 msgid_plural "pages read"
-msgstr[0] "přečtená stránka"
-msgstr[1] "přečtené stránky"
-msgstr[2] "přečtených stránek"
+msgstr[0] "読了ページ"
+msgstr[1] "読了ページ"
 
 #: main.lua:986
 msgid "Book statistics"
-msgstr "Statistiky knihy"
+msgstr "書籍統計"

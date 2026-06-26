@@ -554,7 +554,13 @@ end
 local function _resolveSwipeNav(cur, total, swipe_dir)
     local step = _pageStep(total)
     local raw
-    if swipe_dir == "west" then
+    -- In RTL layouts the user swipes in the opposite physical direction to
+    -- move forward, so we invert west/east before acting.
+    local dir = swipe_dir
+    if BD.mirroredUILayout() then
+        if dir == "west" then dir = "east" elseif dir == "east" then dir = "west" end
+    end
+    if dir == "west" then
         raw = cur + step
         if raw > total then raw = 1 end
     else -- "east"
@@ -684,6 +690,10 @@ local function buildDotFooter(goto_fn)
     function bar_input:onSwipeDot(_args, ges)
         if not ges then return true end
         local dir = ges.direction
+        -- Mirror swipe direction for RTL layouts.
+        if BD.mirroredUILayout() then
+            if dir == "west" then dir = "east" elseif dir == "east" then dir = "west" end
+        end
         local cur = dot_widget.current_page
         local tot = dot_widget.total_pages
         if dir == "west" then
@@ -722,13 +732,48 @@ local function _updateNavpagerForHS(current_page, total_pages)
     UIManager:setDirty(tgt, "ui")
 end
 
+-- Normalises a filepath for use with the kobo.koplugin's patched
+-- DocumentRegistry.openDocument, which handles DRM decryption and provider
+-- selection only for KOBO_VIRTUAL:// paths.
+--
+-- Two cases are handled:
+--   • KOBO_VIRTUAL:// paths  — returned unchanged so DocumentRegistry's patch
+--     can perform decryption and route to the correct provider.
+--   • Real kepub paths (e.g. /mnt/onboard/.kobo/kepub/<id>) that were saved
+--     into ReadHistory by KOReader after the kobo.koplugin resolved a virtual
+--     path — converted back to KOBO_VIRTUAL:// so the same patch fires.
+--
+-- Any other path is returned unchanged.
+-- Falls back gracefully (returns filepath as-is) when kobo.koplugin is absent.
+local function _normalizeKoboPath(filepath)
+    if not filepath then return filepath end
+    local ok, PluginLoader = pcall(require, "pluginloader")
+    if not ok or not PluginLoader then return filepath end
+    local kobo = PluginLoader:getPluginInstance("kobo_plugin")
+    if not kobo or not kobo.virtual_library then return filepath end
+    local vl = kobo.virtual_library
+    -- Ensure path mappings are populated (lazy-built on first access).
+    if not next(vl.virtual_to_real) then
+        local ok2, err = pcall(function() vl:buildPathMappings() end)
+        if not ok2 then
+            logger.warn("sui_homescreen: kobo buildPathMappings failed:", err)
+            return filepath
+        end
+    end
+    -- Already a virtual path — DocumentRegistry's patch will handle it.
+    if vl:isVirtualPath(filepath) then return filepath end
+    -- Real path from ReadHistory → convert back to virtual so decryption fires.
+    local virtual = vl:getVirtualPath(filepath)
+    return virtual or filepath
+end
+
 local function openBook(filepath, pos0, page)
     -- ReaderUI:showReader() broadcasts ShowingReader before its first paint,
     -- closing FM/Homescreen atomically — no need to close HS first.
     local doOpen = function()
         local ReaderUI = package.loaded["apps/reader/readerui"]
             or require("apps/reader/readerui")
-        ReaderUI:showReader(filepath)
+        ReaderUI:showReader(_normalizeKoboPath(filepath))
         if pos0 or page then
             UIManager:scheduleIn(0.5, function()
                 local rui = package.loaded["apps/reader/readerui"]
@@ -1588,14 +1633,14 @@ function HomescreenWidget:_buildCtx()
         local SH = _getBookShared()
         if SH then
             if show_c or show_r then
-                local max_recent = 5
-                local show_finished =
-                    (mod_r  and Registry.isEnabled(mod_r,  PFX) and
-                        SUISettings:readSetting(PFX .. "recent_show_finished") == true)
-                    or
-                    (mod_cd and Registry.isEnabled(mod_cd, PFX) and
-                        SUISettings:readSetting(PFX .. "coverdeck_show_finished") == true)
-                self._cached_books_state = SH.prefetchBooks(show_c, show_r, max_recent, show_finished)
+                local max_recent = 15
+                -- show_finished is no longer computed here: each module
+                -- (module_recent, module_coverdeck) filters finished books
+                -- independently at render time using its own setting.
+                -- max_recent is set to 15 so that after each module filters
+                -- finished books at render time, at least 5 unfinished entries
+                -- remain available for display.
+                self._cached_books_state = SH.prefetchBooks(show_c, show_r, max_recent)
                 if Config.cover_extraction_pending then
                     self:_scheduleCoverPoll()
                 end
@@ -2571,13 +2616,8 @@ function HomescreenWidget:_refresh(keep_cache, books_only, stats_only)
                             local mod_cd = Registry.get("coverdeck")
                             local show_c = Registry.isEnabled(Registry.get("currently"), PFX)
                             local show_r = (mod_r and Registry.isEnabled(mod_r, PFX)) or (mod_cd and Registry.isEnabled(mod_cd, PFX))
-                            local show_finished = false
-                            if mod_r and Registry.isEnabled(mod_r, PFX) then
-                                show_finished = SUISettings:readSetting(PFX .. "recent_show_finished") == true
-                            elseif mod_cd and Registry.isEnabled(mod_cd, PFX) then
-                                show_finished = SUISettings:readSetting(PFX .. "coverdeck_show_finished") == true
-                            end
-                            local new_bs = SH.prefetchBooks(show_c, show_r, 5, show_finished)
+                            -- show_finished removed: each module filters independently at render time.
+                            local new_bs = SH.prefetchBooks(show_c, show_r, 15)
                             self._cached_books_state = new_bs
                             self._ctx_cache.prefetched = new_bs.prefetched_data
                             self._ctx_cache.current_fp = new_bs.current_fp
@@ -2986,6 +3026,7 @@ end
 
 function HomescreenWidget:onResume()
     self._suspended = false
+    if Device.screen_saver_mode then return end
     -- Invalidate the time-series portion of the stats cache so that any reading
     -- done before the suspend (or while the device was awake in the reader) is
     -- reflected immediately on wakeup.  We use invalidateTimeSeries rather than

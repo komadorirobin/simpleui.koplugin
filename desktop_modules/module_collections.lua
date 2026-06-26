@@ -505,7 +505,13 @@ function M.build(w, ctx)
 
         local label_w
         if ctx.has_wallpaper then
-            label_w = UI.makeAlphaTextBox(label_args)
+            local ok_tbx, tbx = pcall(UI.makeAlphaTextBox, label_args)
+            if ok_tbx then
+                label_w = tbx
+            else
+                logger.warn("simpleui: module_collections: makeAlphaTextBox failed, falling back: " .. tostring(tbx))
+                label_w = TextBoxWidget:new(label_args)
+            end
         else
             label_w = TextBoxWidget:new(label_args)
         end
