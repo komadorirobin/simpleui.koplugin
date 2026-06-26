@@ -75,12 +75,30 @@ end
 -- Used by onTabTap (early-return guard) AND setActiveAndRefreshFM (write guard).
 -- Keeping the list in one place makes it impossible for the two sites to drift.
 local _ACTION_ONLY = {
-    bookmark_browser = true,
-    wifi_toggle      = true,
-    frontlight       = true,
-    power            = true,
-    sui_settings     = true,
+    bookmark_browser      = true,
+    wifi_toggle           = true,
+    frontlight            = true,
+    power                 = true,
+    sui_settings          = true,
+    bookshelf_prose_menu  = true,
+    bookshelf_comics_menu = true,
 }
+
+local _CUSTOM_QA_ACTION_ONLY_DISPATCHERS = {
+    open_bookshelf_prose_start_menu  = true,
+    open_bookshelf_comics_start_menu = true,
+}
+
+local function _isActionOnly(action_id)
+    if _ACTION_ONLY[action_id] then return true end
+    if type(action_id) == "string" and action_id:match("^custom_qa_%d+$") then
+        local cfg = SUISettings:get("simpleui_qa_" .. action_id) or {}
+        if _CUSTOM_QA_ACTION_ONLY_DISPATCHERS[cfg.dispatcher_action] then
+            return true
+        end
+    end
+    return false
+end
 
 -- _BROWSE_ACTIONS: action IDs that open a virtual browse view in the FM.
 -- When one of these is triggered, the active tab indicator should follow
@@ -1209,19 +1227,37 @@ function M.registerTouchZones(plugin, fm_self)
         ratio_w = 1,
         ratio_h = nav_h / screen_h,
     }
+    local navbar_hold_action_id = nil
     zones[#zones + 1] = {
         id          = "navbar_hold_start",
         ges         = "hold",
         overrides   = { "tap_left_bottom_corner", "tap_right_bottom_corner",
                         "TapBook", "TapColl", "TapQA", "TapGoal", "TapSelect" },
         screen_zone = bar_screen_zone,
-        handler     = function(_ges) return true end,
+        handler     = function(ges)
+            -- Remember the held tab, but wait until hold_release to execute.
+            -- Opening an overlay on hold lets the release land on the freshly
+            -- opened overlay and immediately dismiss it, which looks like a no-op
+            -- when long-pressing the already-active Bookshelf tab.
+            local x = ges and ges.pos and ges.pos.x or -1
+            navbar_hold_action_id = _actionAtX(x)
+            return true
+        end,
     }
     zones[#zones + 1] = {
         id          = "navbar_hold_settings",
         ges         = "hold_release",
         screen_zone = bar_screen_zone,
         handler = function(ges)
+            local held_action_id = navbar_hold_action_id
+            navbar_hold_action_id = nil
+            if held_action_id and _QA().holdExecute(held_action_id, {
+                    plugin = plugin,
+                    fm = fm_self,
+                    show_unavailable = showUnavailable,
+                }) then
+                return true
+            end
             local x = ges and ges.pos and ges.pos.x or -1
             -- When navpager is active, a hold on the Prev or Next arrow jumps
             -- to the first or last page instead of opening the settings menu.
@@ -1281,7 +1317,7 @@ end
 function M.onTabTap(plugin, action_id, fm_self)
     -- Action-only tabs: fire their action without changing the active tab.
     -- Delegated entirely to QA.execute — no action-specific knowledge needed here.
-    if _ACTION_ONLY[action_id] then
+    if _isActionOnly(action_id) then
         local UIManager = require("ui/uimanager")
         UIManager:scheduleIn(0, function()
             _QA().execute(action_id, { plugin = plugin, fm = fm_self })
@@ -1350,7 +1386,7 @@ local function setActiveAndRefreshFM(plugin, action_id, tabs)
     -- Never mark an action-only tab (bookmark_browser, wifi, etc.) as the
     -- active navigation tab — doing so would light up its indicator even
     -- though the user never "navigated" to it.
-    if not _ACTION_ONLY[action_id] then
+    if not _isActionOnly(action_id) then
         plugin.active_action = action_id
     end
     local fm = plugin.ui
@@ -1370,6 +1406,139 @@ local function _isInPlaceAction(action_id)
     return _QA().isInPlace(action_id)
 end
 
+-- ---------------------------------------------------------------------------
+-- showBookmarkBrowserSourceDialog
+-- Shared helper: shows the source-selection ButtonDialog for the bookmark
+-- browser. Used by both _executeInPlace (HS open, dialog floats on top) and
+-- navigate (HS closed, normal open). Extracted to avoid duplication.
+-- `bb_ui`  — the widget context to pass to BookmarkBrowser:show().
+-- ---------------------------------------------------------------------------
+function M.showBookmarkBrowserSourceDialog(bb_ui)
+    local ok_bb, BookmarkBrowser = pcall(require, "ui/widget/bookmarkbrowser")
+    if not ok_bb then
+        showUnavailable(_("Bookmark browser not available."))
+        return
+    end
+    -- Remember whether the HS was open at call time.
+
+    local FM = package.loaded["apps/filemanager/filemanager"]
+    local plugin = FM and FM.instance and FM.instance._simpleui_plugin
+    local prev_action = plugin and plugin.active_action
+    if plugin then
+        M.setTempTabActive(plugin, "bookmark_browser", true, prev_action)
+    end
+
+    -- HS lifecycle managed here:
+    --   • Cancel  → HS stays open, repaint to clear any dirty region.
+    --   • Source chosen → BB opens on top of the HS (no intermediate close).
+    --     When the BB closes, the HS is closed intentionally so the user
+    --     returns to the bare FM (no _doShowHS re-open loop).
+    --
+    -- The InfoMessage “Fetching bookmarks…” is marked _navbar_closing_intentionally
+    -- so its close does not trigger patchUIManagerClose's "Start with HS" logic.
+    local HS = package.loaded["sui_homescreen"]
+    local hs_was_open = HS and HS._instance ~= nil
+    local home_dir = G_reader_settings:readSetting("home_dir")
+    local source_dialog
+    local function open_with_source(fetch_fn, subfolders)
+        UIManager:close(source_dialog)
+        -- Do NOT close the HS here — the BB opens directly on top of it,
+        -- avoiding the FM flash that occurred in earlier versions when the
+        -- HS was torn down before the nextTick ran.
+        local info_msg = require("ui/widget/infomessage"):new{
+            text    = _("Fetching bookmarks\xe2\x80\xa6"),
+            timeout = 0.1,
+            _navbar_closing_intentionally = true,
+        }
+        UIManager:show(info_msg)
+        UIManager:nextTick(function()
+            local books = {}
+            if type(fetch_fn) == "function" then
+                fetch_fn(books)
+            else
+                local util             = require("util")
+                local DocumentRegistry = require("document/documentregistry")
+                util.findFiles(fetch_fn, function(file)
+                    books[file] = DocumentRegistry:hasProvider(file) or nil
+                end, subfolders)
+            end
+            BookmarkBrowser:show(books, bb_ui)
+            -- After BookmarkBrowser:show() its Menu widget is on the stack
+            -- on top of the HS. Intercept onCloseWidget so that when the
+            -- user dismisses the BB, the HS is closed intentionally (no
+            -- _doShowHS loop) and the user returns to the bare FM.
+            if hs_was_open then
+                local UI_mod = require("sui_core")
+                local stack  = UI_mod.getWindowStack()
+                for i = #stack, 1, -1 do
+                    local w = stack[i] and stack[i].widget
+                    if w and w.covers_fullscreen and w.name ~= "homescreen" then
+                        local orig_cw = w.onCloseWidget
+                        w.onCloseWidget = function(self_w)
+                            local hs_inst2 = HS and HS._instance
+                            if hs_inst2 then
+                                hs_inst2._navbar_closing_intentionally = true
+                                UIManager:close(hs_inst2)
+                            end
+                            if plugin then
+                                M.setTempTabActive(plugin, "bookmark_browser", false, prev_action)
+                            end
+                            self_w._navbar_closing_intentionally = true
+                            self_w.onCloseWidget = orig_cw
+                            if orig_cw then return orig_cw(self_w) end
+                        end
+                        break
+                    end
+                end
+            end
+        end)
+    end
+    local ButtonDialog = require("ui/widget/buttondialog")
+    source_dialog = ButtonDialog:new{
+        title           = _("Bookmark browser"),
+        title_align     = "center",
+        width_factor    = 0.8,
+        buttons = {
+            {{ text = _("History"), callback = function()
+                open_with_source(function(books)
+                    for _, v in ipairs(require("readhistory").hist) do
+                        books[v.file] = v.select_enabled or nil
+                    end
+                end)
+            end }},
+            {{ text = _("Collections"), callback = function()
+                open_with_source(function(books)
+                    local rc = require("readcollection")
+                    if rc.coll then
+                        for _, coll in pairs(rc.coll) do
+                            for file in pairs(coll) do books[file] = true end
+                        end
+                    end
+                end)
+            end }},
+            {{ text = _("Home folder"), enabled = home_dir ~= nil,
+               callback = function() open_with_source(home_dir, false) end }},
+            {{ text = _("Home folder + subfolders"), enabled = home_dir ~= nil,
+               callback = function() open_with_source(home_dir, true) end }},
+            {{ text = _("Cancel"), callback = function()
+                if plugin then
+                    M.setTempTabActive(plugin, "bookmark_browser", false, prev_action)
+                end
+                UIManager:close(source_dialog)
+                -- Repaint the HS to clear any dirty region left by the dialog.
+                if hs_was_open then
+                    local hs_inst = HS and HS._instance
+                    if hs_inst then
+                        UIManager:setDirty(hs_inst, "full")
+                    end
+                end
+            end }},
+        },
+    }
+    UIManager:show(source_dialog)
+end
+
+-- ---------------------------------------------------------------------------
 -- _executeInPlace: runs an in-place action while keeping the HS open.
 -- The HS is temporarily moved to the bottom of the window stack so that
 -- Dispatcher:sendEvent and broadcastEvent reach FM plugins correctly.
@@ -1446,7 +1615,7 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
     -- This must happen before the FM-fallback block so that the synced
     -- live_plugin.active_action already carries the correct value.
     local indicator_tab = _resolveActiveTab(action_id, tabs)
-    if not _ACTION_ONLY[action_id] then
+    if not _isActionOnly(action_id) then
         plugin.active_action = indicator_tab
     end
 

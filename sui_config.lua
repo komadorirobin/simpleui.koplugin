@@ -128,6 +128,8 @@ M.ALL_ACTIONS = {
       browsemeta_mode = "series" },
     { id = "browse_tags",      label = _("Tags"),             icon = M.ICON.tags,
       browsemeta_mode = "tags" },
+    { id = "bookshelf_prose_menu",  label = _("Books Menu"),  icon = "nerd:F02D" },
+    { id = "bookshelf_comics_menu", label = _("Comics Menu"), icon = "nerd:F5DB" },
 }
 
 M.ACTION_BY_ID = {}

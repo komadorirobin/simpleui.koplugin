@@ -132,6 +132,18 @@ local function _unavailToast(msg)
     UIManager:show(InfoMessage:new{ text = msg, timeout = 3 })
 end
 
+local function _broadcastBookshelfEvent(event_name, ctx)
+    local su = (ctx and ctx.show_unavailable) or _unavailToast
+    local ok, err = pcall(function()
+        UIManager:broadcastEvent(require("ui/event"):new(event_name))
+    end)
+    if not ok then
+        logger.warn("simpleui: bookshelf event failed:", tostring(event_name), tostring(err))
+        su(_("Bookshelf not available."))
+    end
+    return ok
+end
+
 -- Helper: resolve the live FileManager instance.
 local function _liveFM()
     local FM = package.loaded["apps/filemanager/filemanager"]
@@ -583,18 +595,10 @@ local function _registerBuiltins()
             icon  = "nerd:F02D",
             is_in_place = true,
             execute = function(ctx)
-                local su = ctx.show_unavailable or _unavailToast
-                local ok = pcall(function()
-                    UIManager:broadcastEvent(require("ui/event"):new("OpenBookshelfProse"))
-                end)
-                if not ok then su(_("Bookshelf not available.")) end
+                _broadcastBookshelfEvent("OpenBookshelfProse", ctx)
             end,
             hold_execute = function(ctx)
-                local su = ctx.show_unavailable or _unavailToast
-                local ok = pcall(function()
-                    UIManager:broadcastEvent(require("ui/event"):new("OpenBookshelfProseStartMenu"))
-                end)
-                if not ok then su(_("Bookshelf not available.")) end
+                _broadcastBookshelfEvent("OpenBookshelfProseStartMenu", ctx)
             end,
         },
         {
@@ -603,18 +607,28 @@ local function _registerBuiltins()
             icon  = "nerd:F5DB",
             is_in_place = true,
             execute = function(ctx)
-                local su = ctx.show_unavailable or _unavailToast
-                local ok = pcall(function()
-                    UIManager:broadcastEvent(require("ui/event"):new("OpenBookshelfComics"))
-                end)
-                if not ok then su(_("Bookshelf not available.")) end
+                _broadcastBookshelfEvent("OpenBookshelfComics", ctx)
             end,
             hold_execute = function(ctx)
-                local su = ctx.show_unavailable or _unavailToast
-                local ok = pcall(function()
-                    UIManager:broadcastEvent(require("ui/event"):new("OpenBookshelfComicsStartMenu"))
-                end)
-                if not ok then su(_("Bookshelf not available.")) end
+                _broadcastBookshelfEvent("OpenBookshelfComicsStartMenu", ctx)
+            end,
+        },
+        {
+            id    = "bookshelf_prose_menu",
+            label = _("Books Menu"),
+            icon  = "nerd:F02D",
+            is_in_place = true,
+            execute = function(ctx)
+                _broadcastBookshelfEvent("OpenBookshelfProseStartMenu", ctx)
+            end,
+        },
+        {
+            id    = "bookshelf_comics_menu",
+            label = _("Comics Menu"),
+            icon  = "nerd:F5DB",
+            is_in_place = true,
+            execute = function(ctx)
+                _broadcastBookshelfEvent("OpenBookshelfComicsStartMenu", ctx)
             end,
         },
         -- ── Overlay / dialog actions ────────────────────────────────────────
@@ -897,18 +911,14 @@ function QA.holdExecute(id, ctx)
             event_name = "OpenBookshelfProseStartMenu"
         elseif action == "open_bookshelf_comics" then
             event_name = "OpenBookshelfComicsStartMenu"
+        elseif action == "open_bookshelf_prose_start_menu" then
+            event_name = "OpenBookshelfProseStartMenu"
+        elseif action == "open_bookshelf_comics_start_menu" then
+            event_name = "OpenBookshelfComicsStartMenu"
         end
         if not event_name then return false end
 
-        local su = ctx.show_unavailable or _unavailToast
-        local ok, err = pcall(function()
-            UIManager:broadcastEvent(require("ui/event"):new(event_name))
-        end)
-        if not ok then
-            logger.warn("simpleui: QA.holdExecute: custom action error in", id, tostring(err))
-            su(string.format(_("Action error: %s"), tostring(err)))
-        end
-        return true
+        return _broadcastBookshelfEvent(event_name, ctx)
     end
 
     local desc = _registry[id]
