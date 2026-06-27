@@ -889,11 +889,11 @@ local function buildFromCustomQuote(inner_w, face_quote, face_attr, vspan_gap, p
 
     end
 
-    local attr = q.a and (“— “ .. q.a) or “”
+    local attr = q.a and ("— " .. q.a) or ""
 
-    if q.b and q.b ~= “” then attr = attr .. (attr ~= “” and “,  “ or “”) .. q.b end
+    if q.b and q.b ~= "" then attr = attr .. (attr ~= "" and ",  " or "") .. q.b end
 
-    return buildWidget(inner_w, “”” .. q.q .. “””, attr, face_quote, face_attr, vspan_gap, has_wallpaper, clr_quote, clr_attr, alignment)
+    return buildWidget(inner_w, "“" .. q.q .. "”", attr, face_quote, face_attr, vspan_gap, has_wallpaper, clr_quote, clr_attr, alignment)
 
 end
 
