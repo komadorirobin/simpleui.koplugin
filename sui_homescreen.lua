@@ -3028,7 +3028,12 @@ function HomescreenWidget:onSetRotationMode(mode)
     Homescreen._rotation_pending     = true
 
     UIManager:close(self)
-    return true
+    -- Do NOT return true here. The broadcast must continue so that
+    -- FileManager:onSetRotationMode runs, which calls reinit() -> setupLayout().
+    -- Our patched setupLayout consumes _rotation_pending and opens the new HS.
+    -- On devices where FM drives the rotation (e.g. Kobo), blocking propagation
+    -- would prevent Screen:setRotationMode() from being called and leave the
+    -- layout unrebuilt at the new dimensions.
 end
 
 function HomescreenWidget:onCloseWidget()
