@@ -1581,6 +1581,18 @@ function SimpleUIPlugin:onCloseDocument()
     local via_gesture = self._closing_via_gesture
     self._closing_via_gesture = nil
 
+    -- Consume the reload-suppress flag once, up front (rather than deep
+    -- inside the notice block below), so it is also visible to the HS
+    -- visual-refresh guard near the end of this function. Set by
+    -- patchReloadDocument just before ReaderUI:reloadDocument() runs —
+    -- covers font size, margins, line spacing, and any other CRE setting
+    -- change that triggers a background reflow + seamless reload. Those
+    -- calls close and reopen ReaderUI in the same synchronous call chain;
+    -- CloseDocument fires exactly the same as on a real close, so we need
+    -- this flag to tell the two apart.
+    local is_reload = self._suppress_closing_notice
+    self._suppress_closing_notice = nil
+
     if self._simpleui_suspended then return end
     local HS = package.loaded["sui_homescreen"]
     if not HS then return end
@@ -1615,9 +1627,7 @@ function SimpleUIPlugin:onCloseDocument()
             notice_mode = SUISettings:nilOrTrue("simpleui_hs_closing_notice") and "always" or "never"
         end
 
-        -- Consume suppress flag unconditionally so it never leaks to a later close.
-        local suppress = self._suppress_closing_notice
-        self._suppress_closing_notice = nil
+        local suppress = is_reload
 
         if (notice_mode == "always" and not suppress)
                 or (notice_mode == "gesture_only" and via_gesture) then
@@ -1894,12 +1904,32 @@ function SimpleUIPlugin:onCloseDocument()
     end
 
     if HS._instance then
-        -- Determine what changed and use the narrowest refresh that covers it:
-        --   books_only  → book module(s) active; prefetchBooks() must re-run.
-        --   stats_only  → only stats modules active; SP.get() must re-run but
-        --                  no sidecar I/O is needed (_cached_books_state kept).
-        -- keep_cache is always false — we never want to reuse a stale _ctx_cache.
-        HS.refresh(false, book_mod_active, not book_mod_active)
+        if is_reload then
+            -- The old ReaderUI is being torn down and a new one is about to
+            -- be shown in its place, in the same synchronous call chain
+            -- (ReaderUI:reloadDocument, triggered by a font size, margin,
+            -- line spacing, or other CRE setting change). HS._instance is
+            -- the hidden HomescreenWidget kept under the reader per the
+            -- _live_widget/_raiseInPlace architecture — calling HS.refresh()
+            -- here would UIManager:setDirty() it while it is briefly the
+            -- topmost widget (old reader gone, new reader not shown yet),
+            -- producing a visible flash to the homescreen and back.
+            --
+            -- Nothing homescreen-relevant has actually changed: the book's
+            -- status/percent_finished are unaffected by a reformat, and the
+            -- reading session survives the reload via PreserveCurrentSession
+            -- (see readerui.lua:reloadDocument). So just flag the widget for
+            -- a refresh the next time it genuinely becomes visible, instead
+            -- of repainting it now.
+            HS._instance._stats_need_refresh = true
+        else
+            -- Determine what changed and use the narrowest refresh that covers it:
+            --   books_only  → book module(s) active; prefetchBooks() must re-run.
+            --   stats_only  → only stats modules active; SP.get() must re-run but
+            --                  no sidecar I/O is needed (_cached_books_state kept).
+            -- keep_cache is always false — we never want to reuse a stale _ctx_cache.
+            HS.refresh(false, book_mod_active, not book_mod_active)
+        end
     else
         -- Homescreen not visible yet — flag it for rebuild on next open.
         HS._stats_need_refresh = true

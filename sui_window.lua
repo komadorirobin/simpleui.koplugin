@@ -170,6 +170,13 @@ function SUIWindow:new(opts)
     o._pad_h         = Screen:scaleBySize(20)
     o._inner_w       = o._modal_w - 2 * o._pad_h
     o._navpager_mode = opts.navpager_mode == true
+    -- When true, the window shrinks to fit its (single-page) content instead
+    -- of always occupying the full opts.height/default height. Only applied
+    -- on the window's first paint, and only while content fits on one page
+    -- at the full height — once content needs more than one page, the window
+    -- uses the full height and paginates as usual.
+    o._auto_height   = opts.auto_height == true
+    o._first_paint_done = false
     -- Position of the modal within the usable area (between topbar and navbar).
     -- "center"  — centred vertically in the usable area (default)
     -- "top"     — flush to the top of the usable area
@@ -237,6 +244,13 @@ function SUIWindow:show()
         self._modal_h = usable_h
         mf.dimen.h    = usable_h
     end
+    -- Cache the geometry of the usable area and the (clamped) max height so
+    -- _rebuildFrame can recompute the modal's position if auto_height later
+    -- shrinks or restores self._modal_h.
+    self._modal_max_h    = self._modal_h
+    self._top_h_cache    = top_h
+    self._bot_h_cache    = bot_h
+    self._usable_h_cache = usable_h
     local pad       = Size.padding.small
     local modal_x   = math.floor((self._screen_w - self._modal_w) / 2)
     local modal_y
@@ -675,10 +689,11 @@ function SUIWindow:_rebuildFrame(ctx, items)
     local avail_h = inner_h - title_h - footer_h
 
     local req_dot_space = false
-    local pages = self:_buildPages(items, avail_h)
+    local shrink_to_fit = self._auto_height and not self._has_settings_btn and not self._first_paint_done
+    local pages = self:_buildPages(items, avail_h, shrink_to_fit)
     local np    = #pages
     if np > 1 or self._has_settings_btn then
-        pages = self:_buildPages(items, avail_h - dot_h)
+        pages = self:_buildPages(items, avail_h - dot_h, shrink_to_fit)
         np    = #pages
         req_dot_space = true
     end
@@ -770,6 +785,36 @@ function SUIWindow:_rebuildFrame(ctx, items)
         }
     end
 
+    if shrink_to_fit then
+        local wanted_h
+        if np == 1 then
+            -- Content plus chrome fit within the max height — shrink to it.
+            local extra = req_dot_space and dot_h or 0
+            local content_h = page_widget:getSize().h
+            wanted_h = 2 * border + self._pad_v + title_h + footer_h + content_h + extra
+            local min_h = title_h + Screen:scaleBySize(96)
+            wanted_h = math.max(min_h, math.min(wanted_h, self._modal_max_h))
+        else
+            -- Content needs pagination even at the max height — use it as-is.
+            wanted_h = self._modal_max_h
+        end
+        if math.abs(wanted_h - self._modal_h) > 1 then
+            self._modal_h = wanted_h
+            local mf = self._modal_frame
+            mf.dimen.h = wanted_h
+            local new_x = mf.overlap_offset and mf.overlap_offset[1] or 0
+            local new_y
+            if self._position == "top" then
+                new_y = self._top_h_cache + Size.padding.small
+            elseif self._position == "bottom" then
+                new_y = self._screen_h - self._bot_h_cache - wanted_h - Size.padding.small
+            else
+                new_y = self._top_h_cache + math.floor((self._usable_h_cache - wanted_h) / 2)
+            end
+            mf.overlap_offset = { new_x, new_y }
+        end
+    end
+
     self._modal_frame[1] = final_widget
 end
 
@@ -840,6 +885,7 @@ function SUIWindow:_repaint()
     end
 
     self:_rebuildFrame(ctx, items)
+    self._first_paint_done = true
 
     -- Keep page_num in sync so _callPageFn sees the correct total.
     if self._navpager_mode and self._wrapper then
@@ -920,7 +966,7 @@ function SUIWindow:_updateNavbarArrows()
     UIManager:setDirty(target, "ui")
 end
 
-function SUIWindow:_buildPages(widgets, avail_h)
+function SUIWindow:_buildPages(widgets, avail_h, shrink_to_fit)
     -- Restaura os separadores caso a função seja chamada mais que uma vez
     -- (ex: recalcular a paginação para acomodar os pontos).
     for _, w in ipairs(widgets) do
@@ -975,9 +1021,17 @@ function SUIWindow:_buildPages(widgets, avail_h)
 
     local inner_w = self._inner_w
     local total_p = #pages
+    -- When shrink_to_fit is requested and everything fit on one page, size
+    -- that page's tap/paint area to the content it actually holds (cur_h)
+    -- instead of the full avail_h, so the caller can shrink the window to match.
+    local single_page_h = avail_h
+    if shrink_to_fit and total_p == 1 then
+        single_page_h = math.min(avail_h, cur_h)
+    end
     for i, vg in ipairs(pages) do
+        local area_h = (total_p == 1) and single_page_h or avail_h
         local area = InputContainer:new{
-            dimen = Geom:new{ w = inner_w, h = avail_h },
+            dimen = Geom:new{ w = inner_w, h = area_h },
             [1]   = vg,
         }
         area.ges_events = {}
@@ -1278,6 +1332,8 @@ local _ITEM_VPAD = Screen:scaleBySize(16)
 ---   title        string
 ---   subtitle     string|nil
 ---   left_icon    string|nil    — SUIStyle icon key
+---   left_widget  widget|nil    — custom widget before the title (e.g. an icon
+---                                preview); takes precedence over left_icon
 ---   right_icon   string|nil
 ---   right_value  string|nil    — current value label before the chevron
 ---   right_widget widget|nil    — custom widget before the chevron
@@ -1330,7 +1386,22 @@ function SUIWindow.ListRow(opts)
     local title_face = opts.title_face or _facePrimary()
 
     local title_widget
-    if opts.left_icon and opts.left_icon ~= "" then
+    if opts.left_widget then
+        local lw_sz = type(opts.left_widget.getSize) == "function" and opts.left_widget:getSize() or opts.left_widget.dimen
+        local lw_w  = (lw_sz and lw_sz.w) or 0
+        local lw_gap = Screen:scaleBySize(8)
+        title_widget = HorizontalGroup:new{ align = "center",
+            opts.left_widget,
+            HorizontalSpan:new{ width = lw_gap },
+            TextWidget:new{
+                text      = opts.title,
+                face      = title_face,
+                fgcolor   = fg_color,
+                bold      = true,
+                max_width = math.max(1, left_w - lw_w - lw_gap),
+            },
+        }
+    elseif opts.left_icon and opts.left_icon ~= "" then
         title_widget = HorizontalGroup:new{ align = "center",
             TextWidget:new{
                 text    = SUIStyle.icon(opts.left_icon),
@@ -2626,6 +2697,7 @@ function SUIWindow.RowPage(opts)
                 title        = item.text,
                 subtitle     = item.subtitle,
                 left_icon    = item.left_icon,
+                left_widget  = item.left_widget,
                 right_icon   = item.right_icon,
                 right_value  = item.right_value,
                 right_widget = item.right_widget,

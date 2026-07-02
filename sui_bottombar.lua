@@ -82,6 +82,14 @@ local _ACTION_ONLY = {
     sui_settings     = true,
 }
 
+-- Custom QA "Groups" (qa_folder) open a transient modal listing member
+-- actions instead of navigating to a persistent screen — same character as
+-- the built-in action-only entries above. Checked dynamically since group
+-- ids (custom_qa_N) can't live in the static table.
+local function _isActionOnly(action_id)
+    return _ACTION_ONLY[action_id] == true or _QA().isAsyncInPlaceCustomQA(action_id)
+end
+
 -- _BROWSE_ACTIONS: action IDs that open a virtual browse view in the FM.
 -- When one of these is triggered, the active tab indicator should follow
 -- this priority: (1) the action's own tab if it is in the tab bar,
@@ -1247,7 +1255,7 @@ end
 function M.onTabTap(plugin, action_id, fm_self)
     -- Action-only tabs: fire their action without changing the active tab.
     -- Delegated entirely to QA.execute — no action-specific knowledge needed here.
-    if _ACTION_ONLY[action_id] then
+    if _isActionOnly(action_id) then
         local UIManager = require("ui/uimanager")
         UIManager:scheduleIn(0, function()
             _QA().execute(action_id, { plugin = plugin, fm = fm_self })
@@ -1316,7 +1324,7 @@ local function setActiveAndRefreshFM(plugin, action_id, tabs)
     -- Never mark an action-only tab (bookmark_browser, wifi, etc.) as the
     -- active navigation tab — doing so would light up its indicator even
     -- though the user never "navigated" to it.
-    if not _ACTION_ONLY[action_id] then
+    if not _isActionOnly(action_id) then
         plugin.active_action = action_id
     end
     local fm = plugin.ui
@@ -1349,13 +1357,15 @@ local function _executeInPlace(action_id, plugin, fm)
     local stack   = UI_mod.getWindowStack()
     local hs_idx  = nil
 
-    -- bookmark_browser and power open asynchronous widgets that outlive this
-    -- function call. Skip the HS sink/restore for those — their dialogs float
-    -- on top of the HS naturally. All other synchronous in-place actions (wifi,
-    -- frontlight, stats, dispatcher, plugin) need the sink so FM plugins receive
-    -- events. QA.isInPlace already ensures only those reach this path.
+    -- bookmark_browser, power, and QA groups open asynchronous widgets that
+    -- outlive this function call. Skip the HS sink/restore for those — their
+    -- dialogs float on top of the HS naturally. All other synchronous in-place
+    -- actions (wifi, frontlight, stats, dispatcher, plugin) need the sink so
+    -- FM plugins receive events. QA.isInPlace already ensures only those
+    -- reach this path.
     local needs_stack_sink = action_id ~= "bookmark_browser"
                           and action_id ~= "power"
+                          and not _QA().isAsyncInPlaceCustomQA(action_id)
 
     if needs_stack_sink and hs_inst then
         for i, entry in ipairs(stack) do
@@ -1413,7 +1423,7 @@ function M.navigate(plugin, action_id, fm_self, tabs, force)
     -- This must happen before the FM-fallback block so that the synced
     -- live_plugin.active_action already carries the correct value.
     local indicator_tab = _resolveActiveTab(action_id, tabs)
-    if not _ACTION_ONLY[action_id] then
+    if not _isActionOnly(action_id) then
         plugin.active_action = indicator_tab
     end
 

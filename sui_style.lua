@@ -184,6 +184,12 @@ M.SLOTS = {
         group     = "sui_qa_defaults",
         default_ko = "appbar.settings",
     },
+    {
+        id        = "sui_qa_group",
+        label     = function() return _("Default: Group") end,
+        group     = "sui_qa_defaults",
+        default_ko = "icons/group.svg",
+    },
     -- ── Folder Covers ────────────────────────────────────────────────────
     {
         id        = "sui_fc_empty",

@@ -69,6 +69,7 @@ M.ICON = {
     plus_alt       = _P .. "plus_alt.svg",
     custom         = _P .. "custom.svg",
     custom_dir     = _P .. "custom",
+    group          = _P .. "group.svg",
     plugin         = _P .. "plugin.svg",
     author         = _P .. "author.svg",
     series         = _P .. "series.svg",
@@ -88,6 +89,7 @@ M.ICON = {
 M.CUSTOM_ICON            = M.ICON.custom
 M.CUSTOM_PLUGIN_ICON     = M.ICON.plugin
 M.CUSTOM_DISPATCHER_ICON = M.ICON.ko_settings
+M.CUSTOM_GROUP_ICON      = M.ICON.group
 
 -- ===========================================================================
 -- 2. Core Constants & Action Registry
@@ -138,7 +140,9 @@ local function _QA_lazy() return package.loaded["sui_quickactions"] or require("
 function M.getCustomQAList()         return _QA_lazy().getCustomQAList()                                                              end
 function M.saveCustomQAList(list)    return _QA_lazy().saveCustomQAList(list)                                                         end
 function M.getCustomQAConfig(id)     return _QA_lazy().getCustomQAConfig(id)                                                          end
-function M.saveCustomQAConfig(id, label, path, coll, icon, pk, pm, da) return _QA_lazy().saveCustomQAConfig(id, label, path, coll, icon, pk, pm, da) end
+function M.saveCustomQAConfig(id, label, path, coll, icon, pk, pm, da, is_folder) return _QA_lazy().saveCustomQAConfig(id, label, path, coll, icon, pk, pm, da, is_folder) end
+function M.getQAFolderItems(id)      return _QA_lazy().getQAFolderItems(id)                                                            end
+function M.saveQAFolderItems(id, items) return _QA_lazy().saveQAFolderItems(id, items)                                                 end
 function M.deleteCustomQA(id)        return _QA_lazy().deleteCustomQA(id)                                                             end
 function M.purgeQACollection(coll)   return _QA_lazy().purgeQACollection(coll)                                                        end
 function M.renameQACollection(o, n)  return _QA_lazy().renameQACollection(o, n)                                                       end

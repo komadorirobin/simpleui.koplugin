@@ -659,6 +659,12 @@ M.makeInstance = makeInstance
 -- Returns the 100%-scale value; callers that need the current scaled value
 -- should call _getQADims(Config.getModuleScale(...)).frame_sz directly.
 M.FRAME_SZ             = _BASE_ICON_SZ + _BASE_FRAME_PAD * 2
+-- Expose the shared icon-tile row builder and its sizing helper so other
+-- modules (the QA "Group" popup) can render tiles identical to the
+-- Quick Actions Row widget instead of duplicating the icon/label logic.
+M.buildQAWidget = buildQAWidget
+M.getQADims     = _getQADims
+
 M.invalidateCustomQACache = QA.invalidateCustomQACache
 
 return M

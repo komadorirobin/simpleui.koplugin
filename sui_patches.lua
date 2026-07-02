@@ -2536,6 +2536,93 @@ function M.unpatchStatusButtons(plugin)
 end
 
 -- ---------------------------------------------------------------------------
+-- Fix: wrap filemanagerutil.genResetSettingsButton (and
+-- genMultipleResetSettingsButton) so that resetting a document's settings
+-- from an FM dialog ("Reset" button — file long-press, Collections, History,
+-- file searcher) also invalidates the StatsProvider cache and the sidecar
+-- cache entry, exactly like the status-change buttons above.
+--
+-- Resetting a document purges its whole sidecar file, including
+-- summary.status. A book previously marked "complete" silently drops out of
+-- books_year/books_total, but nothing tells the homescreen to re-count, so
+-- the stale (too high) figure lingers until the next unrelated SP.invalidate()
+-- trigger (opening/closing a book, a status-button press elsewhere, etc.).
+--
+-- Reuses _onStatusChanged(file): after the purge, the sidecar is gone, so
+-- DocSettings:open(file) opens a fresh empty sidecar and reads back no
+-- summary — new_status is nil, which is treated as "not complete", so the
+-- helper clears the sidecar cache entry, invalidates SP, flags the
+-- homescreen for a refresh, and (best-effort) drops any stale DeletedBooks
+-- entry for the file. Note this is *not* about the separate
+-- "simpleui_preserve_deleted_books_in_stats" DeletedBooks feature, which
+-- only fires on actual file deletion (see patchDeleteFile above) — this
+-- patch is purely about keeping the homescreen's books_year/books_total
+-- counters in sync when a "complete" book's sidecar is reset without being
+-- deleted.
+-- ---------------------------------------------------------------------------
+function M.patchResetSettingsButton(plugin)
+    local ok_util, fmutil = pcall(require, "apps/filemanager/filemanagerutil")
+    if not ok_util or not fmutil then return end
+    if fmutil._simpleui_reset_button_patched then return end
+    fmutil._simpleui_reset_button_patched = true
+
+    -- ── genResetSettingsButton ──────────────────────────────────────────────
+    -- Resolve the filepath the same way genResetSettingsButton itself does,
+    -- before the button is built, so it's available to the wrapped callback
+    -- regardless of whether doc_settings_or_file is a DocSettings table or a
+    -- plain path string.
+    local orig_gen_reset = fmutil.genResetSettingsButton
+    plugin._orig_fmutil_gen_reset = orig_gen_reset
+
+    fmutil.genResetSettingsButton = function(doc_settings_or_file, caller_callback, button_disabled)
+        local file
+        if type(doc_settings_or_file) == "table" then
+            file = doc_settings_or_file:readSetting("doc_path")
+        else
+            local ok_ffi, ffiUtil = pcall(require, "ffi/util")
+            file = (ok_ffi and ffiUtil.realpath(doc_settings_or_file)) or doc_settings_or_file
+        end
+
+        local wrapped_callback = function()
+            if caller_callback then caller_callback() end
+            if file then _onStatusChanged(file) end
+        end
+        return orig_gen_reset(doc_settings_or_file, wrapped_callback, button_disabled)
+    end
+
+    -- ── genMultipleResetSettingsButton ──────────────────────────────────────
+    local orig_gen_reset_multi = fmutil.genMultipleResetSettingsButton
+    plugin._orig_fmutil_gen_reset_multi = orig_gen_reset_multi
+
+    fmutil.genMultipleResetSettingsButton = function(files, caller_callback, button_disabled)
+        local wrapped_callback = function()
+            if caller_callback then caller_callback() end
+            if type(files) == "table" then
+                for f in pairs(files) do
+                    _onStatusChanged(f)
+                end
+            end
+        end
+        return orig_gen_reset_multi(files, wrapped_callback, button_disabled)
+    end
+end
+
+function M.unpatchResetSettingsButton(plugin)
+    local fmutil = package.loaded["apps/filemanager/filemanagerutil"]
+    if not fmutil or not fmutil._simpleui_reset_button_patched then return end
+
+    if plugin._orig_fmutil_gen_reset then
+        fmutil.genResetSettingsButton    = plugin._orig_fmutil_gen_reset
+        plugin._orig_fmutil_gen_reset    = nil
+    end
+    if plugin._orig_fmutil_gen_reset_multi then
+        fmutil.genMultipleResetSettingsButton    = plugin._orig_fmutil_gen_reset_multi
+        plugin._orig_fmutil_gen_reset_multi      = nil
+    end
+    fmutil._simpleui_reset_button_patched = nil
+end
+
+-- ---------------------------------------------------------------------------
 -- installAll / teardownAll
 -- ---------------------------------------------------------------------------
 
@@ -3596,6 +3683,7 @@ function M.installAll(plugin)
     M.patchMenuForNavpager(plugin)
     M.patchBookInfoNavigation(plugin)
     M.patchStatusButtons(plugin)
+    M.patchResetSettingsButton(plugin)
     -- Install the FM tab icon patch so system icon overrides survive menu rebuilds.
     local ok_ss, SUIStyle = pcall(require, "sui_style")
     if ok_ss and SUIStyle then
@@ -3768,6 +3856,7 @@ function M.teardownAll(plugin)
         fmutil._simpleui_bookinfo_nav_patched = nil
     end
     M.unpatchStatusButtons(plugin)
+    M.unpatchResetSettingsButton(plugin)
 
     local FMH = package.loaded["apps/filemanager/filemanagerhistory"]
     if FMH and FMH._sui_onMenuHold_patched then

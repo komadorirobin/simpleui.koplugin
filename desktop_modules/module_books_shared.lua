@@ -409,6 +409,22 @@ local function getDocSettings()
     return _DocSettings
 end
 
+-- BookInfoManager — same lazy-loader pattern as getDocSettings(). Used as a
+-- fallback title/author source for files whose doc_props are still empty
+-- (e.g. books added to the TBR collection that have never been opened in
+-- ReaderUI, so KOReader never extracted their EPUB/PDF metadata into the
+-- sidecar). BookInfoManager indexes metadata independently of doc_props —
+-- this mirrors the pattern already used in sui_browsemeta.lua's title
+-- resolution (bim:getBookInfo(fp, false)).
+local _BookInfoManager = nil
+local function getBookInfoManager()
+    if not _BookInfoManager then
+        local ok, bim = pcall(require, "bookinfomanager")
+        if ok then _BookInfoManager = bim end
+    end
+    return _BookInfoManager
+end
+
 -- ---------------------------------------------------------------------------
 -- Sidecar metadata cache — invalidated by mtime, lives for the process lifetime.
 --
@@ -528,7 +544,22 @@ function SH.getBookData(filepath, prefetched)
         end
     end
 
-    if not meta.title then
+    if not meta.title or meta.title == "" then
+        -- doc_props was empty — most likely this file was never opened in
+        -- ReaderUI (e.g. a TBR entry), so KOReader never wrote real title/
+        -- author metadata into the sidecar. Try BookInfoManager before
+        -- falling back to the raw filename.
+        local BIM = getBookInfoManager()
+        if BIM then
+            local ok3, bi = pcall(BIM.getBookInfo, BIM, filepath, false)
+            if ok3 and bi and bi.title and bi.title ~= "" then
+                meta.title   = bi.title
+                meta.authors = meta.authors and meta.authors ~= "" and meta.authors or bi.authors
+            end
+        end
+    end
+
+    if not meta.title or meta.title == "" then
         meta.title = filepath:match("([^/]+)%.[^%.]+$") or "?"
     end
 
