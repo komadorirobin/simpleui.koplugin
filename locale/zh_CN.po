@@ -4029,3 +4029,7 @@ msgstr[1] "已读页数"
 #: main.lua:986
 msgid "Book statistics"
 msgstr "书籍统计"
+
+#: desktop_modules/module_quote.lua:1440
+msgid "Fixed Height"
+msgstr "固定高度"
