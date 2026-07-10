@@ -166,6 +166,10 @@ end
 -- Helper: resolve the live FileManager instance.
 local function _liveFM()
     local FM = package.loaded["apps/filemanager/filemanager"]
+    if not FM then
+        local ok, mod = pcall(require, "apps/filemanager/filemanager")
+        FM = ok and mod or nil
+    end
     return FM and FM.instance
 end
 
@@ -179,6 +183,40 @@ local function _resolveSimpleUIPlugin(fm)
     local RUI = package.loaded["apps/reader/readerui"]
     local rui = RUI and RUI.instance
     return rui and rui.simpleui
+end
+
+local function _closeHomescreenIfOpen()
+    local HS = package.loaded["sui_homescreen"]
+    local hs_inst = HS and HS._instance
+    if hs_inst then
+        hs_inst._navbar_closing_intentionally = true
+        pcall(function() UIManager:close(hs_inst) end)
+        hs_inst._navbar_closing_intentionally = nil
+    end
+end
+
+local function _revealFileManager(ctx)
+    local fm = (ctx and ctx.fm) or _liveFM()
+    if not fm then return nil end
+
+    _closeHomescreenIfOpen()
+    fm._sui_show_folder_pending = true
+
+    local plugin = (ctx and ctx.plugin) or _resolveSimpleUIPlugin(fm)
+    if plugin then plugin.active_action = "home" end
+
+    if fm._navbar_container then
+        local ok_bb, BB = pcall(_Bottombar)
+        if ok_bb and BB and BB.setActiveAndRefreshFM and plugin then
+            pcall(function() BB.setActiveAndRefreshFM(plugin, "home", Config.loadTabConfig()) end)
+        else
+            UIManager:setDirty(fm, "ui")
+        end
+    else
+        UIManager:setDirty(fm, "ui")
+    end
+
+    return fm
 end
 
 -- _goHome: replicates FileChooser:goHome() used in navigate().
@@ -559,14 +597,7 @@ end
 -- Called once at module load time (bottom of this file).
 local function _registerBuiltins()
     local function _simpleui_plugin()
-        -- Resolve the live plugin instance via the FM first.
-        local fm = _liveFM()
-        if fm and fm._simpleui_plugin then return fm._simpleui_plugin end
-        -- Inside the reader the FM may not be the active instance.
-        -- The plugin is registered on ReaderUI as readerui.simpleui.
-        local RUI = package.loaded["apps/reader/readerui"]
-        local rui = RUI and RUI.instance
-        return rui and rui.simpleui
+        return _resolveSimpleUIPlugin(_liveFM())
     end
 
     local builtins = {
@@ -596,6 +627,57 @@ local function _registerBuiltins()
                         end
                     end)
                 end
+            end,
+        },
+        {
+            id    = "filemanager_menu",
+            label = _("File manager menu"),
+            icon  = Config.ICON.ko_menu,
+            is_in_place = true,
+            execute = function(ctx)
+                local su = ctx.show_unavailable or _unavailToast
+                local fm = _revealFileManager(ctx)
+                if not (fm and fm.onShowPlusMenu) then
+                    su(_("File manager menu not available."))
+                    return
+                end
+                UIManager:scheduleIn(0, function()
+                    local ok, err = pcall(function() fm:onShowPlusMenu() end)
+                    if not ok then
+                        logger.warn("simpleui: filemanager_menu failed:", tostring(err))
+                        su(_("File manager menu not available."))
+                    end
+                end)
+            end,
+        },
+        {
+            id    = "extract_book_info",
+            label = _("Extract book info"),
+            icon  = Config.ICON.plus_alt,
+            is_in_place = true,
+            execute = function(ctx)
+                local su = ctx.show_unavailable or _unavailToast
+                local fm = _revealFileManager(ctx)
+                local cb = fm and fm.coverbrowser
+                if not (cb and cb.genExtractBookInfoButton) then
+                    su(_("Book information extraction not available."))
+                    return
+                end
+                UIManager:scheduleIn(0, function()
+                    local ok, err = pcall(function()
+                        local rows = cb:genExtractBookInfoButton(function() end)
+                        local btn = rows and rows[1] and rows[1][1]
+                        if btn and btn.callback then
+                            btn.callback()
+                        else
+                            su(_("Book information extraction not available."))
+                        end
+                    end)
+                    if not ok then
+                        logger.warn("simpleui: extract_book_info failed:", tostring(err))
+                        su(_("Book information extraction not available."))
+                    end
+                end)
             end,
         },
         {
