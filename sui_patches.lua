@@ -491,22 +491,47 @@ function M.patchFileManagerClass(plugin)
         -- geração de rotação (UI.getRotationGeneration(), incrementada por
         -- HomescreenWidget:onSetRotationMode em sui_homescreen.lua a cada
         -- SetRotationMode genuíno) e não só W x H. A comparação de W x H é
-        -- mantida como verificação adicional, não removida. Ainda não
-        -- confirmado por log de runtime — reverter é remover a comparação de
-        -- _navbar_layout_gen e a linha que a atualiza, deixando W x H como
-        -- única condição (como era antes).
-        if fm_self._navbar_inner
-                and (fm_self._navbar_layout_gen ~= cur_gen
-                     or fm_self._navbar_layout_w ~= cur_w
-                     or fm_self._navbar_layout_h ~= cur_h) then
-            fm_self._navbar_inner = nil
-        end
-        -- ALTERNATIVA MAIS SIMPLES (não ativa por defeito): em vez do
-        -- contador de gerações, remover por completo o cache _navbar_inner
-        -- neste bloco e usar sempre fm_self[1] fresco em toda e qualquer
-        -- chamada de setupLayout:
-        --   local inner_widget = fm_self[1]
-        local inner_widget = fm_self._navbar_inner or fm_self[1]
+        -- mantida como verificação adicional, não removida.
+        --
+        -- CONFIRMADO POR LOG REAL + código core (crash__4_.log,
+        -- 07:10:44-07:10:55, e koreader/frontend/apps/filemanager/
+        -- filemanager.lua:140-360 fornecido por Xavier): a Hipótese 2 acima
+        -- estava incompleta, não errada. orig_setupLayout() (linha ~446,
+        -- ACIMA nesta função) reatribui SEMPRE self.file_chooser,
+        -- self.title_bar e self.layout a instâncias NOVAS em CADA chamada,
+        -- incondicionalmente -- isto é código core, não nosso. Quando
+        -- reaproveitamos _navbar_inner (conteúdo de uma chamada anterior),
+        -- o ecrã continua a mostrar esse widget antigo enquanto
+        -- fm_self.file_chooser/title_bar passam a apontar para os NOVOS
+        -- objetos que ninguém está a mostrar -- ecrã e estado interno
+        -- dessincronizados (updateItems, seleção, navegação de path passam
+        -- a operar sobre um file_chooser invisível). No log isto acontece
+        -- às 07:10:52 e 07:10:55 (will_reuse_navbar_inner_actual= true)
+        -- mesmo com o contador de gerações, porque a rajada de rotações
+        -- reais 07:10:44-47 foi tratada diretamente por
+        -- FileManager:onSetRotationMode (core, ver ficheiro acima) enquanto
+        -- a Library estava em primeiro plano -- só
+        -- HomescreenWidget:onSetRotationMode incrementa
+        -- UI.bumpRotationGeneration(), e essa função não corre nesse
+        -- cenário. Ativamos por isso a ALTERNATIVA MAIS SIMPLES já deixada
+        -- comentada abaixo: usar sempre fm_self[1] fresco, nunca
+        -- reaproveitar. Não há custo de "wrap duplo" ao fazer isto --
+        -- fm_self[1] é sempre conteúdo em bruto (nunca já embrulhado em
+        -- navbar) neste ponto, porque orig_setupLayout já o reatribuiu a
+        -- fm_ui logo acima, antes de fm_self[1] ser alguma vez substituído
+        -- por wrapped (linha ~530, abaixo). O custo real é perder a
+        -- preservação de posição de scroll/seleção em chamadas de
+        -- setupLayout sem rotação nenhuma (ex.: "depois de fechar um
+        -- livro", motivo original da cache) -- vale a pena vigiar isso.
+        -- Reversível: comentar a linha "local inner_widget = fm_self[1]"
+        -- logo abaixo e descomentar o bloco if/gen+w+h acima.
+        -- if fm_self._navbar_inner
+        --         and (fm_self._navbar_layout_gen ~= cur_gen
+        --              or fm_self._navbar_layout_w ~= cur_w
+        --              or fm_self._navbar_layout_h ~= cur_h) then
+        --     fm_self._navbar_inner = nil
+        -- end
+        local inner_widget = fm_self[1]
         fm_self._navbar_inner      = inner_widget
         fm_self._navbar_layout_w   = cur_w
         fm_self._navbar_layout_h   = cur_h
