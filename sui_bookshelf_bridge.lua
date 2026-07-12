@@ -15,6 +15,18 @@ function M.prepareReturn(filepath, source)
     if type(filepath) ~= "string" or filepath == "" then return end
     source = source or "simpleui"
 
+    -- Capture the live SimpleUI host before ReaderUI closes FileManager. The
+    -- references remain valid long enough for Bookshelf to build an embedded
+    -- dock during reader prewarm; without them the dock can only appear after
+    -- the real idle close recreates FileManager.
+    local simpleui_bar_host
+    local ok_fm, FM = pcall(require, "apps/filemanager/filemanager")
+    local fm = ok_fm and FM and FM.instance or nil
+    local plugin = fm and fm._simpleui_plugin
+    if fm and plugin then
+        simpleui_bar_host = { fm = fm, plugin = plugin }
+    end
+
     local function emit(attempt)
         local RUI = package.loaded["apps/reader/readerui"]
         local readerui = RUI and RUI.instance
@@ -25,6 +37,7 @@ function M.prepareReturn(filepath, source)
                     file = live_file,
                     requested_file = filepath,
                     source = source,
+                    simpleui_bar_host = simpleui_bar_host,
                 }
                 -- ReaderUI registers reader plugins directly by plugin name.
                 -- Prefer the active Bookshelf instance: window-stack event

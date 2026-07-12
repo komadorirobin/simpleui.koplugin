@@ -773,11 +773,11 @@ local function openBook(filepath, pos0, page)
     local doOpen = function()
         local ReaderUI = package.loaded["apps/reader/readerui"]
             or require("apps/reader/readerui")
-        ReaderUI:showReader(_normalizeKoboPath(filepath))
         local ok_bridge, Bridge = pcall(require, "sui_bookshelf_bridge")
         if ok_bridge and Bridge and Bridge.prepareReturn then
             Bridge.prepareReturn(filepath, "simpleui_homescreen")
         end
+        ReaderUI:showReader(_normalizeKoboPath(filepath))
         if pos0 or page then
             UIManager:scheduleIn(0.5, function()
                 local rui = package.loaded["apps/reader/readerui"]
