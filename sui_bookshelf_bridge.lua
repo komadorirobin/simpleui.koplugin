@@ -21,11 +21,22 @@ function M.prepareReturn(filepath, source)
         local live_file = readerui and readerui.document and readerui.document.file
         if readerui and live_file then
             local ok, err = pcall(function()
-                UIManager:broadcastEvent(Event:new("PrepareBookshelfReturn", {
+                local payload = {
                     file = live_file,
                     requested_file = filepath,
                     source = source,
-                }))
+                }
+                -- ReaderUI registers reader plugins directly by plugin name.
+                -- Prefer the active Bookshelf instance: window-stack event
+                -- propagation differs between KOReader versions and may miss
+                -- dynamically loaded modules.
+                local bookshelf = readerui.bookshelf
+                if bookshelf and bookshelf.onPrepareBookshelfReturn then
+                    bookshelf:onPrepareBookshelfReturn(payload, source)
+                else
+                    UIManager:broadcastEvent(Event:new(
+                        "PrepareBookshelfReturn", payload))
+                end
             end)
             if not ok then
                 logger.warn("simpleui: bookshelf prepare return failed:",
