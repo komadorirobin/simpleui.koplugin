@@ -763,6 +763,10 @@ local function _registerBuiltins()
                     local ReaderUI = package.loaded["apps/reader/readerui"]
                         or require("apps/reader/readerui")
                     ReaderUI:showReader(fp)
+                    local ok_bridge, Bridge = pcall(require, "sui_bookshelf_bridge")
+                    if ok_bridge and Bridge and Bridge.prepareReturn then
+                        Bridge.prepareReturn(fp, "simpleui_continue")
+                    end
                 else
                     su(_("No book in history."))
                 end
@@ -3243,6 +3247,10 @@ local function _recentOpenBook(filepath)
         local ReaderUI = package.loaded["apps/reader/readerui"]
             or require("apps/reader/readerui")
         ReaderUI:showReader(_recentNormalizeKoboPath(filepath))
+        local ok_bridge, Bridge = pcall(require, "sui_bookshelf_bridge")
+        if ok_bridge and Bridge and Bridge.prepareReturn then
+            Bridge.prepareReturn(filepath, "simpleui_recent")
+        end
     end
     if G_reader_settings:isTrue("file_ask_to_open") then
         local ConfirmBox = require("ui/widget/confirmbox")
