@@ -453,16 +453,95 @@ function M.patchFileManagerClass(plugin)
         local cur_w = Screen:getWidth()
         local cur_h = Screen:getHeight()
         local cur_gen = UI.getRotationGeneration()
+        local cur_mode = Screen:getRotationMode()
+        -- CORREÇÃO (confirmado por log real, crash__7_.log 07:21:03): um flip
+        -- same-family de 180° (upright <-> upside-down) NUNCA muda W x H --
+        -- por isso uma condição baseada só em W x H nunca deteta que uma
+        -- rotação real aconteceu enquanto a Library estava em segundo plano
+        -- (Home em primeiro plano, gen incrementado de 0 para 2 por dois
+        -- flips 180°, mas cached_w/h continuam iguais quando se volta à
+        -- Library). Resultado: nem a cache de dimensões da bottom bar nem o
+        -- repaint completo abaixo disparavam, e a bottom bar ficava com
+        -- conteúdo desenhado antes dos flips. Comparamos também cur_gen.
+        --
+        -- CORREÇÃO (regressão -- confirmado por log real do emulador,
+        -- 12:54:53, sem rotação nenhuma envolvida): _navbar_layout_w/h/gen
+        -- vivem na PRÓPRIA instância fm_self. Ao fechar um livro, o
+        -- FileManager é reconstruído do zero ("Spinning up new FileManager
+        -- instance") -- é uma tabela Lua NOVA, estes três campos começam
+        -- sempre nil. Como `nil ~= numero` é sempre verdadeiro em Lua,
+        -- _dims_changed ficava true em TODA primeira chamada de setupLayout
+        -- de uma instância nova, mesmo sem rotação nenhuma -- disparando o
+        -- repaint completo forçado (CORREÇÃO 2, mais abaixo) e atualizando o
+        -- ecrã inteiro em vez de só os módulos de estatísticas necessários.
+        -- _has_prior_layout distingue "primeira vez que esta instância é
+        -- montada" (nada a invalidar, nada de anormal para corrigir) de
+        -- "já tínhamos W x H/gen guardados e mudaram" (aí sim, forçar).
+        --
+        -- CORREÇÃO (raiz do problema "bottom bar não fica renderizada depois
+        -- do segundo flip" -- confirmado por log apertado, crash__11_.log
+        -- 12:33:28/12:33:30, os dois flips feitos SEM sair da Library em
+        -- momento nenhum): cur_gen ficou 0 do princípio ao fim da sessão --
+        -- só HomescreenWidget:onSetRotationMode incrementa a geração, e a
+        -- Home nunca chegou a correr, porque o utilizador nunca saiu da
+        -- Library. Depender da geração da Home era o erro de base: é um
+        -- sinal indireto que só existe quando a Home participa. Existe um
+        -- sinal direto e sempre correto -- Screen:getRotationMode() --, que
+        -- muda sempre que há uma rotação real, seja tratada pela Home, pelo
+        -- FileManager, com giroscópio ou não. Comparamos agora também
+        -- cur_mode; a geração e W x H mantêm-se como verificações
+        -- adicionais (não removidas), já que continuam válidas nos
+        -- cenários onde disparam corretamente.
+        local _has_prior_layout = (fm_self._navbar_layout_w ~= nil)
+        local _dims_changed = _has_prior_layout and (
+            fm_self._navbar_layout_w ~= cur_w
+            or fm_self._navbar_layout_h ~= cur_h
+            or fm_self._navbar_layout_gen ~= cur_gen
+            or fm_self._navbar_layout_mode ~= cur_mode)
+
+        -- CORREÇÃO (bottom bar "estranha" -- confirmado por leitura de código,
+        -- ver crash__5_.log e sui_bottombar.lua linhas ~170-183, ~219): existe
+        -- uma SEGUNDA cache de dimensões, separada de _navbar_inner --
+        -- BAR_H()/ICON_SZ()/etc. em sui_bottombar.lua (e o equivalente em
+        -- sui_topbar.lua) são calculados uma única vez via
+        -- Screen:scaleBySize(...) e guardados em _dim, só limpos por
+        -- UI.invalidateDimCache(). Essa chamada só existia em
+        -- sui_homescreen.lua (HomescreenWidget:onSetRotationMode) -- nunca
+        -- aqui no setupLayout patchado, que é o caminho que corre quando o
+        -- FileManager (core) trata uma rotação diretamente, com a Library em
+        -- primeiro plano. Resultado: depois de uma rotação retrato<->paisagem
+        -- real enquanto se navega na Library, a bottom bar continuava a usar
+        -- a altura/tamanho de ícone calculados para a MRIMEIRA orientação
+        -- desta sessão, nunca recalculados -- daí o layout "estranho".
+        -- Invalidamos aqui sempre que as dimensões mudaram desde a última
+        -- chamada (mesmo critério já usado no log/diagnóstico abaixo).
+        -- Reversível: remover este bloco if.
+        if _dims_changed then
+            UI.invalidateDimCache()
+            logger.dbg("simpleui[rotation]: setupLayout invalidating dim cache",
+                "old_w=", fm_self._navbar_layout_w, "old_h=", fm_self._navbar_layout_h,
+                "new_w=", cur_w, "new_h=", cur_h,
+                "old_gen=", fm_self._navbar_layout_gen, "new_gen=", cur_gen,
+                "old_mode=", fm_self._navbar_layout_mode, "new_mode=", cur_mode)
+        end
+
+        -- NOTA: os campos would_have_reused_* abaixo são só diagnóstico
+        -- histórico (o que a cache _navbar_inner teria decidido) -- desde a
+        -- ativação da "alternativa mais simples" mais abaixo nesta função,
+        -- fm_self[1] fresco é SEMPRE usado, por isso estes campos já não
+        -- refletem a decisão real tomada.
         logger.dbg("simpleui[rotation]: setupLayout call",
             "cur_w=", cur_w, "cur_h=", cur_h,
             "cached_w=", fm_self._navbar_layout_w,
             "cached_h=", fm_self._navbar_layout_h,
             "cur_gen=", cur_gen,
             "cached_gen=", fm_self._navbar_layout_gen,
-            "will_reuse_navbar_inner_wh_only=", (fm_self._navbar_inner ~= nil
+            "cur_mode=", cur_mode,
+            "cached_mode=", fm_self._navbar_layout_mode,
+            "would_have_reused_wh_only=", (fm_self._navbar_inner ~= nil
                 and fm_self._navbar_layout_w == cur_w
                 and fm_self._navbar_layout_h == cur_h),
-            "will_reuse_navbar_inner_actual=", (fm_self._navbar_inner ~= nil
+            "would_have_reused_with_gen=", (fm_self._navbar_inner ~= nil
                 and fm_self._navbar_layout_gen == cur_gen
                 and fm_self._navbar_layout_w == cur_w
                 and fm_self._navbar_layout_h == cur_h))
@@ -533,9 +612,10 @@ function M.patchFileManagerClass(plugin)
         -- end
         local inner_widget = fm_self[1]
         fm_self._navbar_inner      = inner_widget
-        fm_self._navbar_layout_w   = cur_w
-        fm_self._navbar_layout_h   = cur_h
-        fm_self._navbar_layout_gen = cur_gen
+        fm_self._navbar_layout_w    = cur_w
+        fm_self._navbar_layout_h    = cur_h
+        fm_self._navbar_layout_gen  = cur_gen
+        fm_self._navbar_layout_mode = cur_mode
 
         local tabs = Config.loadTabConfig()
         -- Recalculate the correct indicator from the FC path before wrapping.
@@ -562,6 +642,64 @@ function M.patchFileManagerClass(plugin)
         -- onShow only fires on the first push to the UIManager stack, so without
         -- this the buttons keep their default KOReader size after a rotation.
         Bottombar.resizePaginationButtons(fm_self.file_chooser or fm_self, Bottombar.getPaginationIconSize())
+
+        -- CORREÇÃO 1 (bottom bar "estranha", 2ª causa geral -- confirmado por log real,
+        -- crash__6_.log 23:58:55: "triggering refresh {region=1680x1030+0+0}"
+        -- em paisagem (screen_h=1264) e "region=1264x1446+0+0" em retrato
+        -- (screen_h=1680) -- em ambos falta exatamente ~234px no fundo do
+        -- ecrã, a área da bottom bar). fc_self.height é propositadamente
+        -- encolhido a UI.getContentHeight() (linha ~312, acima) para deixar
+        -- espaço à navbar -- o Menu (FileChooser) sabe disso e o seu próprio
+        -- "setDirty via a func" (mergeTitleBarIntoLayout/FocusManager) só
+        -- cobre o seu próprio self.dimen (a área de conteúdo), corretamente,
+        -- já que a bottom bar não faz parte da árvore do Menu. Mas ninguém
+        -- mais pede explicitamente o repaint da faixa da bottom bar depois de
+        -- um reinit por rotação: onShow (que trataria disto na primeira
+        -- abertura) não corre outra vez num reinit, como o comentário acima
+        -- sobre resizePaginationButtons já reconhece para os botões -- o
+        -- mesmo problema aplica-se ao repaint. Os pixels novos da bottom bar
+        -- são compostos corretamente em memória (buildBarWidget corre sempre
+        -- de novo) mas nunca chegam a ser fisicamente atualizados no ecrã.
+        -- Forçamos aqui um repaint de ecrã inteiro sempre que uma rotação real
+        -- aconteceu (mesmo _dims_changed do bloco de invalidação da cache,
+        -- acima). Reversível: remover este bloco if.
+        -- CORREÇÃO 2 (ghosting/"deixa o menu de pernas para o ar para trás" --
+        -- confirmado por log real, crash__8_.log 11:46:29/35: o repaint
+        -- passou a cobrir o ecrã inteiro corretamente (region=1264x1680+0+0,
+        -- sem falha), mas em modo "ui". O modo "ui" no KOReader é um refresh
+        -- parcial/rápido, otimizado para pequenas atualizações, e não limpa
+        -- bem o ecrã quando o conteúdo INTEIRO muda de orientação (flip
+        -- 180°) -- fica ghosting do conteúdo antigo, exatamente o sintoma
+        -- reportado ("deixa o menu antigo, de cabeça para baixo, para trás").
+        -- HomescreenWidget já usa "full" para o mesmo cenário (ver
+        -- sui_homescreen.lua, mesma correção do Bug 1) -- fazemos o mesmo
+        -- aqui, só quando uma rotação real aconteceu (_dims_changed).
+        --
+        -- CORREÇÃO 3 (confirmado por log real, crash__9_.log): a MESMA
+        -- chamada síncrona UIManager:setDirty(fm_self, "full") escala
+        -- corretamente para "full" quando W x H mudam de facto (paisagem<->
+        -- retrato -- "update_mode: Update refresh mode ui to full" aparece no
+        -- log, 19:49:04/05/15/21), mas fica presa em "ui" quando só a geração
+        -- muda (flip 180° same-family, sem alteração de W x H -- nenhuma
+        -- linha "ui to full" aparece em toda a janela de teste 11:44:37-
+        -- 11:47:00). Mesma linha de código, mesmo argumento "full" literal,
+        -- resultado diferente -- indica algum comportamento de coalescing da
+        -- fila de refresh dentro da MESMA pilha de chamadas síncrona que não
+        -- conseguimos confirmar sem o código-fonte de uimanager.lua/
+        -- screen.lua (não incluídos nos ficheiros core que o Xavier enviou).
+        -- Em vez de tentar adivinhar esse mecanismo, desacoplamos o nosso
+        -- pedido de full-repaint: agendamo-lo com scheduleIn(0, ...) para
+        -- correr isolado, no próximo tick da UI, depois de tudo o resto desta
+        -- chamada (icon renders, resizePaginationButtons, etc.) se ter
+        -- resolvido -- evitando qualquer interação com essas outras chamadas
+        -- de setDirty dentro do mesmo call stack. Reversível: repor a chamada
+        -- direta (comentada abaixo).
+        -- UIManager:setDirty(fm_self, "full")
+        if _dims_changed then
+            UIManager:scheduleIn(0, function()
+                UIManager:setDirty(fm_self, "full")
+            end)
+        end
 
         plugin:_updateFMHomeIcon()
 
@@ -1665,6 +1803,20 @@ function M.patchUIManagerShow(plugin)
         -- very first install. That mismatch is what let the navbar's active
         -- indicator drift out of sync with the widget actually on screen.
         local plugin = UIManager._simpleui_show_plugin or plugin
+
+        -- Reload-triggered reopen (font size, margins, line spacing, ...):
+        -- swallow KOReader's own "Opening file '...'." notice outright — no
+        -- substitute, not even the cover — mirroring how onCloseDocument
+        -- suppresses the "Closing book…" notice for the same call chain.
+        -- Set by patchReaderShowCoroutine; consumed here on the very next
+        -- matching InfoMessage-shaped show call (same detection the cover-
+        -- substitution path below uses).
+        if plugin._suppress_reader_opening_notice then
+            plugin._suppress_reader_opening_notice = nil
+            if widget and widget.timeout == 0.0 and not widget.covers_fullscreen then
+                return
+            end
+        end
 
         -- Cover Transition (open side, notice substitution): the very next
         -- UIManager.show call after ReaderUI.showReaderCoroutine flagged a
@@ -3454,7 +3606,17 @@ function M.patchReaderShowCoroutine(plugin)
         local is_reload = live_plugin._suppress_opening_cover
         live_plugin._suppress_opening_cover = nil
 
-        if not seamless and not is_reload and CoverTransition.isOpenEnabled() then
+        if is_reload then
+            -- Reload-triggered reopen (font size, margins, line spacing,
+            -- ... — see patchReloadDocument): suppress the "Opening file
+            -- '...'." notice outright, the same way onCloseDocument already
+            -- suppresses the "Closing book…" notice for this exact call
+            -- chain (_suppress_closing_notice). No substitute either — a
+            -- cover flash is just as visible a hiccup as the notice or the
+            -- Home Screen reveal it would otherwise sit over. The reformat
+            -- should look like nothing happened at all.
+            live_plugin._suppress_reader_opening_notice = true
+        elseif not seamless and CoverTransition.isOpenEnabled() then
             CoverTransition._pending_open_file = file
         end
         return orig(self, file, provider, seamless)
