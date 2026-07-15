@@ -355,10 +355,9 @@ end
 local function buildCollectionFps(coll_name, ctx)
     local ok_rc, rc = pcall(require, "readcollection")
     if not (ok_rc and rc) then return {} end
-    -- Not calling rc:_read() — it destructively reloads rc.coll/rc.coll_settings
-    -- from disk and can wipe an in-memory-only collection the native
-    -- Collections UI hasn't flushed to disk yet. The singleton is already
-    -- live in-process.
+    if rc._read then
+        pcall(function() rc:_read() end)
+    end
     local coll = rc.coll and rc.coll[coll_name]
     if not coll then return {} end
 
@@ -1116,9 +1115,7 @@ function M.getMenuItems(ctx_menu)
         local submenu = {}
         local ok_rc, rc = pcall(require, "readcollection")
         if ok_rc and rc then
-            -- Not calling rc:_read() — see note above; it can wipe
-            -- uncommitted collection changes made via the native
-            -- Collections UI.
+            if rc._read then pcall(function() rc:_read() end) end
             local coll_set = {}
             if rc.coll then for n in pairs(rc.coll) do coll_set[n] = true end end
             if rc.coll_folders then for n in pairs(rc.coll_folders) do coll_set[n] = true end end

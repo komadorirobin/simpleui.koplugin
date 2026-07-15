@@ -95,11 +95,7 @@ end
 local function _migrate()
     local RC = getRC()
     if not RC then return end
-    -- Not calling RC:_read() — readcollection.lua already reads collection.lua
-    -- once at require() time, so the singleton returned by getRC() is already
-    -- populated. Calling _read() again is redundant and, worse, destructively
-    -- reloads rc.coll/rc.coll_settings from disk, which can wipe in-memory
-    -- collection changes the native Collections UI hasn't flushed yet.
+    RC:_read()
     if not (RC.coll and RC.coll[TBR_COLL_NAME]) then
         RC:addCollection(TBR_COLL_NAME)
     end
@@ -131,12 +127,7 @@ pcall(_migrate)
 local function getTBRList()
     local RC = getRC()
     if RC then
-        -- Not calling RC:_read() — it destructively reloads rc.coll from
-        -- disk and can wipe an in-memory-only collection (e.g. one just
-        -- created via the native Collections UI but not yet saved). This
-        -- function runs on nearly every repaint, so a single stray write to
-        -- collection.lua elsewhere (e.g. a TBR sync) was enough to trigger
-        -- the wipe on the very next call.
+        RC:_read()
         local coll = RC.coll and RC.coll[TBR_COLL_NAME]
         if not coll then return {} end
         local items = {}
@@ -175,7 +166,7 @@ end
 local function isTBR(filepath)
     local RC = getRC()
     if RC then
-        -- Not calling RC:_read() — see note in getTBRList() above.
+        RC:_read()
         local coll = RC.coll and RC.coll[TBR_COLL_NAME]
         if not coll then return false end
         local ok_fu, ffiUtil = pcall(require, "ffi/util")
@@ -200,7 +191,7 @@ local function addTBR(filepath)
 
     local RC = getRC()
     if RC then
-        -- Not calling RC:_read() — see note in getTBRList() above.
+        RC:_read()
         if not (RC.coll and RC.coll[TBR_COLL_NAME]) then
             RC:addCollection(TBR_COLL_NAME)
         end
@@ -238,7 +229,7 @@ end
 local function removeTBR(filepath)
     local RC = getRC()
     if RC then
-        -- Not calling RC:_read() — see note in getTBRList() above.
+        RC:_read()
         local coll = RC.coll and RC.coll[TBR_COLL_NAME]
         if coll then
             local ffiUtil = require("ffi/util")

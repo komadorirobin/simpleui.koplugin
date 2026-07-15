@@ -1803,20 +1803,6 @@ function M.patchUIManagerShow(plugin)
         -- indicator drift out of sync with the widget actually on screen.
         local plugin = UIManager._simpleui_show_plugin or plugin
 
-        -- Reload-triggered reopen (font size, margins, line spacing, ...):
-        -- swallow KOReader's own "Opening file '...'." notice outright — no
-        -- substitute, not even the cover — mirroring how onCloseDocument
-        -- suppresses the "Closing book…" notice for the same call chain.
-        -- Set by patchReaderShowCoroutine; consumed here on the very next
-        -- matching InfoMessage-shaped show call (same detection the cover-
-        -- substitution path below uses).
-        if plugin._suppress_reader_opening_notice then
-            plugin._suppress_reader_opening_notice = nil
-            if widget and widget.timeout == 0.0 and not widget.covers_fullscreen then
-                return
-            end
-        end
-
         -- Cover Transition (open side, notice substitution): the very next
         -- UIManager.show call after ReaderUI.showReaderCoroutine flagged a
         -- file is, in that narrow window, always KOReader's own "Opening
@@ -1846,6 +1832,25 @@ function M.patchUIManagerShow(plugin)
         if widget.name == "ReaderUI" then
             pcall(M.wireReaderMenuFMTab,    plugin, widget)
             pcall(M.patchReloadDocument,    plugin, widget)
+
+            -- Remove the reload blocker pushed in patchUIManagerClose right
+            -- after the old ReaderUI closed (see that comment). Deferred to
+            -- nextTick rather than closed right here: this branch runs
+            -- *before* orig_show actually shows this new ReaderUI further
+            -- down in this same function call, so closing the blocker this
+            -- early would re-expose the Home Screen for the remainder of
+            -- this call. nextTick guarantees it only runs once the current
+            -- synchronous call — which includes that orig_show — has
+            -- finished, i.e. once the new ReaderUI is already covering
+            -- everything.
+            if plugin._reload_blocker then
+                local blocker_to_close = plugin._reload_blocker
+                plugin._reload_blocker = nil
+                UIManager:nextTick(function()
+                    local orig_close_pristine = UIManager._simpleui_close_orig or UIManager.close
+                    pcall(orig_close_pristine, UIManager, blocker_to_close)
+                end)
+            end
 
             -- Cover Transition (open side): show the cover a beat before the
             -- reader's own chrome paints, then auto-close shortly after —
@@ -2368,6 +2373,39 @@ function M.patchUIManagerClose(plugin)
 
         local result = orig_close(um_self, widget, ...)
 
+        -- Reload-triggered reopen: the ReaderUI we just closed is about to
+        -- be rebuilt for the same file, inside the same reloadDocument()
+        -- call still executing further up the stack (see patchReloadDocument).
+        -- Closing it just exposed whatever sits underneath — the hidden Home
+        -- Screen kept there by the _live_widget/_raiseInPlace architecture —
+        -- and UIManager's "not painting covered widget(s)" optimisation no
+        -- longer applies to it now that it is (briefly) the topmost widget.
+        -- Anything that shows on top of it during the reload — including
+        -- KOReader's own "Opening file '...'." notice, which is expected and
+        -- NOT suppressed — would force a real paint + e-ink refresh of it.
+        --
+        -- Push an invisible, nameless full-screen placeholder right now, in
+        -- its place, so that optimisation keeps applying to the Home Screen
+        -- exactly as ReaderUI itself normally does. The placeholder paints
+        -- nothing, so whatever shows on top of it (the notice) composites
+        -- over whatever was already in the screen buffer — the old reader's
+        -- last frame — instead of over a freshly-painted Home Screen. No
+        -- name and no title_bar, so it passes through every SimpleUI hook
+        -- untouched. Removed once the rebuilt ReaderUI is shown (see the
+        -- matching close in patchUIManagerShow's ReaderUI branch).
+        if widget.name == "ReaderUI" and active_plugin._reload_in_progress
+                and not active_plugin._reload_blocker then
+            local ok_wc, WC = pcall(require, "ui/widget/container/widgetcontainer")
+            if ok_wc and WC then
+                local blocker = WC:new{ covers_fullscreen = true }
+                local orig_show_pristine = UIManager._simpleui_show_orig or UIManager.show
+                local ok_show = pcall(orig_show_pristine, um_self, blocker)
+                if ok_show then
+                    active_plugin._reload_blocker = blocker
+                end
+            end
+        end
+
         -- Lazy FM refresh: consume the flag set when the reader closed with
         -- return_to_folder=false. The HS was on top — now that it is closing,
         -- the FM is about to become visible. Schedule refreshPath() for the
@@ -2421,7 +2459,22 @@ function M.patchUIManagerClose(plugin)
                 if widget.name == "ReaderUI" then
                     -- Fallback: reader closed without going through closeReaderToHomescreen.
                     -- tearing_down guards against double-firing with that function.
-                    if not widget.tearing_down then
+                    --
+                    -- _reload_in_progress guards against a second, distinct case:
+                    -- reloadDocument() (font size, font family, line spacing, margins,
+                    -- ... — see patchReloadDocument) closes this exact ReaderUI and
+                    -- shows a NEW one for the same file entirely inside showReaderCoroutine,
+                    -- which — per "creating coroutine for showing reader" — genuinely
+                    -- yields, so the new instance isn't assigned to ReaderUI.instance
+                    -- synchronously. The RUI2.instance guard below is meant to catch
+                    -- that and bail, but it can lose the race: this nextTick fires
+                    -- before the coroutine resumes and assigns the new instance, so
+                    -- _raiseHSFromStack/_showHSCold runs anyway — raising and
+                    -- setDirty-ing the real HS widget for one visible frame before the
+                    -- rebuilt ReaderUI takes over. Skip the whole fallback outright for
+                    -- a reload: the book was never really closed from the user's point
+                    -- of view, so nothing should ever try to show the Home Screen here.
+                    if not widget.tearing_down and not active_plugin._reload_in_progress then
                         local return_to_folder = SUISettings:isTrue("simpleui_hs_return_to_book_folder")
                         if not return_to_folder then
                             local prev_action = active_plugin.active_action
@@ -3555,8 +3608,42 @@ function M.patchReloadDocument(plugin, readerui)
     if type(orig) ~= "function" then return end
     readerui.reloadDocument = function(self, ...)
         plugin._suppress_closing_notice = true
-        plugin._suppress_opening_cover  = true
-        return orig(self, ...)
+
+        -- Single source of truth for "we're inside a reloadDocument()-driven
+        -- close/reopen" for the whole window, both the close and the
+        -- reopen side. Read by:
+        --   - patchUIManagerClose: pushes the reload blocker right after the
+        --     old ReaderUI closes, and stands the Home-Screen-raise fallback
+        --     down so it is never raised because of this close.
+        --   - patchReaderShowCoroutine: skips the CoverTransition open-side
+        --     trigger for a reload (no cover flash wanted either).
+        plugin._reload_in_progress = true
+
+        local ret = { orig(self, ...) }
+
+        -- Clear on nextTick, not synchronously: the fallback's own check is
+        -- itself scheduled via UIManager:nextTick() from inside orig()
+        -- (when reloadDocument closes the old ReaderUI, which routes through
+        -- our patched UIManager.close). Clearing the flag here, before that
+        -- already-queued check runs, would defeat the guard entirely —
+        -- queuing the clear keeps it alive for at least as long as that tick.
+        UIManager:nextTick(function()
+            plugin._reload_in_progress = nil
+
+            -- Safety net: the blocker is normally closed by patchUIManagerShow
+            -- once the rebuilt ReaderUI is actually shown. If the reload
+            -- errored out before that happened, it would otherwise linger
+            -- forever, blocking the screen — close it here too, one tick
+            -- later, so a failed reload never leaves the UI stuck.
+            if plugin._reload_blocker then
+                local blocker_leftover = plugin._reload_blocker
+                plugin._reload_blocker = nil
+                local orig_close_pristine = UIManager._simpleui_close_orig or UIManager.close
+                pcall(orig_close_pristine, UIManager, blocker_leftover)
+            end
+        end)
+
+        return table.unpack(ret)
     end
     readerui._simpleui_reload_patched = true
 end
@@ -3590,20 +3677,15 @@ function M.patchReaderShowCoroutine(plugin)
         -- would go stale across FM recreations — resolve the live instance
         -- the same way the UIManager.show wrapper does.
         local live_plugin = UIManager._simpleui_show_plugin or plugin
-        local is_reload = live_plugin._suppress_opening_cover
-        live_plugin._suppress_opening_cover = nil
 
-        if is_reload then
-            -- Reload-triggered reopen (font size, margins, line spacing,
-            -- ... — see patchReloadDocument): suppress the "Opening file
-            -- '...'." notice outright, the same way onCloseDocument already
-            -- suppresses the "Closing book…" notice for this exact call
-            -- chain (_suppress_closing_notice). No substitute either — a
-            -- cover flash is just as visible a hiccup as the notice or the
-            -- Home Screen reveal it would otherwise sit over. The reformat
-            -- should look like nothing happened at all.
-            live_plugin._suppress_reader_opening_notice = true
-        elseif not seamless and CoverTransition.isOpenEnabled() then
+        -- Reload-triggered reopen (font size, margins, line spacing, ...):
+        -- never engage the CoverTransition open side for it — no cover flash
+        -- wanted for an internal reload. KOReader's own "Opening file
+        -- '...'." notice is left alone and shows normally; the Home Screen
+        -- reveal it would otherwise sit over is handled directly in
+        -- patchUIManagerClose (the reload blocker), not by hiding this notice.
+        if not live_plugin._reload_in_progress
+                and not seamless and CoverTransition.isOpenEnabled() then
             CoverTransition._pending_open_file = file
         end
         return orig(self, file, provider, seamless)
