@@ -8,8 +8,50 @@
 local UIManager = require("ui/uimanager")
 local Event     = require("ui/event")
 local logger    = require("logger")
+local SUISettings = require("sui_store")
 
 local M = {}
+
+local PROFILE_ACTIONS = {
+    prose = {
+        bookshelf_prose = true,
+        bookshelf_prose_menu = true,
+        open_bookshelf_prose = true,
+        open_bookshelf_prose_start_menu = true,
+    },
+    comics = {
+        bookshelf_comics = true,
+        bookshelf_comics_menu = true,
+        open_bookshelf_comics = true,
+        open_bookshelf_comics_start_menu = true,
+    },
+}
+
+-- Resolve the actual navbar slot for a Bookshelf profile. The slot may be a
+-- built-in Bookshelf action or a user-created Quick Action whose dispatcher
+-- target opens that profile.
+function M.resolveProfileTab(profile_key, tabs)
+    local targets = PROFILE_ACTIONS[profile_key]
+    if not (targets and type(tabs) == "table") then return nil end
+    for _, action_id in ipairs(tabs) do
+        if targets[action_id] then return action_id end
+        if type(action_id) == "string" and action_id:match("^custom_qa_%d+$") then
+            local cfg = SUISettings:get("simpleui_qa_" .. action_id) or {}
+            if targets[cfg.dispatcher_action] then return action_id end
+        end
+    end
+    return nil
+end
+
+-- Bookshelf calls this before rendering SimpleUI's embedded dock. Keeping the
+-- state on the live plugin also means subsequent navbar rebuilds retain the
+-- correct underline instead of falling back to Home.
+function M.activateProfile(profile_key, plugin, tabs)
+    if type(plugin) ~= "table" then return nil end
+    local action_id = M.resolveProfileTab(profile_key, tabs)
+    if action_id then plugin.active_action = action_id end
+    return action_id
+end
 
 function M.prepareReturn(filepath, source)
     if type(filepath) ~= "string" or filepath == "" then return end
