@@ -3018,6 +3018,10 @@ end
 -- ---------------------------------------------------------------------------
 function HomescreenWidget:onShow()
     closeStaleHomescreens(self)
+    local ok_bridge, Bridge = pcall(require, "sui_bookshelf_bridge")
+    if ok_bridge and Bridge and Bridge.scheduleHomePrewarm then
+        Bridge.scheduleHomePrewarm(self)
+    end
     local need_async = false
     if self._stats_need_refresh or Homescreen._stats_need_refresh then
         self._stats_need_refresh       = nil
@@ -3362,6 +3366,10 @@ function HomescreenWidget:onSetRotationMode(mode)
 end
 
 function HomescreenWidget:onCloseWidget()
+    local ok_bridge, Bridge = pcall(require, "sui_bookshelf_bridge")
+    if ok_bridge and Bridge and Bridge.cancelHomePrewarm then
+        Bridge.cancelHomePrewarm(self)
+    end
     if self._cover_poll_timer then
         UIManager:unschedule(self._cover_poll_timer)
         self._cover_poll_timer = nil
