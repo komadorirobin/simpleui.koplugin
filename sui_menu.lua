@@ -4423,6 +4423,92 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
             local rok, rmeta = pcall(require, "_meta")
             Meta = (rok and type(rmeta) == "table" and rmeta.name == "simpleui" and rmeta) or {}
         end
+        local function updaterModule()
+            local ok_upd, Updater = pcall(require, "sui_updater")
+            return ok_upd and Updater or nil
+        end
+        local function selectedChannelLabel()
+            local Updater = updaterModule()
+            local branch = Updater and Updater.selectedBranch() or ""
+            return branch == "" and _("Stable release") or branch
+        end
+        local function makeUpdateChannelItems()
+            local Updater = updaterModule()
+            if not Updater then return {} end
+            local function channelItem(label, branch)
+                return {
+                    text = label,
+                    checked_func = function()
+                        return Updater.selectedBranch() == branch
+                    end,
+                    callback = function()
+                        Updater.setSelectedBranch(branch)
+                        if ctx_menu and ctx_menu.refresh then ctx_menu.refresh() end
+                    end,
+                }
+            end
+            return {
+                channelItem(_("Stable release"), ""),
+                channelItem(_("Main branch"), "main"),
+                channelItem(_("Beta branch"), "beta"),
+                {
+                    text_func = function()
+                        local branch = Updater.selectedBranch()
+                        if branch ~= "" and branch ~= "main" and branch ~= "beta" then
+                            return _("Custom branch") .. ": " .. branch
+                        end
+                        return _("Custom branch…")
+                    end,
+                    callback = function()
+                        local dialog
+                        dialog = InputDialog():new{
+                            title = _("Custom update branch"),
+                            input = Updater.selectedBranch(),
+                            input_hint = _("Branch name"),
+                            buttons = {{
+                                {
+                                    text = _("Cancel"),
+                                    id = "close",
+                                    callback = function() UIManager:close(dialog) end,
+                                },
+                                {
+                                    text = _("Select"),
+                                    is_enter_default = true,
+                                    callback = function()
+                                        local branch = dialog:getInputText() or ""
+                                        branch = branch:match("^%s*(.-)%s*$") or ""
+                                        if branch == "" then
+                                            UIManager:show(InfoMessage():new{
+                                                text = _("Enter a branch name, or select Stable release."),
+                                                timeout = 3,
+                                            })
+                                            return
+                                        end
+                                        Updater.setSelectedBranch(branch)
+                                        UIManager:close(dialog)
+                                        if ctx_menu and ctx_menu.refresh then ctx_menu.refresh() end
+                                    end,
+                                },
+                            }},
+                        }
+                        UIManager:show(dialog)
+                        dialog:onShowKeyboard()
+                    end,
+                },
+                {
+                    text_func = function()
+                        local source = Updater.installedSource()
+                        local commit = Updater.installedCommit()
+                        if source:match("^branch:") and commit ~= "" then
+                            return _("Installed source") .. ": " .. source:sub(8)
+                                .. " @ " .. commit:sub(1, 8)
+                        end
+                        return _("Installed source") .. ": " .. _("Stable release")
+                    end,
+                    enabled = false,
+                },
+            }
+        end
         return {
             {
                 text           = string.format(_("Version: %s"), Meta.version or "?"),
@@ -4444,6 +4530,12 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                     SUISettings:set("simpleui_updater_auto_check",
                         not SUISettings:isTrue("simpleui_updater_auto_check"))
                 end,
+            },
+            {
+                text_func = function()
+                    return _("Update channel") .. ": " .. selectedChannelLabel()
+                end,
+                sub_item_table_func = makeUpdateChannelItems,
             },
             {
                 text      = _("Check for Updates"),

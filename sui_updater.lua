@@ -27,6 +27,8 @@ local _           = require("sui_i18n").translate
 local GITHUB_OWNER = "komadorirobin"
 local GITHUB_REPO  = "simpleui.koplugin"
 local ASSET_NAME   = "simpleui.koplugin.zip"
+local API_REPO_BASE = string.format(
+    "https://api.github.com/repos/%s/%s", GITHUB_OWNER, GITHUB_REPO)
 
 local AUTO_CHECK_INTERVAL = 24 * 3600  -- seconds between automatic checks
 
@@ -35,11 +37,11 @@ local GS_LAST_CHECK = "sui_upd_last_check"  -- number (timestamp)
 local GS_HAS_UPDATE = "sui_upd_has_update"  -- boolean
 local GS_LATEST_VER = "sui_upd_latest_ver"  -- string without "v"
 local GS_DL_URL     = "sui_upd_dl_url"      -- string URL
+local GS_BRANCH     = "sui_upd_branch"      -- selected channel; empty = release
+local GS_SOURCE     = "sui_upd_install_source" -- release | branch:<name>
+local GS_COMMIT     = "sui_upd_install_commit"
 
-local _API_URL = string.format(
-    "https://api.github.com/repos/%s/%s/releases/latest",
-    GITHUB_OWNER, GITHUB_REPO
-)
+local _API_URL = API_REPO_BASE .. "/releases/latest"
 
 -- ---------------------------------------------------------------------------
 -- Internals
@@ -94,6 +96,23 @@ end
 local function _isValidAssetUrl(url)
     return type(url) == "string"
         and url:find("/releases/download/", 1, true) ~= nil
+end
+
+local function _encodeQueryValue(value)
+    return tostring(value or ""):gsub("[^%w%-_.~]", function(c)
+        return string.format("%%%02X", c:byte())
+    end)
+end
+
+local function _branchArchiveUrl(branch)
+    local encoded = tostring(branch or ""):gsub("[^%w%-_/.~]", function(c)
+        return string.format("%%%02X", c:byte())
+    end)
+    return API_REPO_BASE .. "/zipball/" .. encoded
+end
+
+local function _shortSha(sha)
+    return tostring(sha or ""):sub(1, 8)
 end
 
 -- ---------------------------------------------------------------------------
@@ -313,6 +332,20 @@ local function _parseRelease(body)
     }
 end
 
+local function _parseBranchHead(body)
+    local ok_j, json = pcall(require, "json")
+    if ok_j then
+        local ok_d, commits = pcall(json.decode, body)
+        if ok_d and type(commits) == "table" and type(commits[1]) == "table"
+                and type(commits[1].sha) == "string" and commits[1].sha ~= "" then
+            return commits[1].sha
+        end
+    end
+    local sha = body:match('"sha"%s*:%s*"([0-9a-fA-F]+)"')
+    if sha and sha ~= "" then return sha end
+    return nil, "could not parse branch head"
+end
+
 -- ---------------------------------------------------------------------------
 -- Unzip
 -- ---------------------------------------------------------------------------
@@ -322,6 +355,30 @@ local function _unzip(zip_path, dest_dir)
     if ret ~= 0 and ret ~= true then
         return nil, "unzip failed (exit " .. tostring(ret) .. ")"
     end
+    return true
+end
+
+local function _unzipStripRoot(zip_path, dest_dir)
+    local ok_req, Archiver = pcall(require, "ffi/archiver")
+    if not (ok_req and Archiver and Archiver.Reader) then
+        return nil, "archive extractor unavailable"
+    end
+    local arc = Archiver.Reader:new()
+    if not arc:open(zip_path) then
+        local err = arc.err
+        arc:close()
+        return nil, err or "could not open archive"
+    end
+    local extract_err
+    for entry in arc:iterate() do
+        local rel = entry.path and entry.path:match("^[^/]+/(.+)$")
+        if rel and rel ~= "" and not arc:extractToPath(entry.path, dest_dir .. "/" .. rel) then
+            extract_err = arc.err or "extract failed"
+            break
+        end
+    end
+    arc:close()
+    if extract_err then return nil, extract_err end
     return true
 end
 
@@ -382,11 +439,22 @@ local function _doFetch()
     return release
 end
 
+local function _doBranchFetch(branch)
+    local url = API_REPO_BASE .. "/commits?sha="
+        .. _encodeQueryValue(branch) .. "&per_page=1"
+    local body, err = _httpGet(url)
+    if not body then return { error = err } end
+    local sha, parse_err = _parseBranchHead(body)
+    if not sha then return { error = "parse error: " .. tostring(parse_err) } end
+    return { branch = branch, sha = sha }
+end
+
 -- ---------------------------------------------------------------------------
 -- Download and installation
 -- ---------------------------------------------------------------------------
 
-local function _applyUpdate(download_url, new_version)
+local function _applyUpdate(download_url, new_version, opts)
+    opts = opts or {}
     local tmp_zip    = _tmpZipPath()
     local parent_dir = _plugin_dir:match("^(.+)/[^/]+$") or _plugin_dir
 
@@ -401,7 +469,12 @@ local function _applyUpdate(download_url, new_version)
         if not dl_ok then
             return { success = false, stage = "download", err = dl_err }
         end
-        local uz_ok, uz_err = _unzip(tmp_zip, parent_dir)
+        local uz_ok, uz_err
+        if opts.strip_root then
+            uz_ok, uz_err = _unzipStripRoot(tmp_zip, _plugin_dir)
+        else
+            uz_ok, uz_err = _unzip(tmp_zip, parent_dir)
+        end
         os.remove(tmp_zip)
         if not uz_ok then
             return { success = false, stage = "unzip", err = uz_err }
@@ -423,6 +496,7 @@ local function _applyUpdate(download_url, new_version)
             return
         end
         _clear_update_state()
+        if opts.on_success then pcall(opts.on_success) end
         UIManager:show(ConfirmBox:new{
             text        = string.format(
                 _("Simple UI %s installed.\n\nRestart KOReader to apply the update?"),
@@ -459,12 +533,12 @@ end
 -- Confirmation dialog with release notes
 -- ---------------------------------------------------------------------------
 
-local function _showUpdateDialog(release, current)
+local function _showUpdateDialog(release, current, force_switch)
     local latest       = release.version
     local download_url = release.download_url
     local notes        = release.notes
 
-    if not _versionGt(latest, current) then
+    if not force_switch and not _versionGt(latest, current) then
         logger.info("simpleui updater: already up to date (" .. current .. ")")
         _toast(string.format(_("Simple UI is up to date (%s)."), current))
         return
@@ -472,7 +546,9 @@ local function _showUpdateDialog(release, current)
 
     logger.info("simpleui updater: new version available:", latest)
 
-    local header     = string.format(_("Simple UI %s is available!\nYou have %s."), latest, current)
+    local header = force_switch
+        and string.format(_("Switch to stable Simple UI %s?\nYou have %s."), latest, current)
+        or string.format(_("Simple UI %s is available!\nYou have %s."), latest, current)
     local notes_block = notes and ("\n\n" .. _("What's new:") .. "\n" .. notes) or ""
 
     if not download_url then
@@ -498,7 +574,17 @@ local function _showUpdateDialog(release, current)
         text        = header .. notes_block .. "\n\n" .. _("Download and install now?"),
         ok_text     = _("Download and install"),
         cancel_text = _("Cancel"),
-        ok_callback = function() _applyUpdate(download_url, latest) end,
+        ok_callback = function()
+            _applyUpdate(download_url, latest, {
+                on_success = function()
+                    local gs = _gs()
+                    if not gs then return end
+                    gs:saveSetting(GS_SOURCE, "release")
+                    gs:saveSetting(GS_COMMIT, "")
+                    pcall(gs.flush, gs)
+                end,
+            })
+        end,
     })
 end
 
@@ -544,6 +630,36 @@ function M.latestVersion()
     return _latest_ver
 end
 
+--- Selected update channel. An empty string means stable GitHub releases.
+function M.selectedBranch()
+    local gs = _gs()
+    local branch = gs and gs:readSetting(GS_BRANCH) or ""
+    return type(branch) == "string" and branch or ""
+end
+
+--- Select an update channel without installing anything.
+function M.setSelectedBranch(branch)
+    branch = tostring(branch or ""):match("^%s*(.-)%s*$") or ""
+    local gs = _gs()
+    if gs then
+        gs:saveSetting(GS_BRANCH, branch)
+        pcall(gs.flush, gs)
+    end
+    return branch
+end
+
+function M.installedSource()
+    local gs = _gs()
+    local source = gs and gs:readSetting(GS_SOURCE) or nil
+    return type(source) == "string" and source ~= "" and source or "release"
+end
+
+function M.installedCommit()
+    local gs = _gs()
+    local commit = gs and gs:readSetting(GS_COMMIT) or nil
+    return type(commit) == "string" and commit or ""
+end
+
 --- Silent automatic check — called once on plugin startup.
 ---
 --- • Always loads persisted state so hasUpdate() is correct immediately.
@@ -558,6 +674,13 @@ function M.scheduleAutoCheck()
     if not ok_s or not SUISettings then return end
     if not SUISettings:isTrue("simpleui_updater_auto_check") then
         logger.dbg("simpleui updater: auto-check disabled — skipping")
+        return
+    end
+
+    -- Branch channels are deliberately manual. This avoids an experimental
+    -- build being replaced in the background while KOReader is starting.
+    if M.selectedBranch() ~= "" then
+        logger.dbg("simpleui updater: branch channel selected - manual checks only")
         return
     end
 
@@ -599,14 +722,23 @@ end
 --- Always hits the network (ignores throttle) and shows UI with the result.
 function M.checkForUpdates()
     local current = _currentVersion()
+    local branch = M.selectedBranch()
     local ok_nm, NetworkMgr = pcall(require, "ui/network/manager")
     if ok_nm and NetworkMgr and NetworkMgr.runWhenOnline then
         NetworkMgr:runWhenOnline(function()
-            M._doManualCheck(current)
+            if branch ~= "" then
+                M._doManualBranchCheck(branch, current)
+            else
+                M._doManualCheck(current)
+            end
         end)
         return
     end
-    M._doManualCheck(current)
+    if branch ~= "" then
+        M._doManualBranchCheck(branch, current)
+    else
+        M._doManualCheck(current)
+    end
 end
 
 --- Internal logic for the manual check (kept separate to keep checkForUpdates
@@ -633,7 +765,7 @@ function M._doManualCheck(current)
         _has_update = _versionGt(_latest_ver, current)
         _persist_state(os.time())
 
-        _showUpdateDialog(release, current)
+        _showUpdateDialog(release, current, M.installedSource() ~= "release")
     end
 
     if ok_tr and Trapper and Trapper.dismissableRunInSubprocess then
@@ -651,6 +783,93 @@ function M._doManualCheck(current)
     else
         UIManager:scheduleIn(0.3, function()
             handleCheckResult(_doFetch())
+        end)
+    end
+end
+
+
+--- Check the selected branch head, then offer an install only when switching
+--- channels or when that branch has a newer commit than the installed one.
+function M._doManualBranchCheck(branch, current)
+    local ok_tr, Trapper = pcall(require, "ui/trapper")
+    local checking_msg = _toast(_("Checking for updates…"), 15)
+
+    local function handleCheckResult(result)
+        _closeWidget(checking_msg)
+        if not result or result.error then
+            local err = result and result.error or _("unknown error")
+            logger.err("simpleui updater branch check:", err)
+            _toast(_("Error checking for updates: ") .. tostring(err))
+            return
+        end
+
+        local head_sha = result.sha
+        local source = M.installedSource()
+        local installed_commit = M.installedCommit()
+        local expected_source = "branch:" .. branch
+        if source == expected_source and installed_commit == head_sha then
+            _toast(string.format(
+                _("Simple UI is up to date.\n\nBranch: %s\nCommit: %s"),
+                branch, _shortSha(head_sha)), 4)
+            return
+        end
+
+        local switching = source ~= expected_source
+        local prompt
+        if switching then
+            prompt = string.format(
+                _("The selected update channel is not currently installed.\n\nSwitch to branch: %s?"),
+                branch)
+        elseif installed_commit == "" then
+            prompt = string.format(
+                _("Record and install the current revision of branch %s?\n\nCommit: %s"),
+                branch, _shortSha(head_sha))
+        else
+            prompt = string.format(
+                _("A new branch revision is available.\n\nBranch: %s\n%s → %s"),
+                branch, _shortSha(installed_commit), _shortSha(head_sha))
+        end
+
+        UIManager:show(ConfirmBox:new{
+            text = prompt,
+            ok_text = switching and _("Switch") or _("Update and restart"),
+            cancel_text = _("Cancel"),
+            ok_callback = function()
+                _applyUpdate(
+                    _branchArchiveUrl(branch),
+                    branch .. " @ " .. _shortSha(head_sha),
+                    {
+                        strip_root = true,
+                        on_success = function()
+                            local gs = _gs()
+                            if not gs then return end
+                            gs:saveSetting(GS_SOURCE, expected_source)
+                            gs:saveSetting(GS_COMMIT, head_sha)
+                            pcall(gs.flush, gs)
+                        end,
+                    })
+            end,
+        })
+    end
+
+    local function fetch()
+        return _doBranchFetch(branch)
+    end
+    if ok_tr and Trapper and Trapper.dismissableRunInSubprocess then
+        local completed, result = Trapper:dismissableRunInSubprocess(
+            fetch,
+            checking_msg,
+            function(res) handleCheckResult(res) end
+        )
+        if completed and result then
+            UIManager:scheduleIn(0.2, function() handleCheckResult(result) end)
+        elseif completed == false then
+            _closeWidget(checking_msg)
+            _toast(_("Update check cancelled."))
+        end
+    else
+        UIManager:scheduleIn(0.3, function()
+            handleCheckResult(fetch())
         end)
     end
 end
