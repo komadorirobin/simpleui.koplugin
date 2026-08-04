@@ -33,12 +33,24 @@ local math_min   = math.min
 -- (which the kobo.koplugin's BookInfoManager patch understands), and that
 -- openBook always passes a virtual path to DocumentRegistry so DRM
 -- decryption is triggered correctly.
+local _kobo_virtual_library
 local function _koboVirtualPath(fp)
+    -- Avoid consulting PluginLoader for every history row on Android/Kindle.
+    if not (Device.isKobo and Device:isKobo()) then return fp end
+    if _kobo_virtual_library then
+        local vl = _kobo_virtual_library
+        if vl:isVirtualPath(fp) then return fp end
+        if not next(vl.virtual_to_real) then
+            pcall(function() vl:buildPathMappings() end)
+        end
+        return vl:getVirtualPath(fp) or fp
+    end
     local ok, PluginLoader = pcall(require, "pluginloader")
     if not ok or not PluginLoader then return fp end
     local kobo = PluginLoader:getPluginInstance("kobo_plugin")
     if not kobo or not kobo.virtual_library then return fp end
     local vl = kobo.virtual_library
+    _kobo_virtual_library = vl
     if vl:isVirtualPath(fp) then return fp end
     if not next(vl.virtual_to_real) then
         pcall(function() vl:buildPathMappings() end)
@@ -128,14 +140,24 @@ SH.RECENT_CELL_H = _BASE_RECENT_H + _BASE_RB_GAP1 + _BASE_RB_BAR_H
 -- thumb_scale: independent cover/thumbnail scale multiplier (affects cover dims only).
 --              Text, progress bar and gaps follow only `scale`.
 --              Pass nil or 1.0 to apply no thumb adjustment.
+local _dims_cache = {}
 function SH.getDims(scale, thumb_scale)
     scale       = scale       or 1.0
     thumb_scale = thumb_scale or 1.0
+    local scale_cache = _dims_cache[scale]
+    if scale_cache and scale_cache[thumb_scale] then
+        return scale_cache[thumb_scale]
+    end
+    if not scale_cache then
+        scale_cache = {}
+        _dims_cache[scale] = scale_cache
+    end
     -- Combined scale applied to cover dimensions only.
     local cs = scale * thumb_scale
+    local dims
     if scale == 1.0 and thumb_scale == 1.0 then
         -- Fast path: return the pre-computed base values without any math.
-        return {
+        dims = {
             COVER_W       = _BASE_COVER_W,
             COVER_H       = _BASE_COVER_H,
             RECENT_W      = _BASE_RECENT_W,
@@ -146,6 +168,8 @@ function SH.getDims(scale, thumb_scale)
             RB_LABEL_H    = _BASE_RB_LABEL_H,
             RECENT_CELL_H = SH.RECENT_CELL_H,
         }
+        scale_cache[thumb_scale] = dims
+        return dims
     end
     -- Text/bar/gap dims scale with `scale` only — unaffected by thumb_scale.
     local g1  = math_max(1, math_floor(_BASE_RB_GAP1    * scale))
@@ -155,7 +179,7 @@ function SH.getDims(scale, thumb_scale)
     -- Cover dims scale with the combined scale (scale × thumb_scale).
     local rh  = math_floor(_BASE_RECENT_H * cs)
     -- RECENT_CELL_H = cover height + bar + gaps + label — each part scaled independently.
-    return {
+    dims = {
         COVER_W       = math_floor(_BASE_COVER_W  * cs),
         COVER_H       = math_floor(_BASE_COVER_H  * cs),
         RECENT_W      = math_floor(_BASE_RECENT_W * cs),
@@ -166,6 +190,8 @@ function SH.getDims(scale, thumb_scale)
         RB_LABEL_H    = lh,
         RECENT_CELL_H = rh + g1 + bh + g2 + lh,
     }
+    scale_cache[thumb_scale] = dims
+    return dims
 end
 
 local _CLR_COVER_BORDER = Blitbuffer.COLOR_BLACK
@@ -426,25 +452,25 @@ local function getBookInfoManager()
 end
 
 -- ---------------------------------------------------------------------------
--- File existence cache — invalidated by mtime, lives for the process lifetime.
--- Avoids repeated lfs.attributes("mode") syscalls on every homescreen show.
+-- File existence cache. A short TTL coalesces the prefetch + stats-provider
+-- checks from one render without hiding external adds/removals for long.
 -- ---------------------------------------------------------------------------
 local _file_exists_cache = {}
+local FILE_EXISTS_TTL = 2
 
 local function _fileExistsCheck(fp)
+    local now = os.time()
     local e = _file_exists_cache[fp]
-    if e then
-        local mtime = lfs.attributes(fp, "modification")
-        if mtime and mtime == e.mtime then
-            return true
-        end
+    if e and e.expires_at >= now then
+        return e.exists
     end
-    local mode = lfs.attributes(fp, "mode")
-    if mode == "file" then
-        _file_exists_cache[fp] = { mtime = lfs.attributes(fp, "modification") }
-        return true
-    end
-    return false
+    local attr = lfs.attributes(fp)
+    local exists = attr and attr.mode == "file" or false
+    _file_exists_cache[fp] = {
+        exists = exists,
+        expires_at = now + FILE_EXISTS_TTL,
+    }
+    return exists
 end
 
 -- ---------------------------------------------------------------------------
@@ -473,19 +499,26 @@ local function _cacheGet(fp)
         _sidecar_cache[fp] = nil
         return nil
     end
+    local now = os.time()
+    -- prefetchBooks and the stats provider commonly request the same entry
+    -- back-to-back. Metadata-change events explicitly invalidate this cache,
+    -- so one validation per second is sufficient and avoids duplicate stats.
+    if e.validated_at == now then return e.data end
     -- 1 syscall: stat the sidecar file we recorded on last DS.open.
     local mtime = lfs.attributes(e.sidecar_path, "modification")
     if mtime ~= e.mtime then
         _sidecar_cache[fp] = nil
         return nil
     end
-    -- Also invalidate when custom_metadata.lua has changed (user edited title/author).
-    -- custom_mtime is nil when no custom_metadata.lua existed at cache-fill time;
-    -- a new non-nil mtime means the file was just created → invalidate.
-    if e.custom_mtime ~= lfs.attributes(e.custom_path or "", "modification") then
+    -- Also invalidate when an existing custom_metadata.lua has changed or
+    -- disappeared. Newly-created overrides emit BookMetadataChanged, whose
+    -- plugin handler flushes this cache before the next render.
+    if e.custom_path
+            and e.custom_mtime ~= lfs.attributes(e.custom_path, "modification") then
         _sidecar_cache[fp] = nil
         return nil
     end
+    e.validated_at = now
     return e.data
 end
 
@@ -512,6 +545,7 @@ local function _cachePut(fp, source_candidate, data)
         preferred_loc = _prefLoc(),
         custom_path   = custom_path,
         custom_mtime  = custom_mtime,
+        validated_at  = os.time(),
         data          = data,
     }
 end
@@ -763,20 +797,9 @@ function SH.prefetchBooks(show_currently, show_recent, max_recent)
                 if DS then
                     local cached = _cacheGet(fp)
                     if cached then
-                        -- Re-apply custom props on the cache-hit path.
-                        -- The cached title/authors may predate a metadata edit
-                        -- or predate this fix. applyCustomProps is cheap (stat calls only).
-                        local _ct, _ca = applyCustomProps(fp, cached.title, cached.authors)
-                        if _ct ~= cached.title or _ca ~= cached.authors then
-                            -- Clone only when values differ to avoid mutating the shared cache entry.
-                            local patched = {}
-                            for k, v in pairs(cached) do patched[k] = v end
-                            patched.title   = _ct
-                            patched.authors = _ca
-                            state.prefetched_data[fp] = patched
-                        else
-                            state.prefetched_data[fp] = cached
-                        end
+                        -- _cacheGet already validates custom_metadata.lua and
+                        -- BookMetadataChanged flushes newly-created overrides.
+                        state.prefetched_data[fp] = cached
                     else
                         local ok2, ds = pcall(DS.open, DS, fp)
                         if ok2 and ds then
@@ -813,17 +836,7 @@ function SH.prefetchBooks(show_currently, show_recent, max_recent)
                     if cached then
                         pct = cached.percent
                         book_summary = cached.summary
-                        -- Re-apply custom props on the cache-hit path.
-                        local _ct, _ca = applyCustomProps(fp, cached.title, cached.authors)
-                        if _ct ~= cached.title or _ca ~= cached.authors then
-                            local patched = {}
-                            for k, v in pairs(cached) do patched[k] = v end
-                            patched.title   = _ct
-                            patched.authors = _ca
-                            state.prefetched_data[fp] = patched
-                        else
-                            state.prefetched_data[fp] = cached
-                        end
+                        state.prefetched_data[fp] = cached
                     else
                         local ok2, ds = pcall(DS.open, DS, fp)
                         if ok2 and ds then
