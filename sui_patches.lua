@@ -1285,15 +1285,6 @@ function M.patchCollections(plugin)
         plugin._orig_rc_additem = orig_add
         RC.addItem = function(rc_self, file, coll_name, attr, ...)
             local TBR = _getTBR()
-            if TBR and coll_name == TBR.TBR_COLL_NAME then
-                local coll  = rc_self.coll and rc_self.coll[coll_name]
-                local count = 0
-                if coll then for _ in pairs(coll) do count = count + 1 end end
-                if count >= (TBR.TBR_MAX or 5) then
-                    _showInfoMsg(_("To Be Read list is full (max. 5 books)."))
-                    return  -- abort — do NOT call orig_add
-                end
-            end
             orig_add(rc_self, file, coll_name, attr, ...)
             if TBR and coll_name == TBR.TBR_COLL_NAME then
                 local ok2, err = pcall(function()
@@ -2501,6 +2492,15 @@ function M.patchUIManagerClose(plugin)
                 and not widget._navbar_closing_intentionally
                 and not widget._navbar_hs_scheduled
                 and not (widget._manager and widget._manager.folder_shortcuts)
+                -- Exclude the "add file to collection(s)" checklist. This is a
+                -- coll_list Menu opened in select mode (title_bar_left_icon ==
+                -- "check") from a file long-press's "Collections…" button while
+                -- browsing the FM — it is not a Homescreen-tab overlay, so
+                -- closing it (e.g. via "Apply selection") must return to the
+                -- FM, not reopen the Home Screen. Only the plain browse-mode
+                -- coll_list (opened from the Collections tab, left icon
+                -- "appbar.menu") should fall through to the HS-reopen path.
+                and not (widget.name == "coll_list" and widget.title_bar_left_icon == "check")
                 and UIManager._exit_code == nil then
             widget._navbar_hs_scheduled = true
             local fm = liveFM()
@@ -3337,6 +3337,10 @@ end
 -- users who never touch it pay zero extra cost on this very hot path.
 -- Like the UI Font picker itself, a change only takes full effect after a
 -- restart — the scale is captured once, at install time.
+--
+-- The wrapper scales on the way in and restores face.orig_size on the way
+-- out, so the scaling stays invisible to callers — see the comment in
+-- Font.getFace below for why that write-back is load-bearing.
 -- ---------------------------------------------------------------------------
 
 function M.patchFontGetFace(plugin)
@@ -3352,8 +3356,29 @@ function M.patchFontGetFace(plugin)
 
     Font.getFace = function(self, font, size, faceindex)
         if not size then size = self.sizemap[font] end
-        if size then size = math.max(1, math.floor(size * scale)) end
-        return orig_getFace(self, font, size, faceindex)
+        if not size then
+            -- Nothing to scale; let ui/font.lua handle it as it always has.
+            return orig_getFace(self, font, size, faceindex)
+        end
+        local requested = size
+        local face = orig_getFace(self, font,
+            math.max(1, math.floor(size * scale)), faceindex)
+        if face then
+            -- Report the size the caller asked for, not the scaled one.
+            -- Widgets treat face.orig_size as "the size I requested" and feed
+            -- it straight back into Font:getFace() to step one size up or down
+            -- (Button, VirtualKeyboard, ConfirmBox and InfoMessage all shrink
+            -- text that way; BookMapWidget, TitleBar, TouchMenu and
+            -- NumberPickerWidget derive sibling sizes from it). Those calls
+            -- re-enter this wrapper, so handing back the scaled size puts them
+            -- in the wrong unit and they re-scale a value that was already
+            -- scaled. At scale > 100% that turns every "one size smaller" loop
+            -- into unbounded growth, instantiating an ever-larger FreeType face
+            -- per pass until KOReader is OOM-killed.
+            -- ui/font.lua does the same write-back itself on a cache hit.
+            face.orig_size = requested
+        end
+        return face
     end
 end
 

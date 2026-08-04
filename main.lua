@@ -107,10 +107,11 @@ local _HOT_UPDATE_MODULES = {
     "desktop_modules/module_reading_goals",
     "desktop_modules/module_reading_stats",
     "desktop_modules/module_stats_provider",
-    "desktop_modules/module_recent",
+    "desktop_modules/sui_book_row",
+    "desktop_modules/module_book_rows",
     "desktop_modules/module_tbr",
+    "desktop_modules/module_coll_row",
     "desktop_modules/module_coverdeck",
-    "desktop_modules/module_new_books",
     "desktop_modules/module_app_launcher",
     "desktop_modules/module_hardcover",
     "desktop_modules/module_action_list",
@@ -136,10 +137,11 @@ local _PLUGIN_MODULES = {
     "desktop_modules/module_reading_goals",
     "desktop_modules/module_reading_stats",
     "desktop_modules/module_stats_provider",
-    "desktop_modules/module_recent",
+    "desktop_modules/sui_book_row",
+    "desktop_modules/module_book_rows",
     "desktop_modules/module_tbr",
+    "desktop_modules/module_coll_row",
     "desktop_modules/module_coverdeck",
-    "desktop_modules/module_new_books",
     "desktop_modules/module_app_launcher",
     "desktop_modules/module_hardcover",
     "desktop_modules/module_action_list",
@@ -1330,15 +1332,16 @@ local _PLUGIN_MODULES = {
     "desktop_modules/module_currently",
     "desktop_modules/module_hardcover",
     "desktop_modules/module_image",
-    "desktop_modules/module_new_books",
     "desktop_modules/module_quick_actions",
     "desktop_modules/module_quote",
     "desktop_modules/module_reading_goals",
     "desktop_modules/module_reading_stats",
     "desktop_modules/module_spacer",
     "desktop_modules/module_stats_provider",
-    "desktop_modules/module_recent",
+    "desktop_modules/sui_book_row",
+    "desktop_modules/module_book_rows",
     "desktop_modules/module_tbr",
+    "desktop_modules/module_coll_row",
     "desktop_modules/quotes",
 }
 
@@ -1442,9 +1445,11 @@ function SimpleUIPlugin:onTeardown()
     -- Give modules with internal upvalue caches a chance to nil them before
     -- their package.loaded entry is cleared — ensures the GC can collect the
     -- old tables immediately rather than waiting for the upvalue to be rebound.
-    local mod_recent = package.loaded["desktop_modules/module_recent"]
-    if mod_recent and type(mod_recent.reset) == "function" then
-        pcall(mod_recent.reset)
+    local mod_book_rows = package.loaded["desktop_modules/module_book_rows"]
+    if mod_book_rows and type(mod_book_rows.sub_modules) == "table" then
+        for _, sub in ipairs(mod_book_rows.sub_modules) do
+            if type(sub.reset) == "function" then pcall(sub.reset) end
+        end
     end
     local mod_tbr = package.loaded["desktop_modules/module_tbr"]
     if mod_tbr and type(mod_tbr.reset) == "function" then
