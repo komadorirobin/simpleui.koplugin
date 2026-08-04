@@ -16,6 +16,7 @@ local Geom             = require("ui/geometry")
 local GestureRange     = require("ui/gesturerange")
 local HorizontalSpan   = require("ui/widget/horizontalspan")
 local InputContainer   = require("ui/widget/container/inputcontainer")
+local LeftContainer    = require("ui/widget/container/leftcontainer")
 local TextWidget       = require("ui/widget/textwidget")
 local TitleBar         = require("ui/widget/titlebar")
 local UIManager        = require("ui/uimanager")
@@ -375,7 +376,7 @@ local _MODULE_BG_COLOR  = Blitbuffer.gray(0.08)
 local _MODULE_BG_RADIUS = Screen:scaleBySize(12)
 local _MODULE_BG_PAD_Y  = PAD
 
--- Section label widget cache — keyed by "text|inner_w|scale_pct".
+-- Section label widget cache — keyed by "module|text|inner_w|scale_pct|right_text".
 -- Invalidated on screen resize/rotation via invalidateLabelCache().
 local _label_cache = {}
 
@@ -383,7 +384,7 @@ local function invalidateLabelCache()
     _label_cache = {}
 end
 
-local function buildSectionLabel(text, w, mod_id)
+local function buildSectionLabel(text, w, mod_id, right_text)
     -- Resolve theme fg color so labels honour the active palette.
     -- The color pointer is included in the cache key so that a theme change
     -- after the first render produces a fresh widget instead of reusing the
@@ -393,23 +394,61 @@ local function buildSectionLabel(text, w, mod_id)
     local scale = Config.getSectionLabelScale(mod_id, PFX)
     local fs = math.max(8, math.floor(SUIStyle.FS_BODY * scale))
     local label_h = math.max(8, math.floor(Screen:scaleBySize(16) * scale))
+    local face = Font:getFace(SUIStyle.FACE_REGULAR, fs)
+    local avail_w = w - PAD * 2
+    local content
+
+    if right_text then
+        local fs_right = math.max(8, math.floor(SUIStyle.FS_DETAIL * scale))
+        local face_right = Font:getFace(SUIStyle.FACE_REGULAR, fs_right)
+        local _sub_fg = SUIStyle.getThemeColor("text_secondary") or _label_fg
+        local right_widget = UI.makeColoredText{
+            text    = right_text,
+            face    = face_right,
+            bold    = false,
+            fgcolor = _sub_fg,
+        }
+        local gap = PAD
+        local right_w = right_widget:getSize().w
+        local title_w = math.max(1, avail_w - right_w - gap)
+        local title_widget = UI.makeColoredText{
+            text    = text,
+            face    = face,
+            bold    = true,
+            fgcolor = _label_fg,
+            width   = title_w,
+            height  = label_h,
+        }
+        local title_slot = LeftContainer:new{
+            dimen = Geom:new{ w = title_w, h = title_widget:getSize().h },
+            title_widget,
+        }
+        content = HorizontalGroup:new{
+            align = "bottom",
+            title_slot,
+            HorizontalSpan:new{ width = gap },
+            right_widget,
+        }
+    else
+        content = UI.makeColoredText{
+            text    = text,
+            face    = face,
+            bold    = true,
+            fgcolor = _label_fg,
+            width   = avail_w,
+            height  = label_h,
+        }
+    end
 
     return FrameContainer:new{
         bordersize = 0, padding = 0,
         padding_left = PAD, padding_right = PAD,
         padding_bottom = UI.LABEL_PAD_BOT,
-        UI.makeColoredText{
-            text    = text,
-            face    = Font:getFace(SUIStyle.FACE_REGULAR, fs),
-            bold    = true,
-            fgcolor = _label_fg,
-            width   = w - PAD * 2,
-            height  = label_h,
-        },
+        content,
     }
 end
 
-local function sectionLabel(text, w, mod_id)
+local function sectionLabel(text, w, mod_id, right_text)
     local _label_fg = SUIStyle.getThemeColor("fg")
     local scale = Config.getSectionLabelScale(mod_id, PFX)
     local color_key = _label_fg and tostring(_label_fg) or "default"
@@ -419,20 +458,21 @@ local function sectionLabel(text, w, mod_id)
         tostring(w),
         color_key,
         tostring(math.floor(scale * 100)),
+        tostring(right_text or ""),
     }, "|")
     if not _label_cache[key] then
-        _label_cache[key] = buildSectionLabel(text, w, mod_id)
+        _label_cache[key] = buildSectionLabel(text, w, mod_id, right_text)
     end
     return _label_cache[key]
 end
 
-local function applyModuleBackground(mod_id, widget, w, label_text, fresh_label)
+local function applyModuleBackground(mod_id, widget, w, label_text, right_text, fresh_label)
     if not Config.isModuleBackgroundEnabled(mod_id, PFX) then return widget end
     if label_text then
         widget = VerticalGroup:new{
             align = "left",
-            fresh_label and buildSectionLabel(label_text, w, mod_id)
-                or sectionLabel(label_text, w, mod_id),
+            fresh_label and buildSectionLabel(label_text, w, mod_id, right_text)
+                or sectionLabel(label_text, w, mod_id, right_text),
             widget,
         }
     end
@@ -450,6 +490,15 @@ local function applyModuleBackground(mod_id, widget, w, label_text, fresh_label)
         padding_bottom = _MODULE_BG_PAD_Y,
         widget,
     }
+end
+
+-- Page indicator ("1/2") for paged book-row modules (sui_book_row.lua).
+local function pageIndicatorFor(mod, ctx)
+    if not ctx then return nil end
+    local npages = ctx["_row_npages_" .. mod.id]
+    if not npages or npages <= 1 then return nil end
+    local page = ctx["_row_page_" .. mod.id] or 1
+    return string.format("%d/%d", page, npages)
 end
 
 local function buildEmptyState(w, h)
@@ -818,7 +867,7 @@ local HomescreenWidget = InputContainer:extend{
 
 function HomescreenWidget:_applyModuleBackground(mod_id, widget, w)
     local label_text = mod_id == "clock" and self._clock_label or nil
-    return applyModuleBackground(mod_id, widget, w, label_text, label_text ~= nil)
+    return applyModuleBackground(mod_id, widget, w, label_text, nil, label_text ~= nil)
 end
 
 -- Returns true when another widget (e.g. a modal dialog) sits on top of the
@@ -1042,14 +1091,33 @@ function HomescreenWidget:init()
         return _in(_gz_left_edge) or _in(_gz_right_edge)
     end
 
+    -- Depth-first search for the first descendant (or self) exposing its own
+    -- onSwipe(self, ges) handler. Used to locate the tappable/paged widget
+    -- nested inside a book_mod's built widget tree (coverdeck's carousel,
+    -- Collection Row's paginated swipe_area, ...) without needing to know
+    -- that module's internal widget structure ahead of time.
+    local function _findSwipeWidget(w, maxdepth)
+        if not w or maxdepth <= 0 or type(w) ~= "table" then return nil end
+        if type(w.onSwipe) == "function" then return w end
+        for i = 1, #w do
+            local found = _findSwipeWidget(w[i], maxdepth - 1)
+            if found then return found end
+        end
+        return nil
+    end
+
     function self:onHSSwipe(_args, ges)
         if ges then
             local dir = ges.direction
             if (dir == "west" or dir == "east") and not _isSideEdge(ges) then
-                -- Delegate horizontal swipes inside the coverdeck area to the
-                -- carousel widget so it can paginate without triggering an HS page turn.
-                if ges.pos then
-                    local cd_on_current_page = false
+                -- Delegate horizontal swipes that land inside a currently
+                -- visible is_book_mod widget's area (coverdeck's carousel,
+                -- a paginated Collection Row, ...) to that widget's own
+                -- onSwipe, instead of turning the homescreen page. Generic
+                -- over mod.id via _book_mod_slots — not hardcoded to any
+                -- single module.
+                if ges.pos and self._book_mod_slots then
+                    local on_current_page
                     do
                         local pom = self._enabled_mods_cache and self._enabled_mods_cache.pages_of_mods
                         local cur = self._current_page or 1
@@ -1058,31 +1126,23 @@ function HomescreenWidget:init()
                         if is_ls and pom and pom[cur + 1] then
                             pages_to_check[2] = pom[cur + 1]
                         end
+                        on_current_page = {}
                         for _, cur_mods in ipairs(pages_to_check) do
                             if cur_mods then
-                                for _, m in ipairs(cur_mods) do
-                                    if m.id == "coverdeck" then cd_on_current_page = true; break end
-                                end
+                                for _, m in ipairs(cur_mods) do on_current_page[m.id] = true end
                             end
-                            if cd_on_current_page then break end
                         end
                     end
-                    local cd_wrapper = cd_on_current_page and self._wrapper_pool and self._wrapper_pool["coverdeck"]
-                    if cd_wrapper and cd_wrapper.dimen
-                            and ges.pos:intersectWith(cd_wrapper.dimen) then
-                        local frame    = cd_wrapper[1]
-                        local vg       = frame and frame[1]
-                        local tappable = nil
-                        if vg then
-                            for _, child in ipairs(vg) do
-                                if type(child.onSwipe) == "function" then
-                                    tappable = child
-                                    break
+                    for mod_id, slot in pairs(self._book_mod_slots) do
+                        if on_current_page[mod_id] then
+                            local widget = slot.widget
+                            if widget and widget.dimen and ges.pos:intersectWith(widget.dimen) then
+                                local sw = _findSwipeWidget(widget, 6)
+                                if sw and sw:onSwipe(nil, ges) then
+                                    return true
                                 end
+                                break  -- touch point belongs to this widget; don't test siblings
                             end
-                        end
-                        if tappable then
-                            return tappable:onSwipe(nil, ges)
                         end
                     end
                 end
@@ -1291,6 +1351,7 @@ function HomescreenWidget:init()
     -- Per-instance state — freed in onCloseWidget.
     self._vspan_pool         = {}
     self._wrapper_pool       = {}
+    self._book_mod_refresh_n = {}  -- mod_id -> contagem de refreshes "ui" (não-flashing) desde o último "flashui"; ver _refreshBookModSlot
     self._kb_focus_idx       = nil
     self._kb_first_rec_idx   = nil
     self._kb_book_items_fp   = nil
@@ -2237,6 +2298,7 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
     self._stats_mod_slots   = {}
     self._book_mod_slots    = {}
     self._cover_mod_slots   = {}
+    self._book_mod_label_slots = {}
     self._clock_is_wrapped  = false
     self._clock_label       = nil
 
@@ -2353,12 +2415,21 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                     col_body[#col_body+1] = self:_vspan(mod_gaps[mod.id] or MOD_GAP)
                 end
                 local bg_enabled = Config.isModuleBackgroundEnabled(mod.id, PFX)
+                local label_right = pageIndicatorFor(mod, ctx)
                 if mod.label and not bg_enabled then
-                    col_body[#col_body+1] = sectionLabel(mod.label, col_w, mod.id)
+                    col_body[#col_body+1] = sectionLabel(mod.label, col_w, mod.id, label_right)
+                    if mod.is_book_mod then
+                        self._book_mod_label_slots[mod.id] = {
+                            parent = col_body,
+                            index  = #col_body,
+                            mod    = mod,
+                            col_w  = col_w,
+                        }
+                    end
                 end
                 local has_menu   = type(mod.getMenuItems) == "function"
                 local display_widget = applyModuleBackground(mod.id, widget, col_w,
-                    bg_enabled and mod.label or nil)
+                    bg_enabled and mod.label or nil, label_right)
                 local entry_widget = has_menu
                     and self:_makeModWrapper(mod, display_widget, col_w)
                     or  display_widget
@@ -2375,9 +2446,10 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                         mod      = mod,
                         widget   = widget,
                         parent   = col_body,
-                        index    = #col_body + 1,
+                        index    = #col_body,
                         col_w    = col_w,
                         has_menu = has_menu,
+                        bg_enabled = bg_enabled,
                     }
                 end
                 if type(mod.updateStats) == "function" then
@@ -2467,8 +2539,17 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                     body[#body+1] = self:_vspan(gap_px)
                 end
                 local bg_enabled = Config.isModuleBackgroundEnabled(mod.id, PFX)
+                local label_right = pageIndicatorFor(mod, ctx)
                 if mod.label and not bg_enabled then
-                    body[#body+1] = sectionLabel(mod.label, inner_w, mod.id)
+                    body[#body+1] = sectionLabel(mod.label, inner_w, mod.id, label_right)
+                    if mod.is_book_mod then
+                        self._book_mod_label_slots[mod.id] = {
+                            parent = body,
+                            index  = #body,
+                            mod    = mod,
+                            col_w  = inner_w,
+                        }
+                    end
                 end
                 local has_menu = type(mod.getMenuItems) == "function"
                 if mod.id == "header" then
@@ -2482,7 +2563,7 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                     self._clock_label      = mod.label
                 end
                 local display_widget = applyModuleBackground(mod.id, widget, inner_w,
-                    bg_enabled and mod.label or nil)
+                    bg_enabled and mod.label or nil, label_right)
                 if has_menu then
                     body[#body+1] = self:_makeModWrapper(mod, display_widget, inner_w)
                 else
@@ -2500,9 +2581,10 @@ function HomescreenWidget:_updatePage(keep_cache, books_only, stats_only)
                         mod      = mod,
                         widget   = widget,
                         parent   = body,
-                        index    = #body + 1,
+                        index    = #body,
                         col_w    = inner_w,
                         has_menu = has_menu,
+                        bg_enabled = bg_enabled,
                     }
                 end
                 if type(mod.updateStats) == "function" then
@@ -2763,10 +2845,16 @@ function HomescreenWidget:_refresh(keep_cache, books_only, stats_only)
                                 -- module_coverdeck.updateStats).
                                 local new_widget = slot.mod.build(slot.col_w, self._ctx_cache)
                                 if new_widget then
+                                    local display_widget = applyModuleBackground(
+                                        slot.mod.id,
+                                        new_widget,
+                                        slot.col_w,
+                                        slot.bg_enabled and slot.mod.label or nil,
+                                        pageIndicatorFor(slot.mod, self._ctx_cache),
+                                        true)
                                     if slot.has_menu then
-                                        local wrapper = self._wrapper_pool[id]
+                                        local wrapper = self:_makeModWrapper(slot.mod, display_widget, slot.col_w)
                                         if wrapper then
-                                            wrapper[1] = new_widget
                                             -- BUGFIX: slot.widget tinha de ser atualizado
                                             -- aqui também (mirroring _refreshBookModSlot),
                                             -- senão o próximo updateStats(slot.widget, ctx)
@@ -2777,11 +2865,11 @@ function HomescreenWidget:_refresh(keep_cache, books_only, stats_only)
                                             UIManager:setDirty(self, function() return "ui", wrapper.dimen, true end)
                                         end
                                     else
-                                        slot.parent[slot.index] = new_widget
+                                        slot.parent[slot.index] = display_widget
                                         -- BUGFIX: ver nota acima — mesmo problema no
                                         -- ramo sem menu.
                                         slot.widget = new_widget
-                                        UIManager:setDirty(self, function() return "ui", new_widget.dimen, true end)
+                                        UIManager:setDirty(self, function() return "ui", display_widget.dimen, true end)
                                     end
                                 end
                             end
@@ -2863,6 +2951,35 @@ end
 -- Returns true if the slot was found and repainted, false otherwise (caller
 -- should fall back to _refreshImmediate as a safety net — e.g. if the slot
 -- doesn't exist yet, build() returned nil, or anything is missing).
+-- ---------------------------------------------------------------------------
+-- _bookModRefreshType(mod_id) — "ui" | "flashui"
+--
+-- _refreshBookModSlot usa sempre um refresh "ui" (não-flashing, por design,
+-- para não haver flash a cada swipe/tap num book row ou no coverdeck). Mas
+-- "ui", ao contrário de "partial", NUNCA é promovido a flashing pelo
+-- UIManager (essa promoção só existe para "partial" via FULL_REFRESH_COUNT —
+-- ver o comentário em UIManager:setDirty). Sem uma flash periódica, ao
+-- alternar entre páginas repetidamente (voltar atrás e para a frente) o
+-- resíduo de cada refresh não-flashing acumula (ghosting típico de e-ink) e
+-- a linha aparenta não estar a ser limpa corretamente.
+--
+-- Replica aqui a mesma promoção que "partial" já tem nativamente, usando o
+-- mesmo limiar configurado pelo utilizador (UIManager.FULL_REFRESH_COUNT,
+-- por omissão 6): a cada N refreshes cirúrgicos deste módulo, força um
+-- "flashui" (limpa o ghosting acumulado) e reinicia a contagem.
+function HomescreenWidget:_bookModRefreshType(mod_id)
+    local counts = self._book_mod_refresh_n
+    if not counts then return "ui" end
+    local n = (counts[mod_id] or 0) + 1
+    local threshold = UIManager.FULL_REFRESH_COUNT or 6
+    if n >= threshold then
+        counts[mod_id] = 0
+        return "flashui"
+    end
+    counts[mod_id] = n
+    return "ui"
+end
+
 function HomescreenWidget:_refreshBookModSlot(mod_id)
     if not self._ctx_cache or not self._book_mod_slots then return false end
     local slot = self._book_mod_slots[mod_id]
@@ -2871,18 +2988,62 @@ function HomescreenWidget:_refreshBookModSlot(mod_id)
     local ok, new_widget = pcall(slot.mod.build, slot.col_w, self._ctx_cache)
     if not ok or not new_widget then return false end
 
+    local display_widget = applyModuleBackground(
+        slot.mod.id,
+        new_widget,
+        slot.col_w,
+        slot.bg_enabled and slot.mod.label or nil,
+        pageIndicatorFor(slot.mod, self._ctx_cache),
+        true)
+
     if slot.has_menu then
-        local wrapper = self._wrapper_pool and self._wrapper_pool[mod_id]
-        if not wrapper then return false end
-        wrapper[1] = new_widget
+        if not (self._wrapper_pool and self._wrapper_pool[mod_id]) then return false end
+        -- Reaproveita _makeModWrapper (em vez de trocar wrapper[1] à mão) para
+        -- garantir que wrapper.dimen.w/h ficam ressincronizados com o tamanho
+        -- real do new_widget — tal como acontece no build completo. Sem isto,
+        -- wrapper.dimen ficava congelado com a altura do último build
+        -- completo; se o widget recém-construído for mais alto (ex: label
+        -- inferior antes ausente, agora presente), a região de refresh
+        -- passada ao UIManager:setDirty ficava pequena demais e a label não
+        -- era limpa/repintada.
+        local wrapper = self:_makeModWrapper(slot.mod, display_widget, slot.col_w)
         slot.widget = new_widget
-        UIManager:setDirty(self, function() return "ui", wrapper.dimen, true end)
+        local rtype = self:_bookModRefreshType(mod_id)
+        UIManager:setDirty(self, function() return rtype, wrapper.dimen, true end)
     else
         if not slot.parent then return false end
-        slot.parent[slot.index] = new_widget
+        slot.parent[slot.index] = display_widget
         slot.widget = new_widget
-        UIManager:setDirty(self, function() return "ui", new_widget.dimen, true end)
+        local rtype = self:_bookModRefreshType(mod_id)
+        UIManager:setDirty(self, function() return rtype, display_widget.dimen, true end)
     end
+    -- Mantém o slot de poll de capas a apontar para o widget atualmente
+    -- visível — sem isto, capas ainda pendentes de extração na página
+    -- recém-mostrada nunca seriam substituídas até ao próximo rebuild
+    -- completo (o poll continuaria a atualizar o widget antigo, órfão).
+    if self._cover_mod_slots and self._cover_mod_slots[mod_id] then
+        self._cover_mod_slots[mod_id].widget = new_widget
+    end
+
+    -- Repintura cirúrgica do indicador de página ("1/2") no título da
+    -- secção: slot.mod.build() (acima) já atualizou ctx com a página
+    -- atual, mas o título vive num widget irmão, fora da árvore que
+    -- acabámos de substituir — sem isto, o número ficaria desatualizado
+    -- até ao próximo rebuild completo da homescreen.
+    local label_slot = self._book_mod_label_slots and self._book_mod_label_slots[mod_id]
+    if label_slot and label_slot.parent and label_slot.mod.label then
+        local new_label = sectionLabel(label_slot.mod.label, label_slot.col_w,
+            label_slot.mod.id, pageIndicatorFor(label_slot.mod, self._ctx_cache))
+        if new_label ~= label_slot.parent[label_slot.index] then
+            label_slot.parent[label_slot.index] = new_label
+            if new_label.dimen then
+                UIManager:setDirty(self, function() return "ui", new_label.dimen, true end)
+            else
+                UIManager:setDirty(self, "ui")
+            end
+        end
+    end
+
     return true
 end
 
@@ -3401,6 +3562,7 @@ function HomescreenWidget:onCloseWidget()
     end
     self._vspan_pool         = nil
     self._wrapper_pool       = nil
+    self._book_mod_refresh_n = nil
     self._cover_mod_slots    = nil
     self._cached_books_state = nil
     self._enabled_mods_cache = nil
