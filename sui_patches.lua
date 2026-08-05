@@ -3758,10 +3758,11 @@ function M.patchReloadDocument(plugin, readerui)
 end
 
 -- Work around KOReader #15527 on Android. KOSync's automatic-progress prompt
--- invokes syncToProgress() before ConfirmBox has closed itself. Keep that box
--- alive for one UI turn, perform the jump, verify that ReaderUI is registered
--- underneath it, and only then close the box. This prevents UIManager from
--- seeing an empty window stack and cleanly terminating the Android process.
+-- invokes syncToProgress() before ConfirmBox has closed itself. Ensure ReaderUI
+-- is registered underneath the prompt before returning from its OK callback,
+-- then perform the jump two UI turns later after the modal has fully closed.
+-- This avoids both failure modes seen on Android: an empty UIManager stack when
+-- the prompt closes, and a lost native window when jumping under a live modal.
 function M.patchKOSyncAndroidProgressJump(plugin)
     if not Device:isAndroid() then return end
 
@@ -3812,70 +3813,44 @@ function M.patchKOSyncAndroidProgressJump(plugin)
             return orig(self, progress)
         end
 
-        -- ConfirmBox checks this immediately after ok_callback returns. Keep it
-        -- on-screen until the scheduled jump has completed, so it remains a
-        -- valid top-level window even if ReaderUI was temporarily unregistered.
-        local previous_keep_open = confirm.keep_dialog_open
-        confirm.keep_dialog_open = true
+        local ui = self.ui
+        local reader_was_shown = ui and readerIsShown(ui.dialog or ui) or false
+        local reader_ready = ensureReaderWindow(ui)
+        logger.info("simpleui: KOSync prompt workaround; reader_was_shown=",
+            tostring(reader_was_shown), "reader_ready=", tostring(reader_ready))
+
+        -- If there is no valid base window, keep the prompt alive instead of
+        -- allowing ConfirmBox to empty the stack. This is only a last-resort
+        -- safety path; a live ReaderUI should always be restorable here.
+        if not reader_ready then
+            confirm.keep_dialog_open = true
+            logger.err("simpleui: KOSync jump cancelled; no ReaderUI window available")
+            return
+        end
 
         -- Coalesce accidental duplicate OK callbacks and keep only the latest
         -- target. The document identity guard prevents a delayed jump from
         -- landing in a different book if the reader closes meanwhile.
         self._simpleui_pending_progress_jump = {
             progress = progress,
-            document = self.ui and self.ui.document,
-            confirm = confirm,
-            previous_keep_open = previous_keep_open,
+            document = ui and ui.document,
         }
         if self._simpleui_progress_jump_scheduled then return end
         self._simpleui_progress_jump_scheduled = true
 
-        UIManager:nextTick(function()
+        UIManager:tickAfterNext(function()
             self._simpleui_progress_jump_scheduled = nil
             local pending = self._simpleui_pending_progress_jump
             self._simpleui_pending_progress_jump = nil
             local ui = self.ui
             if pending and ui and not ui.tearing_down
                     and ui.document and ui.document == pending.document then
+                logger.info("simpleui: applying deferred KOSync progress jump")
                 local ok, err = pcall(orig, self, pending.progress)
                 if not ok then
                     logger.err("simpleui: deferred KOSync progress jump failed:", err)
                 end
-            end
-
-            -- The modal must not be closed until a live ReaderUI is below it.
-            -- This is the key difference from the old one-tick deferral, which
-            -- allowed ConfirmBox to empty the stack before this callback ran.
-            local safe_to_close = false
-            if ui and ui.document == (pending and pending.document) then
-                safe_to_close = ensureReaderWindow(ui)
-            else
-                -- The reader may have been intentionally closed while the
-                -- network request was outstanding. In that case another base
-                -- window must exist before removing the stale prompt.
-                local live_stack = UIManager._window_stack or {}
-                for _, entry in ipairs(live_stack) do
-                    if entry.widget ~= (pending and pending.confirm) then
-                        safe_to_close = true
-                        break
-                    end
-                end
-            end
-
-            local box = pending and pending.confirm
-            if box then
-                if safe_to_close then
-                    box.keep_dialog_open = pending.previous_keep_open
-                else
-                    -- Do not let UIManager terminate merely because restoring
-                    -- the underlying window failed. Cancel remains available.
-                    box.keep_dialog_open = true
-                    logger.err("simpleui: keeping KOSync prompt open; no base window available")
-                end
-                if safe_to_close and readerIsShown(box) then
-                    local close = UIManager._simpleui_close_orig or UIManager.close
-                    pcall(close, UIManager, box)
-                end
+                ensureReaderWindow(ui)
             end
         end)
     end
