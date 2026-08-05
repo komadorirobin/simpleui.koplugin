@@ -3760,8 +3760,8 @@ end
 -- Work around KOReader #15527 on Android. KOSync's automatic-progress prompt
 -- invokes syncToProgress() before ConfirmBox has closed itself. Ensure ReaderUI
 -- is registered underneath the prompt before returning from its OK callback,
--- close the modal explicitly, then perform the jump after Android has released
--- its native dialog window.
+-- close the modal explicitly, then repeat the pull through KOSync's stable
+-- interactive/manual path after Android has released its native dialog window.
 -- This avoids both failure modes seen on Android: an empty UIManager stack when
 -- the prompt closes, and a lost native window when jumping under a live modal.
 local function _getKOSyncInstance(plugin)
@@ -3882,11 +3882,10 @@ function M.patchKOSyncAndroidProgressJump(plugin)
             return
         end
 
-        -- Coalesce accidental duplicate OK callbacks and keep only the latest
-        -- target. The document identity guard prevents a delayed jump from
-        -- landing in a different book if the reader closes meanwhile.
+        -- Coalesce accidental duplicate OK callbacks. The document identity
+        -- guard prevents a delayed pull from landing in a different book if
+        -- the reader closes meanwhile.
         self._simpleui_pending_progress_jump = {
-            progress = progress,
             document = ui and ui.document,
         }
         if self._simpleui_progress_jump_scheduled then return end
@@ -3899,10 +3898,19 @@ function M.patchKOSyncAndroidProgressJump(plugin)
             local ui = self.ui
             if pending and ui and not ui.tearing_down
                     and ui.document and ui.document == pending.document then
-                logger.info("simpleui: applying deferred KOSync progress jump")
-                local ok, err = pcall(orig, self, pending.progress)
+                -- Re-fetch through the same interactive path used by the
+                -- manual "pull progress" action. KOReader #15527 only affects
+                -- the automatic prompt's direct jump on Android; the manual
+                -- path is stable and bypasses the automatic pull debounce.
+                logger.info("simpleui: repeating KOSync pull interactively after prompt teardown")
+                local ok, err
+                if type(self.getProgress) == "function" then
+                    ok, err = pcall(self.getProgress, self, true, true)
+                else
+                    ok, err = pcall(orig, self, progress)
+                end
                 if not ok then
-                    logger.err("simpleui: deferred KOSync progress jump failed:", err)
+                    logger.err("simpleui: deferred interactive KOSync pull failed:", err)
                 end
                 ensureReaderWindow(ui)
             end
