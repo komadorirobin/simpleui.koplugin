@@ -3760,7 +3760,8 @@ end
 -- Work around KOReader #15527 on Android. KOSync's automatic-progress prompt
 -- invokes syncToProgress() before ConfirmBox has closed itself. Ensure ReaderUI
 -- is registered underneath the prompt before returning from its OK callback,
--- then perform the jump two UI turns later after the modal has fully closed.
+-- close the modal explicitly, then perform the jump after Android has released
+-- its native dialog window.
 -- This avoids both failure modes seen on Android: an empty UIManager stack when
 -- the prompt closes, and a lost native window when jumping under a live modal.
 local function _getKOSyncInstance(plugin)
@@ -3775,6 +3776,29 @@ local function _getKOSyncInstance(plugin)
     if ok_loader and PluginLoader and type(PluginLoader.getPluginInstance) == "function" then
         return PluginLoader:getPluginInstance("kosync")
     end
+end
+
+function M.installKOSyncAndroidProgressHook()
+    if not Device:isAndroid() or M._simpleui_kosync_hook_registered then return end
+
+    local ok_userpatch, userpatch = pcall(require, "userpatch")
+    if not (ok_userpatch and userpatch
+            and type(userpatch.registerPatchPluginFunc) == "function") then
+        logger.warn("simpleui: unable to register Android KOSync instance hook")
+        return
+    end
+
+    M._simpleui_kosync_hook_registered = true
+    userpatch.registerPatchPluginFunc("kosync", function()
+        if not SUISettings:nilOrTrue("simpleui_enabled") then return end
+        local ok, installed = pcall(M.patchKOSyncAndroidProgressJump, nil)
+        if not ok then
+            logger.err("simpleui: Android KOSync instance hook failed:", installed)
+        elseif not installed then
+            logger.warn("simpleui: KOSync instance created but workaround was not installed")
+        end
+    end)
+    logger.info("simpleui: registered Android KOSync instance hook")
 end
 
 function M.patchKOSyncAndroidProgressJump(plugin)
@@ -3844,6 +3868,20 @@ function M.patchKOSyncAndroidProgressJump(plugin)
             return
         end
 
+        -- ConfirmBox normally calls its callback first and closes itself
+        -- afterwards. On Android, moving the document while that modal still
+        -- owns the native window can terminate the process without a Lua
+        -- traceback (KOReader #15527). Close it exactly once before the jump;
+        -- keep_dialog_open prevents ConfirmBox from closing itself a second
+        -- time when this callback returns.
+        confirm.keep_dialog_open = true
+        local close = UIManager._simpleui_close_orig or UIManager.close
+        local closed, close_err = pcall(close, UIManager, confirm, "ui")
+        if not closed then
+            logger.err("simpleui: failed to close KOSync prompt safely:", close_err)
+            return
+        end
+
         -- Coalesce accidental duplicate OK callbacks and keep only the latest
         -- target. The document identity guard prevents a delayed jump from
         -- landing in a different book if the reader closes meanwhile.
@@ -3854,7 +3892,7 @@ function M.patchKOSyncAndroidProgressJump(plugin)
         if self._simpleui_progress_jump_scheduled then return end
         self._simpleui_progress_jump_scheduled = true
 
-        UIManager:tickAfterNext(function()
+        UIManager:scheduleIn(0.1, function()
             self._simpleui_progress_jump_scheduled = nil
             local pending = self._simpleui_pending_progress_jump
             self._simpleui_pending_progress_jump = nil
@@ -4766,6 +4804,7 @@ function M.installAll(plugin)
         M.wireReaderMenuFMTab(plugin, plugin.ui)
         M.patchReloadDocument(plugin, plugin.ui)
         M.wireReaderHomeKey(plugin, plugin.ui)
+        M.installKOSyncAndroidProgressHook()
         if not M.patchKOSyncAndroidProgressJump(plugin) then
             -- SimpleUI may be instantiated before bundled plugins such as
             -- KOSync. By the next UI turn PluginLoader has completed the
