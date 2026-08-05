@@ -3841,11 +3841,24 @@ function M.patchKOSyncAndroidProgressJump(plugin)
         return true
     end
 
-    kosync.syncToProgress = function(self, progress)
+    local function findActiveConfirmBox()
         local stack = UIManager._window_stack
-        local top = stack and stack[#stack] and stack[#stack].widget
-        local confirm = top and top.modal and type(top.ok_callback) == "function"
-            and top or nil
+        if not stack then return end
+
+        -- Toasts are deliberately stacked above modal dialogs. Skip only
+        -- those transient layers so a visible KOSync prompt is still found,
+        -- but do not reach through another regular window or modal.
+        for i = #stack, 1, -1 do
+            local widget = stack[i] and stack[i].widget
+            if widget and widget.modal and type(widget.ok_callback) == "function" then
+                return widget
+            end
+            if not (widget and widget.toast) then return end
+        end
+    end
+
+    kosync.syncToProgress = function(self, progress)
+        local confirm = findActiveConfirmBox()
 
         -- Silent and explicit/manual pulls do not run from ConfirmBox's OK
         -- callback and do not need this workaround.
