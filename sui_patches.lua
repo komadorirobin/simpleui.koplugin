@@ -3758,12 +3758,13 @@ function M.patchReloadDocument(plugin, readerui)
 end
 
 -- Work around KOReader #15527 on Android. KOSync's automatic-progress prompt
--- invokes syncToProgress() before ConfirmBox has closed itself. Ensure ReaderUI
--- is registered underneath the prompt before returning from its OK callback,
--- close the modal explicitly, then repeat the pull through KOSync's stable
--- interactive/manual path after Android has released its native dialog window.
--- This avoids both failure modes seen on Android: an empty UIManager stack when
--- the prompt closes, and a lost native window when jumping under a live modal.
+-- invokes syncToProgress() from ConfirmBox's OK callback, before ConfirmBox has
+-- closed itself. Patch the ConfirmBox constructor captured by getProgress() so
+-- the callback only queues the jump. ConfirmBox then closes through KOReader's
+-- normal path, and the queued jump runs after Android has released the modal
+-- window. This deliberately avoids manipulating UIManager's window stack.
+local _kosync_prompt_patches = setmetatable({}, { __mode = "k" })
+
 local function _getKOSyncInstance(plugin)
     local kosync = plugin and plugin.ui and plugin.ui.kosync
     if kosync then return kosync end
@@ -3778,6 +3779,23 @@ local function _getKOSyncInstance(plugin)
     end
 end
 
+local function _getKOSyncPatchTarget(plugin)
+    local kosync = plugin
+    if not (kosync and type(kosync.getProgress) == "function") then
+        kosync = _getKOSyncInstance(plugin)
+    end
+    if not kosync then return end
+
+    -- Plugin instances inherit methods from the module returned by main.lua.
+    -- Patch that module when possible so the hook is installed at the source.
+    local mt = getmetatable(kosync)
+    local class = mt and mt.__index
+    if type(class) == "table" and type(class.getProgress) == "function" then
+        return class
+    end
+    return kosync
+end
+
 function M.installKOSyncAndroidProgressHook()
     if not Device:isAndroid() or M._simpleui_kosync_hook_registered then return end
 
@@ -3789,146 +3807,73 @@ function M.installKOSyncAndroidProgressHook()
     end
 
     M._simpleui_kosync_hook_registered = true
-    userpatch.registerPatchPluginFunc("kosync", function()
+    userpatch.registerPatchPluginFunc("kosync", function(kosync_module)
         if not SUISettings:nilOrTrue("simpleui_enabled") then return end
-        local ok, installed = pcall(M.patchKOSyncAndroidProgressJump, nil)
+        local ok, installed = pcall(M.patchKOSyncAndroidProgressJump, kosync_module)
         if not ok then
-            logger.err("simpleui: Android KOSync instance hook failed:", installed)
+            logger.err("simpleui: Android KOSync prompt hook failed:", installed)
         elseif not installed then
-            logger.warn("simpleui: KOSync instance created but workaround was not installed")
+            logger.warn("simpleui: KOSync created but prompt workaround was not installed")
         end
     end)
-    logger.info("simpleui: registered Android KOSync instance hook")
+    logger.info("simpleui: registered Android KOSync prompt hook")
 end
 
 function M.patchKOSyncAndroidProgressJump(plugin)
     if not Device:isAndroid() then return true end
 
-    local kosync = _getKOSyncInstance(plugin)
-    if not kosync then return false end
-    if kosync._simpleui_deferred_progress_jump then return true end
-    if type(kosync.syncToProgress) ~= "function" then return false end
+    local target = _getKOSyncPatchTarget(plugin)
+    if not target then return false end
+    if _kosync_prompt_patches[target] then return true end
 
-    local orig = kosync.syncToProgress
-    kosync._simpleui_deferred_progress_jump = true
-    kosync._simpleui_syncToProgress_orig = orig
-    logger.info("simpleui: installed Android KOSync progress-jump workaround")
+    local get_progress = target.getProgress
+    if type(get_progress) ~= "function" then return false end
 
-    local function readerIsShown(reader)
-        local stack = UIManager._window_stack
-        if not (stack and reader) then return false end
-        for _, entry in ipairs(stack) do
-            if entry.widget == reader then return true end
+    local upvalue_index, ConfirmBox
+    for i = 1, 64 do
+        local name, value = debug.getupvalue(get_progress, i)
+        if not name then break end
+        if name == "ConfirmBox" and type(value) == "table"
+                and type(value.new) == "function" then
+            upvalue_index, ConfirmBox = i, value
+            break
         end
+    end
+    if not upvalue_index then
+        logger.warn("simpleui: KOSync getProgress ConfirmBox upvalue not found")
         return false
     end
 
-    local function ensureReaderWindow(ui)
-        if not (ui and ui.document) or ui.tearing_down then return false end
-        local reader = ui.dialog or ui
-        if readerIsShown(reader) then return true end
+    local ConfirmBoxProxy = setmetatable({
+        _simpleui_android_kosync_proxy = true,
+    }, { __index = ConfirmBox })
 
-        -- ReaderUI is already fully initialised here. Re-register the existing
-        -- window with pristine UIManager.show so it lands below the modal and
-        -- does not pass through SimpleUI's fullscreen injection path again.
-        local show = UIManager._simpleui_show_orig or UIManager.show
-        local ok, err = pcall(show, UIManager, reader, "partial")
-        if not ok then
-            logger.err("simpleui: failed to restore ReaderUI during KOSync:", err)
-            return false
-        end
-        logger.warn("simpleui: restored missing ReaderUI window during KOSync")
-        return true
-    end
-
-    local function findActiveConfirmBox()
-        local stack = UIManager._window_stack
-        if not stack then return end
-
-        -- Toasts are deliberately stacked above modal dialogs. Skip only
-        -- those transient layers so a visible KOSync prompt is still found,
-        -- but do not reach through another regular window or modal.
-        for i = #stack, 1, -1 do
-            local widget = stack[i] and stack[i].widget
-            if widget and widget.modal and type(widget.ok_callback) == "function" then
-                return widget
+    function ConfirmBoxProxy:new(options)
+        if type(options) == "table" and type(options.ok_callback) == "function" then
+            local callback = options.ok_callback
+            options.ok_callback = function()
+                -- Returning immediately lets ConfirmBox close itself normally.
+                -- A short real-time delay is intentional: nextTick may still
+                -- execute in the same Android native-window dispatch cycle.
+                UIManager:scheduleIn(0.15, function()
+                    local ok, err = pcall(callback)
+                    if not ok then
+                        logger.err("simpleui: deferred KOSync prompt callback failed:", err)
+                    end
+                end)
             end
-            if not (widget and widget.toast) then return end
         end
+        return ConfirmBox.new(ConfirmBox, options)
     end
 
-    kosync.syncToProgress = function(self, progress)
-        local confirm = findActiveConfirmBox()
-
-        -- Silent and explicit/manual pulls do not run from ConfirmBox's OK
-        -- callback and do not need this workaround.
-        if not confirm then
-            return orig(self, progress)
-        end
-
-        local ui = self.ui
-        local reader_was_shown = ui and readerIsShown(ui.dialog or ui) or false
-        local reader_ready = ensureReaderWindow(ui)
-        logger.info("simpleui: KOSync prompt workaround; reader_was_shown=",
-            tostring(reader_was_shown), "reader_ready=", tostring(reader_ready))
-
-        -- If there is no valid base window, keep the prompt alive instead of
-        -- allowing ConfirmBox to empty the stack. This is only a last-resort
-        -- safety path; a live ReaderUI should always be restorable here.
-        if not reader_ready then
-            confirm.keep_dialog_open = true
-            logger.err("simpleui: KOSync jump cancelled; no ReaderUI window available")
-            return
-        end
-
-        -- ConfirmBox normally calls its callback first and closes itself
-        -- afterwards. On Android, moving the document while that modal still
-        -- owns the native window can terminate the process without a Lua
-        -- traceback (KOReader #15527). Close it exactly once before the jump;
-        -- keep_dialog_open prevents ConfirmBox from closing itself a second
-        -- time when this callback returns.
-        confirm.keep_dialog_open = true
-        local close = UIManager._simpleui_close_orig or UIManager.close
-        local closed, close_err = pcall(close, UIManager, confirm, "ui")
-        if not closed then
-            logger.err("simpleui: failed to close KOSync prompt safely:", close_err)
-            return
-        end
-
-        -- Coalesce accidental duplicate OK callbacks. The document identity
-        -- guard prevents a delayed pull from landing in a different book if
-        -- the reader closes meanwhile.
-        self._simpleui_pending_progress_jump = {
-            document = ui and ui.document,
-        }
-        if self._simpleui_progress_jump_scheduled then return end
-        self._simpleui_progress_jump_scheduled = true
-
-        UIManager:scheduleIn(0.1, function()
-            self._simpleui_progress_jump_scheduled = nil
-            local pending = self._simpleui_pending_progress_jump
-            self._simpleui_pending_progress_jump = nil
-            local ui = self.ui
-            if pending and ui and not ui.tearing_down
-                    and ui.document and ui.document == pending.document then
-                -- Re-fetch through the same interactive path used by the
-                -- manual "pull progress" action. KOReader #15527 only affects
-                -- the automatic prompt's direct jump on Android; the manual
-                -- path is stable and bypasses the automatic pull debounce.
-                logger.info("simpleui: repeating KOSync pull interactively after prompt teardown")
-                local ok, err
-                if type(self.getProgress) == "function" then
-                    ok, err = pcall(self.getProgress, self, true, true)
-                else
-                    ok, err = pcall(orig, self, progress)
-                end
-                if not ok then
-                    logger.err("simpleui: deferred interactive KOSync pull failed:", err)
-                end
-                ensureReaderWindow(ui)
-            end
-        end)
-    end
+    debug.setupvalue(get_progress, upvalue_index, ConfirmBoxProxy)
+    _kosync_prompt_patches[target] = {
+        fn = get_progress,
+        index = upvalue_index,
+        original = ConfirmBox,
+        proxy = ConfirmBoxProxy,
+    }
+    logger.info("simpleui: installed Android KOSync prompt-callback workaround")
     return true
 end
 
@@ -4848,15 +4793,12 @@ function M.teardownAll(plugin)
     -- have a widget on screen or a pending auto-close timer at teardown time.
     pcall(CoverTransition.close)
 
-    local kosync = _getKOSyncInstance(plugin)
-    if kosync and kosync._simpleui_deferred_progress_jump then
-        if kosync._simpleui_syncToProgress_orig then
-            kosync.syncToProgress = kosync._simpleui_syncToProgress_orig
+    for target, patch in pairs(_kosync_prompt_patches) do
+        local _, current = debug.getupvalue(patch.fn, patch.index)
+        if current == patch.proxy then
+            debug.setupvalue(patch.fn, patch.index, patch.original)
         end
-        kosync._simpleui_deferred_progress_jump = nil
-        kosync._simpleui_syncToProgress_orig = nil
-        kosync._simpleui_pending_progress_jump = nil
-        kosync._simpleui_progress_jump_scheduled = nil
+        _kosync_prompt_patches[target] = nil
     end
 
     -- Restore ffi/util.purgeDir patch.
