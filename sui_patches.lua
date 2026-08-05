@@ -3757,6 +3757,51 @@ function M.patchReloadDocument(plugin, readerui)
     readerui._simpleui_reload_patched = true
 end
 
+-- Work around KOReader #15527 on Android. KOSync's automatic-progress prompt
+-- invokes syncToProgress() before ConfirmBox has closed itself. Jumping the
+-- document from inside that button callback can terminate the Android process,
+-- while the otherwise identical manual pull path works. Defer the jump by one
+-- UI turn so the modal is gone before ReaderPaging/ReaderRolling is touched.
+function M.patchKOSyncAndroidProgressJump(plugin)
+    if not Device:isAndroid() then return end
+
+    local kosync = plugin and plugin.ui and plugin.ui.kosync
+    if not kosync or kosync._simpleui_deferred_progress_jump then return end
+    if type(kosync.syncToProgress) ~= "function" then return end
+
+    local orig = kosync.syncToProgress
+    kosync._simpleui_deferred_progress_jump = true
+    kosync._simpleui_syncToProgress_orig = orig
+
+    kosync.syncToProgress = function(self, progress)
+        -- Coalesce duplicate pulls in the same UI turn and keep only the most
+        -- recent target. The document identity guard prevents a delayed jump
+        -- from landing in a different book if the reader closes meanwhile.
+        self._simpleui_pending_progress_jump = {
+            progress = progress,
+            document = self.ui and self.ui.document,
+        }
+        if self._simpleui_progress_jump_scheduled then return end
+        self._simpleui_progress_jump_scheduled = true
+
+        UIManager:nextTick(function()
+            self._simpleui_progress_jump_scheduled = nil
+            local pending = self._simpleui_pending_progress_jump
+            self._simpleui_pending_progress_jump = nil
+            local ui = self.ui
+            if not pending or not ui or ui.tearing_down
+                    or not ui.document or ui.document ~= pending.document then
+                return
+            end
+
+            local ok, err = pcall(orig, self, pending.progress)
+            if not ok then
+                logger.err("simpleui: deferred KOSync progress jump failed:", err)
+            end
+        end)
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- ReaderUI.showReaderCoroutine — class-level patch, installed once.
 --
@@ -4650,6 +4695,7 @@ function M.installAll(plugin)
         M.wireReaderMenuFMTab(plugin, plugin.ui)
         M.patchReloadDocument(plugin, plugin.ui)
         M.wireReaderHomeKey(plugin, plugin.ui)
+        M.patchKOSyncAndroidProgressJump(plugin)
     end
 end
 
@@ -4658,6 +4704,17 @@ function M.teardownAll(plugin)
     -- invoked from hooks owned by other patches in this file), but it can
     -- have a widget on screen or a pending auto-close timer at teardown time.
     pcall(CoverTransition.close)
+
+    local kosync = plugin and plugin.ui and plugin.ui.kosync
+    if kosync and kosync._simpleui_deferred_progress_jump then
+        if kosync._simpleui_syncToProgress_orig then
+            kosync.syncToProgress = kosync._simpleui_syncToProgress_orig
+        end
+        kosync._simpleui_deferred_progress_jump = nil
+        kosync._simpleui_syncToProgress_orig = nil
+        kosync._simpleui_pending_progress_jump = nil
+        kosync._simpleui_progress_jump_scheduled = nil
+    end
 
     -- Restore ffi/util.purgeDir patch.
     local ffiUtil = package.loaded["ffi/util"]
