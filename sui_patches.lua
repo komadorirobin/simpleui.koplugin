@@ -3763,16 +3763,32 @@ end
 -- then perform the jump two UI turns later after the modal has fully closed.
 -- This avoids both failure modes seen on Android: an empty UIManager stack when
 -- the prompt closes, and a lost native window when jumping under a live modal.
-function M.patchKOSyncAndroidProgressJump(plugin)
-    if not Device:isAndroid() then return end
-
+local function _getKOSyncInstance(plugin)
     local kosync = plugin and plugin.ui and plugin.ui.kosync
-    if not kosync or kosync._simpleui_deferred_progress_jump then return end
-    if type(kosync.syncToProgress) ~= "function" then return end
+    if kosync then return kosync end
+
+    -- External plugins are instantiated before KOReader's bundled plugins on
+    -- some installations. In that order SimpleUI's ReaderUI reference does
+    -- not contain KOSync yet, even though PluginLoader registers it later in
+    -- the same ReaderUI setup pass.
+    local ok_loader, PluginLoader = pcall(require, "pluginloader")
+    if ok_loader and PluginLoader and type(PluginLoader.getPluginInstance) == "function" then
+        return PluginLoader:getPluginInstance("kosync")
+    end
+end
+
+function M.patchKOSyncAndroidProgressJump(plugin)
+    if not Device:isAndroid() then return true end
+
+    local kosync = _getKOSyncInstance(plugin)
+    if not kosync then return false end
+    if kosync._simpleui_deferred_progress_jump then return true end
+    if type(kosync.syncToProgress) ~= "function" then return false end
 
     local orig = kosync.syncToProgress
     kosync._simpleui_deferred_progress_jump = true
     kosync._simpleui_syncToProgress_orig = orig
+    logger.info("simpleui: installed Android KOSync progress-jump workaround")
 
     local function readerIsShown(reader)
         local stack = UIManager._window_stack
@@ -3854,6 +3870,7 @@ function M.patchKOSyncAndroidProgressJump(plugin)
             end
         end)
     end
+    return true
 end
 
 -- ---------------------------------------------------------------------------
@@ -4749,7 +4766,19 @@ function M.installAll(plugin)
         M.wireReaderMenuFMTab(plugin, plugin.ui)
         M.patchReloadDocument(plugin, plugin.ui)
         M.wireReaderHomeKey(plugin, plugin.ui)
-        M.patchKOSyncAndroidProgressJump(plugin)
+        if not M.patchKOSyncAndroidProgressJump(plugin) then
+            -- SimpleUI may be instantiated before bundled plugins such as
+            -- KOSync. By the next UI turn PluginLoader has completed the
+            -- synchronous ReaderUI plugin pass, while KOSync's automatic
+            -- pull (scheduled from ReaderReady) has not run yet.
+            UIManager:nextTick(function()
+                if not (plugin.ui and plugin.ui.tearing_down) then
+                    if not M.patchKOSyncAndroidProgressJump(plugin) then
+                        logger.warn("simpleui: KOSync unavailable; Android progress-jump workaround not installed")
+                    end
+                end
+            end)
+        end
     end
 end
 
@@ -4759,7 +4788,7 @@ function M.teardownAll(plugin)
     -- have a widget on screen or a pending auto-close timer at teardown time.
     pcall(CoverTransition.close)
 
-    local kosync = plugin and plugin.ui and plugin.ui.kosync
+    local kosync = _getKOSyncInstance(plugin)
     if kosync and kosync._simpleui_deferred_progress_jump then
         if kosync._simpleui_syncToProgress_orig then
             kosync.syncToProgress = kosync._simpleui_syncToProgress_orig
