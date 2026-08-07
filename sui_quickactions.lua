@@ -152,8 +152,20 @@ local function _unavailToast(msg)
     UIManager:show(InfoMessage:new{ text = msg, timeout = 3 })
 end
 
+local function _closeHomescreenForBookshelf()
+    local HS = package.loaded["sui_homescreen"]
+    local homescreen = HS and HS._instance
+    if not homescreen then return end
+    -- Prevent SimpleUI's "start on Home" close hook from immediately putting
+    -- the same homescreen back above the Bookshelf we are about to open.
+    homescreen._navbar_closing_intentionally = true
+    pcall(function() UIManager:close(homescreen) end)
+    homescreen._navbar_closing_intentionally = nil
+end
+
 local function _broadcastBookshelfEvent(event_name, ctx)
     local su = (ctx and ctx.show_unavailable) or _unavailToast
+    _closeHomescreenForBookshelf()
     local ok, err = pcall(function()
         UIManager:broadcastEvent(require("ui/event"):new(event_name))
     end)
@@ -163,6 +175,20 @@ local function _broadcastBookshelfEvent(event_name, ctx)
     end
     return ok
 end
+
+-- These dispatcher actions replace the current navigation surface; they are
+-- not in-place toggles. Treating them as in-place made the Home screen get
+-- temporarily sunk below Bookshelf and then restored on top after the action,
+-- leaving a live but unreachable shelf underneath. This table also covers
+-- user-created Quick Actions bound to the same dispatcher actions.
+local BOOKSHELF_NAV_DISPATCHER_ACTIONS = {
+    open_bookshelf_prose = true,
+    open_bookshelf_comics = true,
+    open_bookshelf_prose_start_menu = true,
+    open_bookshelf_comics_start_menu = true,
+    open_bookshelf_auto = true,
+    bookshelf_go_home = true,
+}
 
 -- Helper: resolve the live FileManager instance.
 local function _liveFM()
@@ -852,7 +878,7 @@ local function _registerBuiltins()
             id    = "bookshelf_prose",
             label = _("Books"),
             icon  = "nerd:F02D",
-            is_in_place = true,
+            is_in_place = false,
             execute = function(ctx)
                 _broadcastBookshelfEvent("OpenBookshelfProse", ctx)
             end,
@@ -864,7 +890,7 @@ local function _registerBuiltins()
             id    = "bookshelf_comics",
             label = _("Comics"),
             icon  = "nerd:F5DB",
-            is_in_place = true,
+            is_in_place = false,
             execute = function(ctx)
                 _broadcastBookshelfEvent("OpenBookshelfComics", ctx)
             end,
@@ -876,7 +902,7 @@ local function _registerBuiltins()
             id    = "bookshelf_prose_menu",
             label = _("Books Menu"),
             icon  = "nerd:F02D",
-            is_in_place = true,
+            is_in_place = false,
             execute = function(ctx)
                 _broadcastBookshelfEvent("OpenBookshelfProseStartMenu", ctx)
             end,
@@ -885,7 +911,7 @@ local function _registerBuiltins()
             id    = "bookshelf_comics_menu",
             label = _("Comics Menu"),
             icon  = "nerd:F5DB",
-            is_in_place = true,
+            is_in_place = false,
             execute = function(ctx)
                 _broadcastBookshelfEvent("OpenBookshelfComicsStartMenu", ctx)
             end,
@@ -2940,6 +2966,9 @@ function QA.executeCustomQA(action_id, fm, show_unavailable_fn)
         QA.showQAFolderDialog(action_id, cfg.label, fm, show_unavailable_fn)
 
     elseif cfg.dispatcher_action and cfg.dispatcher_action ~= "" then
+        if BOOKSHELF_NAV_DISPATCHER_ACTIONS[cfg.dispatcher_action] then
+            _closeHomescreenForBookshelf()
+        end
         local ok_disp, Dispatcher = pcall(require, "dispatcher")
         if ok_disp and Dispatcher then
             local ok, err = pcall(function()
@@ -3431,7 +3460,9 @@ end
 function QA.isInPlaceCustomQA(action_id)
     local cfg = SUISettings:get("simpleui_qa_" .. action_id) or {}
     if cfg.qa_folder then return true end
-    if cfg.dispatcher_action and cfg.dispatcher_action ~= "" then return true end
+    if cfg.dispatcher_action and cfg.dispatcher_action ~= "" then
+        return not BOOKSHELF_NAV_DISPATCHER_ACTIONS[cfg.dispatcher_action]
+    end
     if cfg.plugin_key and cfg.plugin_method and cfg.plugin_key ~= "" then return true end
     return false
 end
