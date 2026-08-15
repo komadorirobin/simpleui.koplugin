@@ -1115,6 +1115,7 @@ end
 
 -- Cover bitmap LRU cache. Stores pre-scaled bitmaps to prevent distortion.
 local BIM_MAX_COVERS   = 30
+local BIM_NO_COVER_TTL = 300
 local _bim_cover_cache = {}
 local _bim_cover_count = 0
 local _RenderImage = nil
@@ -1180,14 +1181,35 @@ local function _scaleBBToSlot(bb, target_w, target_h, align, stretch_limit)
     return slot_bb
 end
 
-local _NO_COVER = {}
-function M.isCoverMissing(filepath) return _bim_cover_cache[filepath .. "|__nc"] == _NO_COVER end
+function M.isCoverMissing(filepath)
+    local probe = filepath .. "|__nc"
+    local entry = _bim_cover_cache[probe]
+    if not (entry and entry.missing) then return false end
+    local now = os.time()
+    if entry.expires_at and entry.expires_at <= now then
+        _bim_cover_cache[probe] = nil
+        _bim_cover_count = math_max(0, _bim_cover_count - 1)
+        return false
+    end
+    entry.t = now
+    return true
+end
 
 local function _markNoCover(filepath)
     local probe = filepath .. "|__nc"
-    if _bim_cover_cache[probe] then return end
+    local now = os.time()
+    local existing = _bim_cover_cache[probe]
+    if existing then
+        existing.t = now
+        existing.expires_at = now + BIM_NO_COVER_TTL
+        return
+    end
     if _bim_cover_count >= BIM_MAX_COVERS then _evictOldestCover() end
-    _bim_cover_cache[probe] = _NO_COVER
+    _bim_cover_cache[probe] = {
+        missing = true,
+        t = now,
+        expires_at = now + BIM_NO_COVER_TTL,
+    }
     _bim_cover_count = _bim_cover_count + 1
 end
 
@@ -1246,7 +1268,10 @@ function M.clearCoverCache()
     local function freeNext()
         local k, entry = next(to_free)
         if not k then return end
-        pcall(function() entry.bb:free() end); to_free[k] = nil
+        if entry.bb and entry.bb.free then
+            pcall(function() entry.bb:free() end)
+        end
+        to_free[k] = nil
         if next(to_free) then UIManager:scheduleIn(0.1, freeNext) end
     end
     UIManager:scheduleIn(0.1, freeNext)

@@ -558,12 +558,14 @@ end
 -- by "show only new/reading" can still supply cover art.
 local _EMPTY_FILTER = {}
 local function _entriesWithNoFilter(menu, dir_path)
-    local saved = FileChooser.show_filter
+    local saved_filter = FileChooser.show_filter
+    local saved_dummy = menu._dummy
     FileChooser.show_filter = _EMPTY_FILTER
     menu._dummy = true
-    local entries = menu:genItemTableFromPath(dir_path)
-    menu._dummy = false
-    FileChooser.show_filter = saved
+    local ok, entries = pcall(menu.genItemTableFromPath, menu, dir_path)
+    menu._dummy = saved_dummy
+    FileChooser.show_filter = saved_filter
+    if not ok then error(entries, 0) end
     return entries
 end
 

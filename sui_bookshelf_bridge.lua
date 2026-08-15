@@ -14,8 +14,10 @@ local M = {}
 
 local HOME_PREWARM_IDLE_S = 5
 local HOME_PREWARM_POLL_S = 1
+local HOME_PREWARM_MAX_ATTEMPTS = 10
 local _home_last_input = 0
 local _home_token = nil
+local _return_token = 0
 
 local function _now()
     local ok, socket = pcall(require, "socket")
@@ -47,6 +49,15 @@ local function _isTopmost(widget)
         if entry and entry.widget then return entry.widget == widget end
     end
     return false
+end
+
+local function _sameFile(a, b)
+    if type(a) ~= "string" or type(b) ~= "string" then return false end
+    local function normalize(path)
+        path = path:gsub("\\", "/"):gsub("/+", "/"):gsub("/+$", "")
+        return path ~= "" and path or "/"
+    end
+    return normalize(a) == normalize(b)
 end
 
 local PROFILE_ACTIONS = {
@@ -93,6 +104,8 @@ end
 function M.prepareReturn(filepath, source)
     if type(filepath) ~= "string" or filepath == "" then return end
     source = source or "simpleui"
+    _return_token = _return_token + 1
+    local token = _return_token
 
     -- Capture the live SimpleUI host before ReaderUI closes FileManager. The
     -- references remain valid long enough for Bookshelf to build an embedded
@@ -107,10 +120,11 @@ function M.prepareReturn(filepath, source)
     end
 
     local function emit(attempt)
+        if token ~= _return_token then return end
         local RUI = package.loaded["apps/reader/readerui"]
         local readerui = RUI and RUI.instance
         local live_file = readerui and readerui.document and readerui.document.file
-        if readerui and live_file then
+        if readerui and live_file and _sameFile(live_file, filepath) then
             local ok, err = pcall(function()
                 local payload = {
                     file = live_file,
@@ -139,6 +153,9 @@ function M.prepareReturn(filepath, source)
 
         if attempt < 10 then
             UIManager:scheduleIn(0.5, function() emit(attempt + 1) end)
+        elseif live_file then
+            logger.warn("simpleui: bookshelf prepare return gave up; active file "
+                .. tostring(live_file) .. " did not match " .. tostring(filepath))
         end
     end
 
@@ -168,10 +185,11 @@ function M.scheduleHomePrewarm(homescreen)
         return isAlive() and _isTopmost(homescreen)
     end
 
-    local function probe()
+    local function probe(attempt)
         if not isAlive() then return end
         if not isActive() or (_now() - _home_last_input) < HOME_PREWARM_IDLE_S then
-            UIManager:scheduleIn(HOME_PREWARM_POLL_S, probe)
+            UIManager:scheduleIn(HOME_PREWARM_POLL_S,
+                function() probe(attempt) end)
             return
         end
 
@@ -189,26 +207,34 @@ function M.scheduleHomePrewarm(homescreen)
         if bookshelf and type(bookshelf.onPrepareBookshelfHome) == "function" then
             local ok, accepted = pcall(bookshelf.onPrepareBookshelfHome,
                 bookshelf, payload)
-            delivered = ok and accepted ~= false
+            delivered = ok and accepted == true
             if not ok then
                 logger.warn("simpleui: bookshelf Home preload failed:",
                     tostring(accepted))
             end
         end
-        if not delivered then
-            local ok = pcall(function()
+        if not delivered and not token.broadcast_sent then
+            token.broadcast_sent = true
+            local ok, err = pcall(function()
                 UIManager:broadcastEvent(Event:new("PrepareBookshelfHome", payload))
             end)
-            delivered = ok
+            if not ok then
+                logger.warn("simpleui: bookshelf Home preload broadcast failed:",
+                    tostring(err))
+            end
         end
         if delivered then
             token.delivered = true
+        elseif attempt < HOME_PREWARM_MAX_ATTEMPTS then
+            UIManager:scheduleIn(HOME_PREWARM_POLL_S,
+                function() probe(attempt + 1) end)
         else
-            UIManager:scheduleIn(HOME_PREWARM_POLL_S, probe)
+            token.exhausted = true
+            logger.dbg("simpleui: no Bookshelf Home preload receiver accepted the request")
         end
     end
 
-    UIManager:scheduleIn(HOME_PREWARM_POLL_S, probe)
+    UIManager:scheduleIn(HOME_PREWARM_POLL_S, function() probe(0) end)
 end
 
 function M.cancelHomePrewarm(homescreen)
