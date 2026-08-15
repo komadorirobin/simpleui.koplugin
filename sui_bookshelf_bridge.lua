@@ -15,6 +15,7 @@ local M = {}
 local HOME_PREWARM_IDLE_S = 5
 local HOME_PREWARM_POLL_S = 1
 local HOME_PREWARM_MAX_ATTEMPTS = 10
+local HOME_PREWARM_MAX_WAIT_S = 60
 local _home_last_input = 0
 local _home_token = nil
 local _return_token = 0
@@ -171,7 +172,7 @@ function M.scheduleHomePrewarm(homescreen)
 
     _installHomeInputStamp()
     _home_last_input = _now()
-    local token = { homescreen = homescreen }
+    local token = { homescreen = homescreen, started_at = _now() }
     _home_token = token
 
     local function isAlive()
@@ -188,6 +189,11 @@ function M.scheduleHomePrewarm(homescreen)
     local function probe(attempt)
         if not isAlive() then return end
         if not isActive() or (_now() - _home_last_input) < HOME_PREWARM_IDLE_S then
+            if (_now() - token.started_at) >= HOME_PREWARM_MAX_WAIT_S then
+                token.exhausted = true
+                logger.dbg("simpleui: Bookshelf Home preload stopped after bounded wait")
+                return
+            end
             UIManager:scheduleIn(HOME_PREWARM_POLL_S,
                 function() probe(attempt) end)
             return

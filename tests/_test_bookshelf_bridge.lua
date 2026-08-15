@@ -155,5 +155,21 @@ test("Home prewarm does not treat an unhandled broadcast as delivery", function(
     Bridge.cancelHomePrewarm(homescreen)
 end)
 
+test("Home prewarm stops polling when Home never becomes topmost", function()
+    reset()
+    local homescreen = {}
+    package.loaded["sui_homescreen"] = { _instance = homescreen }
+    shown[homescreen] = true
+    UIManager._window_stack = { { widget = homescreen }, { widget = {} } }
+    Bridge.scheduleHomePrewarm(homescreen)
+    for _i = 1, 60 do
+        fake_now = fake_now + 1
+        fireNext()
+    end
+    eq(#scheduled, 0, "inactive Home prewarm must have a bounded lifetime")
+    eq(broadcasts, 0, "an inactive Home must not broadcast a preload")
+    Bridge.cancelHomePrewarm(homescreen)
+end)
+
 print(string.format("PASS %d  FAIL %d", passed, failed))
 if failed > 0 then os.exit(1) end

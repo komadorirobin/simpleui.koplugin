@@ -557,14 +557,24 @@ end
 -- Run genItemTableFromPath with the status filter suppressed so books hidden
 -- by "show only new/reading" can still supply cover art.
 local _EMPTY_FILTER = {}
-local function _entriesWithNoFilter(menu, dir_path)
+local function _withNoFilter(fn)
     local saved_filter = FileChooser.show_filter
-    local saved_dummy = menu._dummy
     FileChooser.show_filter = _EMPTY_FILTER
-    menu._dummy = true
-    local ok, entries = pcall(menu.genItemTableFromPath, menu, dir_path)
-    menu._dummy = saved_dummy
+    local ok, result = pcall(fn)
     FileChooser.show_filter = saved_filter
+    if not ok then error(result, 0) end
+    return result
+end
+
+local function _entriesWithNoFilter(menu, dir_path)
+    local saved_dummy = menu._dummy
+    menu._dummy = true
+    local ok, entries = pcall(function()
+        return _withNoFilter(function()
+            return menu:genItemTableFromPath(dir_path)
+        end)
+    end)
+    menu._dummy = saved_dummy
     if not ok then error(entries, 0) end
     return entries
 end
@@ -3320,42 +3330,50 @@ function M.install()
                 self:_setListFolderCover(cached_lm)
                 return
             else
-                local saved_filter = FileChooser.show_filter
-                FileChooser.show_filter = {}
-                local ok_dir, iter, dir_obj = pcall(lfs.dir, dir_path)
-                if ok_dir and iter then
-                    for f in iter, dir_obj do
-                        if f ~= "." and f ~= ".." then
-                            local fp   = dir_path .. "/" .. f
-                            local attr = lfs.attributes(fp) or {}
-                            if attr.mode == "file"
-                                    and not f:match("^%._")
-                                    and FileChooser:show_file(f, fp)
-                            then
-                                local bi = BookInfoManager:getBookInfo(fp, true)
-                                if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
-                                        and not bi.ignore_cover
-                                        and not (cover_specs and
-                                            BookInfoManager.isCachedCoverInvalid(bi, cover_specs))
+                local ok_scan, entry_data = pcall(function()
+                    return _withNoFilter(function()
+                        local ok_dir, iter, dir_obj = pcall(lfs.dir, dir_path)
+                        if not (ok_dir and iter) then return nil end
+                        for f in iter, dir_obj do
+                            if f ~= "." and f ~= ".." then
+                                local fp   = dir_path .. "/" .. f
+                                local attr = lfs.attributes(fp) or {}
+                                if attr.mode == "file"
+                                        and not f:match("^%._")
+                                        and FileChooser:show_file(f, fp)
                                 then
-                                    FileChooser.show_filter = saved_filter
-                                    local entry_data = {
-                                        cover_bb      = bi.cover_bb,
-                                        cover_w       = bi.cover_w,
-                                        cover_h       = bi.cover_h,
-                                        has_cover     = true,
-                                        cover_fetched = true,
-                                    }
-                                    _lmcSet(dir_path, entry_data)
-                                    self:_setListFolderCover(entry_data)
-                                    return
+                                    local bi = BookInfoManager:getBookInfo(fp, true)
+                                    if bi and bi.cover_bb and bi.has_cover and bi.cover_fetched
+                                            and not bi.ignore_cover
+                                            and not (cover_specs and
+                                                BookInfoManager.isCachedCoverInvalid(bi, cover_specs))
+                                    then
+                                        return {
+                                            cover_bb      = bi.cover_bb,
+                                            cover_w       = bi.cover_w,
+                                            cover_h       = bi.cover_h,
+                                            has_cover     = true,
+                                            cover_fetched = true,
+                                        }
+                                    end
                                 end
                             end
                         end
-                    end
+                        return nil
+                    end)
+                end)
+                if ok_scan and entry_data then
+                    _lmcSet(dir_path, entry_data)
+                    self:_setListFolderCover(entry_data)
+                    return
+                elseif ok_scan then
+                    _lmcSet(dir_path, false)
+                else
+                    -- Do not cache an operational failure as a confirmed miss;
+                    -- the async retry below may succeed on the next render.
+                    logger.warn("simpleui folder-cover scan failed for "
+                        .. tostring(dir_path) .. ": " .. tostring(entry_data))
                 end
-                FileChooser.show_filter = saved_filter
-                _lmcSet(dir_path, false)
             end
 
             -- 4. No cover — register for async retry.

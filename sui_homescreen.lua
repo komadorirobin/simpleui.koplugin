@@ -3607,6 +3607,8 @@ function HomescreenWidget:onCloseWidget()
     if Homescreen._library_was_visited then
         Homescreen._library_was_visited = nil
         Config.clearCoverCache()
+    else
+        Config.releaseRetiredCoverBuffers()
     end
 
     -- Free header module quotes if the header is not in quote mode.

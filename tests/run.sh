@@ -1,4 +1,6 @@
 #!/bin/sh
 set -eu
 
-lua tests/_test_bookshelf_bridge.lua
+for test_file in tests/_test_*.lua; do
+    lua "$test_file"
+done

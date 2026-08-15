@@ -1118,6 +1118,10 @@ local BIM_MAX_COVERS   = 30
 local BIM_NO_COVER_TTL = 300
 local _bim_cover_cache = {}
 local _bim_cover_count = 0
+-- Evicted buffers may still be referenced by the currently rendered widget
+-- tree (ImageWidget uses image_disposable=false). Keep ownership until Home is
+-- closed and clearCoverCache can free both live and retired buffers safely.
+local _bim_retired_cover_bbs = {}
 local _RenderImage = nil
 local _lfs_cover   = nil  -- lazy-loaded lfs for filepath validation
 
@@ -1138,6 +1142,10 @@ local function _evictOldestCover()
         end
     end
     if oldest_key then
+        local entry = _bim_cover_cache[oldest_key]
+        if entry and entry.bb then
+            _bim_retired_cover_bbs[#_bim_retired_cover_bbs + 1] = entry.bb
+        end
         _bim_cover_cache[oldest_key] = nil
         _bim_cover_count = _bim_cover_count - 1
     end
@@ -1260,27 +1268,96 @@ function M.getCoverBB(filepath, w, h, align, stretch_limit)
     return nil
 end
 
-function M.clearCoverCache()
-    if _bim_cover_count == 0 then return end
-    local to_free = _bim_cover_cache
-    _bim_cover_cache = {}; _bim_cover_count = 0; _RenderImage = nil
-    local UIManager = require("ui/uimanager")
-    local function freeNext()
-        local k, entry = next(to_free)
-        if not k then return end
-        if entry.bb and entry.bb.free then
-            pcall(function() entry.bb:free() end)
-        end
-        to_free[k] = nil
-        if next(to_free) then UIManager:scheduleIn(0.1, freeNext) end
+local function _addUniqueCoverBuffer(buffers, seen, bb)
+    if bb and not seen[bb] then
+        seen[bb] = true
+        buffers[#buffers + 1] = bb
     end
-    UIManager:scheduleIn(0.1, freeNext)
+end
+
+local function _freeCoverBuffersLater(to_free)
+    local total = #to_free
+    if total == 0 then return end
+    local UIManager = require("ui/uimanager")
+    local next_i = 1
+    local function freeNext()
+        -- A small batch avoids holding the UI loop while still releasing a long
+        -- browsing session promptly after Home closes.
+        local last = math_min(total, next_i + 7)
+        while next_i <= last do
+            local bb = to_free[next_i]
+            if bb and bb.free then pcall(function() bb:free() end) end
+            to_free[next_i] = nil
+            next_i = next_i + 1
+        end
+        if next_i <= total then UIManager:scheduleIn(0.05, freeNext) end
+    end
+    UIManager:scheduleIn(0.05, freeNext)
+end
+
+-- Evicted buffers may still be referenced by the outgoing Home widget tree.
+-- Once that widget closes, they are no longer paintable and can be released
+-- without flushing the 30-entry cache that accelerates the next Home open.
+function M.releaseRetiredCoverBuffers()
+    if #_bim_retired_cover_bbs == 0 then return end
+    local to_free, seen = {}, {}
+    for _i, bb in ipairs(_bim_retired_cover_bbs) do
+        _addUniqueCoverBuffer(to_free, seen, bb)
+    end
+    _bim_retired_cover_bbs = {}
+    _freeCoverBuffersLater(to_free)
+end
+
+function M.clearCoverCache()
+    if _bim_cover_count == 0 and #_bim_retired_cover_bbs == 0 then return end
+    local to_free, seen = {}, {}
+    for _k, entry in pairs(_bim_cover_cache) do
+        _addUniqueCoverBuffer(to_free, seen, entry.bb)
+    end
+    for _i, bb in ipairs(_bim_retired_cover_bbs) do
+        _addUniqueCoverBuffer(to_free, seen, bb)
+    end
+    _bim_cover_cache = {}; _bim_cover_count = 0; _RenderImage = nil
+    _bim_retired_cover_bbs = {}
+    _freeCoverBuffersLater(to_free)
+end
+
+-- Bookshelf's Android safe mode protects every fork-backed background path on
+-- devices where fork() can abort a live renderer. When both plugins are
+-- installed, SimpleUI must honour the same policy for BIM cover extraction;
+-- otherwise the Home screen silently reintroduces the exact unsafe primitive.
+-- Standalone SimpleUI keeps its historical behaviour because there is no
+-- shared policy to consult.
+function M.backgroundCoverExtractionAllowed()
+    local ok_d, Device = pcall(require, "device")
+    if not (ok_d and Device and Device.isAndroid and Device:isAndroid()) then
+        return true
+    end
+    local Store = package.loaded["lib/bookshelf_settings_store"]
+    if not Store then
+        local ok_s, loaded = pcall(require, "lib/bookshelf_settings_store")
+        if ok_s then Store = loaded end
+    end
+    if Store and type(Store.nilOrTrue) == "function" then
+        local ok_safe, safe = pcall(Store.nilOrTrue, "android_safe_mode")
+        if ok_safe and safe == true then return false end
+    end
+    return true
 end
 
 function M.flushCoverQueue()
     local queue = M._cover_extract_queue
     if not queue or #queue == 0 then return end
     M._cover_extract_queue = {}
+    if not M.backgroundCoverExtractionAllowed() then
+        for _, fp in ipairs(queue) do
+            M._cover_extract_pending[fp] = nil
+            M._cover_extract_specs[fp] = nil
+        end
+        M.cover_extraction_pending = false
+        logger.dbg("simpleui: background cover extraction skipped by Android safe mode")
+        return false
+    end
     local bim = M.getBookInfoManager()
     if not bim then
         for _, fp in ipairs(queue) do M._cover_extract_pending[fp] = nil; M._cover_extract_specs[fp] = nil end
@@ -1295,10 +1372,16 @@ function M.flushCoverQueue()
         end
         M._cover_extract_specs[fp] = nil
     end
+    if #files == 0 then
+        M.cover_extraction_pending = false
+        return false
+    end
     local ok = pcall(bim.extractInBackground, bim, files)
     if not ok then
         for _, fp in ipairs(queue) do M._cover_extract_pending[fp] = nil end
+        M.cover_extraction_pending = false
     end
+    return ok
 end
 
 -- ===========================================================================
