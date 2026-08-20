@@ -6,7 +6,7 @@
 --   (e.g. /mnt/us/koreader/patches/ on Kindle,
 --         /mnt/onboard/.adds/koreader/patches/ on Kobo)
 --
---   module_hardcover.lua must be present in the plugin's desktop_modules/
+--   module_hardcover.lua must be present in the plugin's modules/
 --   directory.  It is bundled with the komadorirobin fork and does not need
 --   to be moved.
 --
@@ -36,8 +36,8 @@
 local logger = require("logger")
 logger.dbg("simpleui-patch: loading hardcover registry patch")
 
-local _REGISTRY_KEY  = "desktop_modules/moduleregistry"
-local _HARDCOVER_KEY = "desktop_modules/module_hardcover"
+local _REGISTRY_KEY  = "modules/moduleregistry"
+local _HARDCOVER_KEY = "modules/module_hardcover"
 -- Entry that would normally live in the MODULES table in moduleregistry.lua.
 local _HC_ENTRY = { require_mod = _HARDCOVER_KEY }
 
@@ -167,7 +167,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Preload interceptor: re-applies the patch on every (re-)load of the
 -- registry module so that plugin hot-reload cycles are handled correctly.
--- SimpleUI's onTeardown() evicts "desktop_modules/moduleregistry" from
+-- SimpleUI's onTeardown() evicts "modules/moduleregistry" from
 -- package.loaded; the next require() of the registry hits this interceptor,
 -- which loads a fresh registry and patches it before returning it to the
 -- caller.

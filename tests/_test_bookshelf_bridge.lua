@@ -32,7 +32,7 @@ package.loaded["logger"] = {
     dbg = function() end,
     warn = function() end,
 }
-package.loaded["sui_store"] = { get = function() return nil end }
+package.loaded["infra/sui_store"] = { get = function() return nil end }
 
 local FileManager = { instance = { _simpleui_plugin = {} } }
 local ReaderUI = { instance = nil }
@@ -119,7 +119,7 @@ test("Home prewarm accepts an explicit Bookshelf acknowledgement", function()
     reset()
     local homescreen = {}
     local calls = 0
-    package.loaded["sui_homescreen"] = { _instance = homescreen }
+    package.loaded["screens/sui_homescreen"] = { _instance = homescreen }
     shown[homescreen] = true
     UIManager._window_stack = { { widget = homescreen } }
     FileManager.instance.bookshelf = {
@@ -140,7 +140,7 @@ end)
 test("Home prewarm does not treat an unhandled broadcast as delivery", function()
     reset()
     local homescreen = {}
-    package.loaded["sui_homescreen"] = { _instance = homescreen }
+    package.loaded["screens/sui_homescreen"] = { _instance = homescreen }
     shown[homescreen] = true
     UIManager._window_stack = { { widget = homescreen } }
     FileManager.instance.bookshelf = nil
@@ -158,7 +158,7 @@ end)
 test("Home prewarm stops polling when Home never becomes topmost", function()
     reset()
     local homescreen = {}
-    package.loaded["sui_homescreen"] = { _instance = homescreen }
+    package.loaded["screens/sui_homescreen"] = { _instance = homescreen }
     shown[homescreen] = true
     UIManager._window_stack = { { widget = homescreen }, { widget = {} } }
     Bridge.scheduleHomePrewarm(homescreen)

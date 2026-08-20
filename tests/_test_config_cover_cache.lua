@@ -1,5 +1,5 @@
--- Pure-Lua regression tests for SimpleUI's native cover-cache ownership and
--- shared Android background-extraction policy.
+-- Pure-Lua regression tests for SimpleUI's cover-cache ownership and shared
+-- Android background-extraction policy.
 
 package.path = "./?.lua;./?/init.lua;" .. package.path
 
@@ -67,7 +67,7 @@ package.loaded["ffi/blitbuffer"] = {
     new = function(w, h) return makeBB(w, h) end,
 }
 package.loaded["datastorage"] = { getDataDir = function() return "/tmp/simpleui-test" end }
-package.loaded["sui_store"] = {
+package.loaded["infra/sui_store"] = {
     get = function() return nil end,
     set = function() end,
     readSetting = function() return nil end,
@@ -75,7 +75,7 @@ package.loaded["sui_store"] = {
     flush = function() end,
 }
 package.loaded["logger"] = { dbg = function() end }
-package.loaded["sui_i18n"] = { translate = function(s) return s end }
+package.loaded["infra/sui_i18n"] = { translate = function(s) return s end }
 package.loaded["libs/libkoreader-lfs"] = {
     attributes = function(path, field)
         if path:match("^/book/") then
@@ -97,20 +97,29 @@ package.loaded["lib/bookshelf_settings_store"] = {
     end,
 }
 
-local Config = dofile("sui_config.lua")
+local CoverCache = dofile("infra/sui_cover_cache.lua")
+local Config = dofile("infra/sui_config.lua")
 
-test("evicted native cover buffers are released when Home closes", function()
-    android = false
-    freed, scheduled = 0, {}
-    for i = 1, 31 do
-        assert(Config.getCoverBB("/book/" .. i .. ".epub", 10, 10))
-    end
-    Config.releaseRetiredCoverBuffers()
-    drainScheduled()
-    eq(freed, 1, "Home close must release the evicted buffer")
-    Config.clearCoverCache()
-    drainScheduled()
-    eq(freed, 31, "all cached and retired buffers must be freed")
+test("LRU eviction drops cache ownership without freeing live buffers", function()
+    freed = 0
+    CoverCache:clear()
+    CoverCache:setCapacity(2)
+    CoverCache:setByteBudget(1024 * 1024)
+
+    local first = makeBB(10, 10)
+    CoverCache:put("/book/1.epub", first)
+    CoverCache:put("/book/2.epub", makeBB(10, 10))
+    CoverCache:put("/book/3.epub", makeBB(10, 10))
+
+    eq(CoverCache:has("/book/1.epub"), false, "oldest entry must be evicted")
+    eq(CoverCache:has("/book/2.epub"), true)
+    eq(CoverCache:has("/book/3.epub"), true)
+    eq(freed, 0, "eviction must not invalidate buffers held by live widgets")
+    eq(first.freed, nil)
+
+    CoverCache:clear()
+    CoverCache:setCapacity(512)
+    CoverCache:setByteBudget(20 * 1024 * 1024)
 end)
 
 test("Bookshelf Android safe mode suppresses SimpleUI BIM forks", function()

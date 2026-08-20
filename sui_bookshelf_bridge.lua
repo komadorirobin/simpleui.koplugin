@@ -8,7 +8,7 @@
 local UIManager = require("ui/uimanager")
 local Event     = require("ui/event")
 local logger    = require("logger")
-local SUISettings = require("sui_store")
+local SUISettings = require("infra/sui_store")
 
 local M = {}
 
@@ -176,7 +176,7 @@ function M.scheduleHomePrewarm(homescreen)
     _home_token = token
 
     local function isAlive()
-        local Homescreen = package.loaded["sui_homescreen"]
+        local Homescreen = package.loaded["screens/sui_homescreen"]
         return _home_token == token
             and Homescreen and Homescreen._instance == homescreen
             and UIManager:isWidgetShown(homescreen)

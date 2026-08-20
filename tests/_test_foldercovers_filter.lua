@@ -1,33 +1,31 @@
--- The no-filter helper mutates FileChooser's process-global filter. Verify that
--- an exception inside the scan cannot leave the rest of the KOReader session
--- unfiltered.
+-- A cover scan temporarily mutates FileChooser's process-global filter and the
+-- menu's dummy state. Verify that an exception cannot leak either mutation to
+-- the rest of the KOReader session.
 
-local src = assert(io.open("sui_foldercovers.lua")):read("*a")
-local body = src:match("local function _withNoFilter%(fn%)\n(.-)\nend\n")
-assert(body, "_withNoFilter helper not found")
+package.path = "./?.lua;./?/init.lua;" .. package.path
 
 local original = { status = "reading" }
 local FileChooser = { show_filter = original }
-local env = {
-    FileChooser = FileChooser,
-    _EMPTY_FILTER = {},
-    pcall = pcall,
-    error = error,
+package.loaded["ui/widget/filechooser"] = FileChooser
+package.loaded["libs/libkoreader-lfs"] = {
+    attributes = function() return nil end,
 }
-local chunk
-if _G.setfenv then
-    chunk = assert(loadstring("return function(fn) " .. body .. " end"))
-    setfenv(chunk, env)
-else
-    chunk = assert(load("return function(fn) " .. body .. " end", "filter", "t", env))
-end
-local withNoFilter = chunk()
+local CoverFinder = dofile("features/library/sui_cover_finder.lua")
 
-local ok = pcall(withNoFilter, function()
-    assert(FileChooser.show_filter ~= original, "filter should be suppressed inside scan")
-    error("scan failed")
-end)
+local original_dummy = { keep = true }
+local menu = {
+    _dummy = original_dummy,
+    genItemTableFromPath = function(self)
+        assert(FileChooser.show_filter ~= original,
+            "filter should be suppressed inside scan")
+        assert(self._dummy == true, "menu should use dummy mode inside scan")
+        error("scan failed")
+    end,
+}
+
+local ok = pcall(CoverFinder.entriesWithNoFilter, menu, "/library")
 assert(not ok, "the original scan error must propagate")
 assert(FileChooser.show_filter == original, "global filter must always be restored")
+assert(menu._dummy == original_dummy, "menu dummy state must always be restored")
 
 print("PASS 1  FAIL 0")
