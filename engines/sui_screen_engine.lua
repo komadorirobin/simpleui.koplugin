@@ -105,29 +105,14 @@ local PAD                = UI.PAD
 local MOD_GAP            = UI.MOD_GAP
 local SIDE_PAD           = UI.SIDE_PAD
 
--- Static color defaults — overridden at render-time by theme roles when set.
-local _CLR_TEXT_MID_DEFAULT      = Blitbuffer.gray(0.45)
-local _DOT_COLOR_INACTIVE_DEFAULT = Blitbuffer.gray(0.55)
+-- Static color defaults.
 
--- Dynamic accessors so theme changes take effect on the next repaint without
--- requiring a full rebuild.  Both fall back to the static defaults when no
--- custom "text_secondary" role is configured.
 local function _getTextMid()
-    local ok, SUIStyle = pcall(require, "features/sui_style")
-    if ok and SUIStyle then
-        local c = SUIStyle.getThemeColor("text_secondary")
-        if c then return c end
-    end
-    return _CLR_TEXT_MID_DEFAULT
+    return SUIStyle.COLOR.text_dim
 end
 
 local function _getDotInactive()
-    local ok, SUIStyle = pcall(require, "features/sui_style")
-    if ok and SUIStyle then
-        local c = SUIStyle.getThemeColor("text_secondary")
-        if c then return c end
-    end
-    return _DOT_COLOR_INACTIVE_DEFAULT
+    return SUIStyle.COLOR.text_dim
 end
 
 -- Modules that render cover thumbnails declare has_covers = true; the
@@ -156,7 +141,7 @@ function DotWidget:paintTo(bb, x, y)
     for i = 1, self.total_pages do
         local cx = x + (i - 1) * tw + math.floor(tw / 2)
         if i == self.current_page then
-            bb:paintCircle(cx, cy, dot_r, Blitbuffer.COLOR_BLACK)
+            bb:paintCircle(cx, cy, dot_r, SUIStyle.COLOR.text_primary)
         else
             bb:paintCircle(cx, cy, dot_r, _getDotInactive())
         end
@@ -178,6 +163,19 @@ end
 -- ScreenEngine._cs_state[id] instead (see _sget/_sset below) — nothing
 -- external depends on that shape, so it's free to be per-id from day one.
 local ScreenEngine = { _instance = nil, _cs_state = {} }
+
+-- ---------------------------------------------------------------------------
+-- Soft-park (reader round-trip optimisation)
+--
+-- Internal-only kill switch — NOT a persisted SUISettings value and NOT
+-- exposed in any menu. When true (default), ScreenWidget:onShowingReader
+-- keeps the Homescreen's widget tree, bitmaps and cached state alive,
+-- hidden underneath the reader, instead of tearing it all down and
+-- rebuilding cold on every reader round-trip (see
+-- ScreenWidget:onShowingReader below and _raiseParkedScreen in
+-- infra/sui_patches.lua). Flip to false during development/bisecting to
+-- restore the always-cold-close behaviour this replaces.
+ScreenEngine.SOFT_PARK_ENABLED = true
 
 -- The built-in Homescreen's id — the one place in this file that still
 -- "knows" the built-in Homescreen exists, needed because _sget/_sset (below)
@@ -242,8 +240,26 @@ local _MODULE_BG_COLOR  = Blitbuffer.gray(0.08)
 local _MODULE_BG_RADIUS = Screen:scaleBySize(12)
 local _MODULE_BG_PAD_Y  = PAD
 
--- Section label widget cache — keyed by "module|text|inner_w|scale_pct|right_text".
--- Invalidated on screen resize/rotation via invalidateLabelCache().
+-- Section label widget cache — keyed by module, text, width, scale and
+-- right-side content, plus
+-- "mod_id|page|npages" for a paginated row's header (see sectionLabel's
+-- page_nav parameter below). That extra key segment tracks pagination
+-- STATE, not the identity of the ScreenWidget whose chevrons a cached
+-- widget's tap handler closes over — so anything that can change a
+-- paginated row's page/npages without necessarily replacing this module's
+-- own local widget cache must also invalidate this one, or a stale cached
+-- header can end up wired to a dead closure (chevrons that silently do
+-- nothing on tap).
+--
+-- Invalidated via invalidateLabelCache() from:
+--   • main.lua's onCloseDocument — reader-return path, every document close.
+--   • infra/sui_core.lua's invalidateDimCache — screen resize/rotation.
+--   • engines/sui_book_grid.lua's GridRenderer.clearRowCaches — every place
+--     a row module's file-list cache is cleared (status changes, TBR/
+--     collection add-remove, the debounced background refresh, ...), since
+--     that is precisely when a paginated row's page/npages can shift.
+--     Centralised there instead of at each clearRowCaches() call site so
+--     future callers get this for free.
 local _label_cache = {}
 
 local function invalidateLabelCache()
@@ -258,23 +274,20 @@ end
 -- render the same text/width/page can no longer share the cached widget —
 -- doing so would wire the wrong module's pagination to the tap.
 -- landscape_factor (optional): scale multiplier for the label; defaults to 1.
-local function buildSectionLabel(text, w, mod_id, right_text, page_nav, landscape_factor, pfx)
-    -- Resolve theme fg color so labels honour the active palette.
-    -- The color pointer is included in the cache key so that a theme change
-    -- after the first render produces a fresh widget instead of reusing the
-    -- stale one (the cache is also invalidated on rebuildLayout, but this
-    -- guards against within-session theme switches without a full rebuild).
-    local _label_fg = SUIStyle.getThemeColor("fg")
+local function sectionLabel(text, w, mod_id, right_text, page_nav, landscape_factor, pfx)
+    local label_fg = SUIStyle.COLOR.text_primary
     local scale = Config.getSectionLabelScale(mod_id, pfx) * (landscape_factor or 1)
     local fs = math.max(8, math.floor(SUIStyle.FS_BODY * scale))
-    local label_h = math.max(8, math.floor(Screen:scaleBySize(16) * scale))
-    local color_key = _label_fg and tostring(_label_fg) or "default"
     local key = table.concat({
-        tostring(mod_id or ""), text, tostring(w), color_key,
+        tostring(mod_id or ""), text, tostring(w),
         tostring(scale), tostring(right_text or ""), tostring(pfx or ""),
     }, "|")
     if page_nav then
+        -- has_wallpaper is folded in too: it changes how the chevrons are
+        -- built (see GridRenderer.buildPageNavButtons), so toggling the
+        -- wallpaper must not reuse a cached widget built for the other state.
         key = key .. "|" .. page_nav.mod_id .. "|" .. tostring(page_nav.page) .. "|" .. tostring(page_nav.npages)
+            .. "|" .. tostring(page_nav.has_wallpaper)
     end
     if not _label_cache[key] then
         local face = Font:getFace(SUIStyle.FACE_REGULAR, fs)
@@ -290,12 +303,11 @@ local function buildSectionLabel(text, w, mod_id, right_text, page_nav, landscap
             -- FS_DETAIL), not the same `fs` as the title.
             local fs_right = math.max(8, math.floor(SUIStyle.FS_DETAIL * scale))
             local face_right = Font:getFace(SUIStyle.FACE_REGULAR, fs_right)
-            local _sub_fg = SUIStyle.getThemeColor("text_secondary") or _label_fg
             local right_widget = UI.makeColoredText{
                 text    = right_text,
                 face    = face_right,
                 bold    = false,
-                fgcolor = _sub_fg,
+                fgcolor = SUIStyle.COLOR.text_secondary,
             }
             local gap      = PAD
             local row_h    = right_widget:getSize().h
@@ -310,7 +322,7 @@ local function buildSectionLabel(text, w, mod_id, right_text, page_nav, landscap
                 local ok_gr, GridRenderer = pcall(require, "engines/sui_book_grid")
                 if ok_gr and GridRenderer then
                     prev_button, next_button = GridRenderer.buildPageNavButtons(
-                        page_nav.page, page_nav.npages, row_h, page_nav.turnPageFn)
+                        page_nav.page, page_nav.npages, row_h, page_nav.turnPageFn, page_nav.has_wallpaper)
                     if prev_button then
                         nav_w = prev_button:getSize().w + next_button:getSize().w + gap * 2
                     end
@@ -323,7 +335,7 @@ local function buildSectionLabel(text, w, mod_id, right_text, page_nav, landscap
                 text    = text,
                 face    = face,
                 bold    = true,
-                fgcolor = _label_fg,
+                fgcolor = label_fg,
             }
             -- BUGFIX: TextWidget doesn't have a `width` option that pads its
             -- reported size — only `max_width`, and even then getSize()
@@ -352,11 +364,11 @@ local function buildSectionLabel(text, w, mod_id, right_text, page_nav, landscap
             end
         else
             content = UI.makeColoredText{
-                    text    = text,
+                text    = text,
                 face    = face,
                 bold    = true,
-                fgcolor = _label_fg,    -- nil → KOReader default (black)
                 width   = avail_w,
+                fgcolor = label_fg,
             }
         end
 
@@ -369,8 +381,6 @@ local function buildSectionLabel(text, w, mod_id, right_text, page_nav, landscap
     end
     return _label_cache[key]
 end
-
-local sectionLabel = buildSectionLabel
 
 local function applyModuleBackground(mod_id, widget, w, label_text, right_text,
         _fresh_label, page_nav, landscape_factor, pfx)
@@ -411,6 +421,18 @@ local function pageIndicatorFor(mod, ctx)
     return string.format("%d/%d", page, npages)
 end
 
+-- Right-side section-label text for a module: a module-supplied
+-- M.label_right_func(ctx) (e.g. the active heatmap type) takes priority
+-- over the page indicator, falling back to pageIndicatorFor when the
+-- module doesn't define one. The two are mutually exclusive in practice —
+-- no module currently uses both — so no attempt is made to combine them.
+local function labelRightTextFor(mod, ctx)
+    if type(mod.label_right_func) == "function" then
+        return mod.label_right_func(ctx)
+    end
+    return pageIndicatorFor(mod, ctx)
+end
+
 -- Chevron pair descriptor for the same paginated module, passed to
 -- sectionLabel as page_nav. Mirrors pageIndicatorFor's nil case exactly (a
 -- single page or a non-paginated module gets neither the text nor the
@@ -422,10 +444,11 @@ local function pageNavFor(self, mod, ctx)
     if not npages or npages <= 1 then return nil end
     local page = ctx["_row_page_" .. mod.id] or 1
     return {
-        mod_id     = mod.id,
-        page       = page,
-        npages     = npages,
-        turnPageFn = function(delta) self:_turnBookModPage(mod.id, delta) end,
+        mod_id        = mod.id,
+        page          = page,
+        npages        = npages,
+        turnPageFn    = function(delta) self:_turnBookModPage(mod.id, delta) end,
+        has_wallpaper = ctx.has_wallpaper,
     }
 end
 
@@ -603,7 +626,7 @@ local function buildChevronFooter(goto_fn)
     }
     -- Apply user-defined icon overrides for pagination chevrons.
     -- Since these are SimpleUI-created Buttons (not IconButtons), we use
-    -- applyPaginationIcons which calls _applyNativeBtn (btn.icon + :init() path).
+    -- applyPaginationIcons which calls SS.applyIconToBtn (btn.icon + :init() path).
     pcall(function()
         local ok_ss, SS = pcall(require, "features/sui_style")
         if not (ok_ss and SS and SS.applyPaginationIcons) then return end
@@ -2566,7 +2589,7 @@ function ScreenWidget:_updatePage(keep_cache, books_only, stats_only)
                     col_body[#col_body+1] = self:_vspan(mod_gaps[mod.id] or MOD_GAP)
                 end
                 local bg_enabled = Config.isModuleBackgroundEnabled(mod.id, self._pfx)
-                local label_right = pageIndicatorFor(mod, ctx)
+                local label_right = labelRightTextFor(mod, ctx)
                 local label_text = (type(mod.label_func) == "function" and mod.label_func(ctx)) or mod.label
                 local page_nav = pageNavFor(self, mod, ctx)
                 if label_text and not bg_enabled then
@@ -2695,7 +2718,7 @@ function ScreenWidget:_updatePage(keep_cache, books_only, stats_only)
                     body[#body+1] = self:_vspan(gap_px)
                 end
                 local bg_enabled = Config.isModuleBackgroundEnabled(mod.id, self._pfx)
-                local label_right = pageIndicatorFor(mod, ctx)
+                local label_right = labelRightTextFor(mod, ctx)
                 local label_text = (type(mod.label_func) == "function" and mod.label_func(ctx)) or mod.label
                 local page_nav = pageNavFor(self, mod, ctx)
                 if label_text and not bg_enabled then
@@ -2930,7 +2953,11 @@ function ScreenWidget:_refresh(keep_cache, books_only, stats_only)
                             -- updateStats() with no such intermediate cache.
                             -- Mirrors the identical fix already applied in
                             -- _refreshImmediate for the book-hold-dialog's
-                            -- keep_cache=true path.
+                            -- keep_cache=true path. clearRowCaches() also
+                            -- invalidates the section-label header cache
+                            -- (page/npages indicator + chevrons) for the
+                            -- same paginated rows — see its doc comment in
+                            -- sui_book_grid.lua.
                             local ok_gr, GR = pcall(require, "engines/sui_book_grid")
                             if ok_gr and GR then GR.clearRowCaches(self._ctx_cache) end
                         end
@@ -3280,7 +3307,7 @@ function ScreenWidget:_refreshBookModSlot(mod_id)
         local label_text = (type(label_slot.mod.label_func) == "function"
             and label_slot.mod.label_func(self._ctx_cache)) or label_slot.mod.label
         local new_label = sectionLabel(label_text, label_slot.col_w,
-            label_slot.mod.id, pageIndicatorFor(label_slot.mod, self._ctx_cache),
+            label_slot.mod.id, labelRightTextFor(label_slot.mod, self._ctx_cache),
             pageNavFor(self, label_slot.mod, self._ctx_cache),
             self._ctx_cache and self._ctx_cache.landscape_factor, self._pfx)
         if new_label ~= label_slot.parent[label_slot.index] then
@@ -3320,7 +3347,10 @@ function ScreenWidget:_refreshImmediate(keep_cache)
         -- in the TBR row until the Homescreen is fully torn down and rebuilt.
         -- Clear just those (cheap: a ReadCollection/settings lookup, not the
         -- I/O keep_cache is protecting) so the very next build re-fetches
-        -- each row's current membership.
+        -- each row's current membership. clearRowCaches() also invalidates
+        -- the section-label header cache (page/npages indicator + chevrons)
+        -- for the same paginated rows — see its doc comment in
+        -- sui_book_grid.lua for why that lives there instead of here.
         local ok_gr, GridRenderer = pcall(require, "engines/sui_book_grid")
         if ok_gr and GridRenderer then GridRenderer.clearRowCaches(self._ctx_cache) end
     end
@@ -3644,6 +3674,10 @@ function ScreenWidget:onSyncBookStats()
         -- Always clear the guard on this instance — safe whether alive or dead.
         self_ref._db_sync_guard = false
         self_ref._ctx_cache     = nil
+        -- Parked: nothing to repaint right now — _raiseParkedScreen already
+        -- does a full refresh (which will pick up whatever this sync
+        -- changed) when the screen is next promoted back to the foreground.
+        if self_ref._parked then return end
         -- Only repaint when this instance is still the one on screen.
         if _sget(self_ref._id, "_instance") == self_ref then
             self_ref:_refresh(false)
@@ -3663,8 +3697,11 @@ function ScreenWidget:onSyncBookStats()
     return false  -- do not consume; Statistics plugin must still handle this
 end
 
-function ScreenWidget:onSuspend()
-    self._suspended = true
+-- Stops background timers so a screen does no wasted work while it cannot
+-- be seen — either genuinely suspended (device sleep) or soft-parked
+-- (hidden underneath the reader, see onShowingReader below). Shared by
+-- both call sites so there is exactly one place this teardown subset lives.
+function ScreenWidget:_pauseBackgroundWork()
     if self._cover_poll_timer then
         UIManager:unschedule(self._cover_poll_timer)
         self._cover_poll_timer = nil
@@ -3677,9 +3714,20 @@ function ScreenWidget:onSuspend()
     if ClockMod and ClockMod.cancelRefresh then ClockMod.cancelRefresh() end
 end
 
+function ScreenWidget:onSuspend()
+    self._suspended = true
+    self:_pauseBackgroundWork()
+end
+
 function ScreenWidget:onResume()
     self._suspended = false
     if Device.screen_saver_mode then return end
+    -- Parked: the reader owns the screen right now, and nothing here is
+    -- visible. Skip the refresh/timer work entirely — _raiseParkedScreen
+    -- (infra/sui_patches.lua) already refreshes this same state when the
+    -- screen is promoted back to the foreground, so doing it here too
+    -- would just be wasted work on a hidden widget.
+    if self._parked then return end
     -- Invalidate the time-series portion of the stats cache so that any reading
     -- done before the suspend (or while the device was awake in the reader) is
     -- reflected immediately on wakeup.  We use invalidateTimeSeries rather than
@@ -3933,6 +3981,7 @@ function ScreenWidget:onCloseWidget()
     self._kb_book_items_fp   = nil
     self._kb_focus_idx       = nil
     self._kb_first_rec_idx   = nil
+    self._parked              = nil -- defensive: real close always ends any park
 
     local ClockMod = Registry.get("clock")
     if ClockMod and ClockMod.cancelRefresh then ClockMod.cancelRefresh() end
@@ -3980,22 +4029,50 @@ end
 -- all, so opening a book from the Homescreen or a Custom Screen left the
 -- *entire* widget (grid, covers, badges, the header clock/quote refresh
 -- chain) fully resident and covered for the whole reading session, only
--- torn down in SimpleUIPlugin:onCloseWidget once the book was closed. On a
--- long reading session that's a lot of dead weight held for no benefit: the
--- Reader → Homescreen path already discards and fully rebuilds the screen
--- via _showHSCold() (see _closeReaderToHomescreenSync), so keeping the old
--- instance alive in the meantime was never actually saving a rebuild.
+-- torn down in SimpleUIPlugin:onCloseWidget once the book was closed. That
+-- version paid for it with a class of bugs where the hidden-but-alive
+-- screen kept receiving broadcast events meant for the reader (onResume,
+-- rotation, stats sync, ...), and — worse — nothing stopped more than one
+-- screen from piling up alive-but-hidden at once (e.g. a Custom Screen
+-- left open underneath a Settings Window, on top of the Homescreen
+-- underneath *that*). A later revision replaced it with the closing here:
+-- the screen is always torn down before the reader takes over, and always
+-- rebuilt cold when the reader gives control back — simple and correct,
+-- at the cost of a full rebuild (DB reconnect, cover decode, widget tree)
+-- on every single reader round-trip.
 --
--- Closing here makes both directions symmetric: the screen is always torn
--- down before the reader takes over, and always rebuilt fresh when the
--- reader gives control back.
+-- Soft-park (ScreenEngine.SOFT_PARK_ENABLED) reinstates the "keep it
+-- alive" idea while closing the two holes above: it only ever parks the
+-- Homescreen (never a Custom Screen), and only when it is the *sole* live
+-- screen at this exact moment — any other live screen is still force-
+-- closed by SimpleUIPlugin:onCloseWidget exactly as today, so at most one
+-- screen is ever hidden-but-alive at a time. The event handlers a parked
+-- screen could still receive (onResume, onSyncBookStats) are guarded to
+-- skip their refresh work while self._parked is set — onSetRotationMode
+-- already ignores everything while the reader is open, unrelated to this
+-- change. _raiseParkedScreen (infra/sui_patches.lua) promotes the parked
+-- instance back to the foreground with a scoped partial refresh instead of
+-- a full rebuild; any reader-close path that will not show the Homescreen
+-- this time (e.g. "Return to Book Folder") closes the parked instance for
+-- real instead of leaving it dangling with increasingly stale data.
 --
--- _navbar_closing_intentionally makes onCloseWidget (above) treat this like
--- a tab-switch close rather than a real dismissal, so _cached_books_state /
+-- _navbar_closing_intentionally makes onCloseWidget (above) treat a real
+-- close like a tab-switch rather than a dismissal, so _cached_books_state /
 -- _current_page / _cfg_cache are preserved in ScreenEngine's per-id storage
--- and the next _showHSCold() still gets a warm seed instead of a cold one.
+-- and the next cold _showHSCold() still gets a warm seed instead of a cold
+-- one — unchanged from before, and still what happens whenever soft-park
+-- itself doesn't apply (Custom Screens, more than one live screen, or
+-- SOFT_PARK_ENABLED = false).
 function ScreenWidget:onShowingReader()
     self.dithered = nil
+
+    if ScreenEngine.SOFT_PARK_ENABLED and self._id == _BUILTIN_ID
+            and #ScreenEngine.liveScreenIds() == 1 then
+        self._parked = true
+        self:_pauseBackgroundWork()
+        return
+    end
+
     self._navbar_closing_intentionally = true
     self:onClose()
 end

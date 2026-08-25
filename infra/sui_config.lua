@@ -81,8 +81,7 @@ M.ICON = {
     nav_next       = _KO .. "chevron.right.svg",
     ko_home        = _KO .. "home.svg",
     ko_star        = _KO .. "star.empty.svg",
-    ko_wifi_on     = _KO .. "wifi.open.100.svg",
-    ko_wifi_off    = _KO .. "wifi.open.0.svg",
+    ko_wifi        = _KO .. "wifi.open.100.svg",
     ko_menu        = _KO .. "appbar.menu.svg",
     ko_settings    = _KO .. "appbar.settings.svg",
     ko_search      = _KO .. "appbar.search.svg",
@@ -114,24 +113,24 @@ end
 
 -- Action catalogue.
 M.ALL_ACTIONS = {
-    { id = "home",              label = _("Library"),           icon = M.ICON.library     },
+    { id = "home",             label = _("Library"),          icon = M.ICON.library     },
     { id = "filemanager_menu",  label = _("File manager menu"), icon = M.ICON.ko_menu     },
     { id = "extract_book_info", label = _("Extract book info"), icon = M.ICON.plus_alt    },
-    { id = "homescreen",        label = _("Home"),              icon = M.ICON.ko_home     },
-    { id = "collections",       label = _("Collections"),       icon = M.ICON.collections },
-    { id = "history",           label = _("History"),           icon = M.ICON.history     },
-    { id = "recent",            label = _("Recent"),            icon = M.ICON.recent      },
-    { id = "continue",          label = _("Continue"),          icon = M.ICON.continue_   },
-    { id = "random_document",   label = _("Random"),            icon = M.ICON.random      },
-    { id = "favorites",         label = _("Favorites"),         icon = M.ICON.ko_star     },
-    { id = "bookmark_browser",  label = _("Bookmarks"),         icon = M.ICON.ko_bookmark },
-    { id = "wifi_toggle",       label = _("Wi-Fi"),             icon = M.ICON.ko_wifi_on  },
-    { id = "frontlight",        label = _("Brightness"),        icon = M.ICON.frontlight  },
-    { id = "night_mode",        label = _("Night Mode"),        icon = M.ICON.night       },
-    { id = "stats_calendar",    label = _("Stats"),             icon = M.ICON.stats       },
-    { id = "power",             label = _("Power"),             icon = M.ICON.power       },
-    { id = "sui_settings",      label = _("Settings"),          icon = M.ICON.ko_settings },
-    { id = "browse_authors",    label = _("Authors"),           icon = M.ICON.author,
+    { id = "homescreen",       label = _("Home"),             icon = M.ICON.ko_home     },
+    { id = "collections",      label = _("Collections"),      icon = M.ICON.collections },
+    { id = "history",          label = _("History"),          icon = M.ICON.history     },
+    { id = "recent",           label = _("Recent"),           icon = M.ICON.recent      },
+    { id = "continue",         label = _("Continue"),         icon = M.ICON.continue_   },
+    { id = "random_document",  label = _("Random"),           icon = M.ICON.random      },
+    { id = "favorites",        label = _("Favorites"),        icon = M.ICON.ko_star     },
+    { id = "bookmark_browser", label = _("Bookmarks"),        icon = M.ICON.ko_bookmark },
+    { id = "wifi_toggle",      label = _("Wi-Fi"),            icon = M.ICON.ko_wifi     },
+    { id = "frontlight",       label = _("Brightness"),       icon = M.ICON.frontlight  },
+    { id = "night_mode",       label = _("Night Mode"),       icon = M.ICON.night       },
+    { id = "stats_calendar",   label = _("Stats"),            icon = M.ICON.stats       },
+    { id = "power",            label = _("Power"),            icon = M.ICON.power       },
+    { id = "sui_settings",     label = _("Settings"),         icon = M.ICON.ko_settings },
+    { id = "browse_authors",   label = _("Authors"),          icon = M.ICON.author,
       browsemeta_mode = "author" },
     { id = "browse_series",     label = _("Series"),            icon = M.ICON.series,
       browsemeta_mode = "series" },
@@ -408,30 +407,31 @@ local function deviceHasWifi()
     return _has_wifi_toggle
 end
 
-function M.wifiIcon()
-    local QA = package.loaded["features/sui_quickactions"] or require("features/sui_quickactions")
-    local icon_on  = QA.getDefaultActionIcon("wifi_toggle") or M.ICON.ko_wifi_on
-    local icon_off = QA.getDefaultActionIcon("wifi_toggle_off") or M.ICON.ko_wifi_off
-
+-- Returns whether Wi-Fi is currently on. Single source of truth for the
+-- wifi_toggle Quick Action's is_active state (see features/sui_quickactions.lua),
+-- which dims the (single) Wi-Fi icon rather than swapping to a distinct
+-- "off" asset.
+function M.wifiOn()
     if M.wifi_optimistic ~= nil then
-        return M.wifi_optimistic and icon_on or icon_off
+        return M.wifi_optimistic == true
     end
-    if not deviceHasWifi() then return icon_off end
+    if not deviceHasWifi() then return false end
     local NetworkMgr = getNetworkMgr()
-    if not NetworkMgr then return icon_off end
+    if not NetworkMgr then return false end
     local ok_state, wifi_on = pcall(function() return NetworkMgr:isWifiOn() end)
-    if ok_state and wifi_on then return icon_on end
-    return icon_off
+    return ok_state and wifi_on == true
 end
-
-local _wifi_action_live = { id = "wifi_toggle", label = "", icon = "" }
 
 function M.getActionById(id)
     local QA = package.loaded["features/sui_quickactions"]
         or require("features/sui_quickactions")
     local entry = QA.getEntry(id)
     if entry and not entry.id then
-        return { id = id, label = entry.label, icon = entry.icon }
+        -- entry.dim carries the resolved on/off state for actions with an
+        -- is_active hook (e.g. wifi_toggle, night_mode) — keep it so callers
+        -- can dim the icon via UI.wrapDimmable, same as every other QA
+        -- consumer (see features/sui_quickactions.lua header comment).
+        return { id = id, label = entry.label, icon = entry.icon, dim = entry.dim }
     end
     return entry or M.ALL_ACTIONS[1]
 end
@@ -1859,6 +1859,22 @@ function M.invalidateTopbarConfigCache() _topbar_cfg_menu_cache = nil end
 -- Stats Database
 local _SQ3, _lfs_mod, _indexes_created = nil, nil, false
 function M.getStatsDbPath() return DataStorage:getSettingsDir() .. "/statistics.sqlite3" end
+
+-- Single source of truth for resolving a book's `md5` (partial_md5_checksum)
+-- to its `book.id` in statistics.sqlite3. A %s placeholder for the md5
+-- value — meant to be embedded via string.format(), either standalone or
+-- nested inside a larger query (e.g. a CTE), not executed as-is.
+--
+-- ORDER BY last_open DESC: the same file can end up with more than one row
+-- in `book` (e.g. after being moved/renamed and re-indexed). Ordering by
+-- last_open picks the row that was most recently active, deterministically,
+-- instead of whichever row a plain LIMIT 1 happens to visit first.
+--
+-- Every query in this plugin that resolves a book id from an md5 should go
+-- through this constant rather than inlining the WHERE/ORDER BY itself, so
+-- the tie-break rule only ever needs to change in one place.
+M.BOOK_ID_BY_MD5_SQL = "SELECT id FROM book WHERE md5 = '%s' ORDER BY last_open DESC LIMIT 1"
+
 function M.openStatsDB()
     if not _SQ3 then
         local ok, s = pcall(require, "lua-ljsqlite3/init")
@@ -1874,6 +1890,15 @@ function M.openStatsDB()
     if not _lfs_mod.attributes(db_path, "mode") then return nil end
     local ok, conn = pcall(_SQ3.open, db_path)
     if not (ok and conn) then return nil end
+    -- statistics.sqlite3 is also written to by KOReader's own ReadingStats
+    -- plugin during an active reading session. Without a busy timeout, a
+    -- query that lands while that write is in progress fails immediately
+    -- with "database is locked" instead of waiting for it to finish; the
+    -- caller then silently keeps whatever it had cached before. Setting a
+    -- busy timeout here makes SQLite retry internally for up to the given
+    -- window before giving up, so a transient write no longer surfaces as a
+    -- query failure.
+    pcall(function() conn:exec("PRAGMA busy_timeout = 3000;") end)
     if not _indexes_created then
         local idx_ok = pcall(function()
             conn:exec("CREATE INDEX IF NOT EXISTS idx_simpleui_book_md5 ON book(md5);")

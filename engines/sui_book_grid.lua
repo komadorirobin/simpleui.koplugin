@@ -604,8 +604,16 @@ local _NAV_ICON_SIZE = 16
 -- turnPageFn(delta) is called on tap; it owns clamping (via turnPage
 -- above), persisting the new page, and repainting — this function only
 -- decides whether each chevron is enabled for the CURRENT page/npages.
+--
+-- has_wallpaper (optional): when true, the chevrons are built inside
+-- Bottombar.withWallpaperAlphaIcons so their icons are alpha-blended from
+-- birth (see that function's doc comment for why it must happen at
+-- construction time, not after), and Bottombar.patchWallpaperIcon makes
+-- their button frame paint transparently too — together, the chevrons
+-- paint over the Homescreen wallpaper instead of showing their default
+-- opaque background.
 -- ---------------------------------------------------------------------------
-function GridRenderer.buildPageNavButtons(page, npages, row_h, turnPageFn)
+function GridRenderer.buildPageNavButtons(page, npages, row_h, turnPageFn, has_wallpaper)
     if npages <= 1 then return nil, nil end
     local icon_size = Screen:scaleBySize(_NAV_ICON_SIZE)
     local v_pad = math.max(0, math.floor((row_h - icon_size) / 2))
@@ -624,10 +632,20 @@ function GridRenderer.buildPageNavButtons(page, npages, row_h, turnPageFn)
             callback        = function() turnPageFn(delta) end,
         }
         Bottombar.patchDimmedIcon(btn)
+        if has_wallpaper then Bottombar.patchWallpaperIcon(btn) end
         return btn
     end
-    return make("chevron.left",  page > 1,      -1),
-           make("chevron.right", page < npages,  1)
+    local prev_btn, next_btn
+    if has_wallpaper then
+        Bottombar.withWallpaperAlphaIcons(function()
+            prev_btn, next_btn = make("chevron.left",  page > 1,      -1),
+                                  make("chevron.right", page < npages,  1)
+        end)
+    else
+        prev_btn, next_btn = make("chevron.left",  page > 1,      -1),
+                              make("chevron.right", page < npages,  1)
+    end
+    return prev_btn, next_btn
 end
 
 -- ---------------------------------------------------------------------------
@@ -727,11 +745,8 @@ function GridRenderer.build(w, ctx, opts)
     local paged = opts.paged and #fps > max_items
     ctx[npages_key] = npages
 
-    local ok_ss, SUIStyle2 = pcall(require, "features/sui_style")
-    local _theme_fg        = ok_ss and SUIStyle2 and SUIStyle2.getThemeColor("fg")
-    local _theme_secondary = ok_ss and SUIStyle2 and SUIStyle2.getThemeColor("text_secondary")
-    local _clr_blk        = _theme_fg or Blitbuffer.COLOR_BLACK
-    local _clr_sub        = _theme_secondary or _theme_fg or CLR_TEXT_SUB
+    local _clr_blk        = SUIStyle.COLOR.text_primary
+    local _clr_sub        = CLR_TEXT_SUB
 
     local SH          = getSH()
     local pfx         = ctx.pfx
@@ -855,7 +870,7 @@ function GridRenderer.build(w, ctx, opts)
             local badge = FrameContainer:new{
                 bordersize  = border_sz,
                 color       = border_color,
-                background  = Blitbuffer.gray(0.15),
+                background  = SUIStyle.COLOR.track,
                 padding     = 0,
                 dimen       = Geom:new{ w = badge_d, h = badge_d },
                 radius      = badge_r,
@@ -1014,10 +1029,10 @@ function GridRenderer.build(w, ctx, opts)
             cell_widget = OverlapGroup:new{
                 dimen = Geom:new{ w = cw, h = cell_h },
                 tappable,
-                LineWidget:new{ dimen = Geom:new{ w = cw, h = bw },    background = Blitbuffer.COLOR_BLACK },
-                LineWidget:new{ dimen = Geom:new{ w = cw, h = bw },    background = Blitbuffer.COLOR_BLACK, overlap_offset = {0, cell_h - bw} },
-                LineWidget:new{ dimen = Geom:new{ w = bw, h = cell_h }, background = Blitbuffer.COLOR_BLACK },
-                LineWidget:new{ dimen = Geom:new{ w = bw, h = cell_h }, background = Blitbuffer.COLOR_BLACK, overlap_offset = {cw - bw, 0} },
+                LineWidget:new{ dimen = Geom:new{ w = cw, h = bw },    background = SUIStyle.COLOR.text_primary },
+                LineWidget:new{ dimen = Geom:new{ w = cw, h = bw },    background = SUIStyle.COLOR.text_primary, overlap_offset = {0, cell_h - bw} },
+                LineWidget:new{ dimen = Geom:new{ w = bw, h = cell_h }, background = SUIStyle.COLOR.text_primary },
+                LineWidget:new{ dimen = Geom:new{ w = bw, h = cell_h }, background = SUIStyle.COLOR.text_primary, overlap_offset = {cw - bw, 0} },
             }
         end
 
@@ -1065,7 +1080,7 @@ function GridRenderer.build(w, ctx, opts)
         -- just cover the freshly-painted wallpaper with a solid rectangle.
         local content_row = row
         if not ctx.has_wallpaper then
-            local eraser_bg = (ok_ss and SUIStyle2 and SUIStyle2.getThemeColor("bg")) or Blitbuffer.COLOR_WHITE
+            local eraser_bg = SUIStyle.COLOR.surface
             local eraser = LineWidget:new{
                 dimen      = Geom:new{ w = inner_w, h = row_h },
                 background = eraser_bg,
@@ -1114,13 +1129,10 @@ function GridRenderer.build(w, ctx, opts)
     local has_box    = show_frame or solid_bg
     local border_sz  = show_frame and SUIStyle.BORDER_SZ or 0
     local radius     = has_box and math.floor(Screen:scaleBySize(12) * scale) or 0
-    local border_color = Blitbuffer.gray(0.72)
-    if ok_ss and SUIStyle2 then
-        border_color = SUIStyle2.getThemeColor("separator") or border_color
-    end
+    local border_color = SUIStyle.COLOR.gray
     local bg_color = nil
     if solid_bg then
-        bg_color = (ok_ss and SUIStyle2 and SUIStyle2.getThemeColor("bg")) or Blitbuffer.COLOR_WHITE
+        bg_color = SUIStyle.COLOR.surface
     end
 
     local result = FrameContainer:new{
@@ -1511,24 +1523,47 @@ end
 -- ---------------------------------------------------------------------------
 -- clearRowCaches(ctx) — invalidates every row module's cached file list
 -- (ctx[cache_key], populated lazily on a row module's first build() call
--- within a given ctx and never invalidated again for that ctx's lifetime)
--- without touching anything else in ctx.
+-- within a given ctx and never invalidated again for that ctx's lifetime),
+-- plus the section-label header cache (page/npages indicator + chevrons)
+-- that any paginated row module keeps in sync with that same file list.
 --
--- Needed because a "kept-alive" ctx (sui_homescreen.lua's _refreshImmediate
--- with keep_cache=true, used after book-hold-dialog actions like status
--- changes, collection membership, or TBR add/remove — full rebuilds are
--- avoided there since cover prefetch and config gathering are expensive)
--- otherwise keeps serving each row's pre-action file list forever: e.g. a
--- book just removed from TBR still shows in the TBR row until the whole
--- Homescreen is rebuilt. Per-row lists are cheap to recompute (a
--- ReadCollection/settings lookup, not the I/O keep_cache protects), so
+-- Needed because a "kept-alive" ctx (sui_screen_engine.lua's
+-- _refreshImmediate with keep_cache=true, used after book-hold-dialog
+-- actions like status changes, collection membership, or TBR add/remove —
+-- full rebuilds are avoided there since cover prefetch and config gathering
+-- are expensive) otherwise keeps serving each row's pre-action file list
+-- forever: e.g. a book just removed from TBR still shows in the TBR row
+-- until the whole screen is rebuilt. Per-row lists are cheap to recompute
+-- (a ReadCollection/settings lookup, not the I/O keep_cache protects), so
 -- clearing them on every refresh — even a "kept-alive" one — is cheap
 -- insurance.
+--
+-- The label-cache invalidation lives here (rather than at each call site)
+-- because it is the SAME underlying condition every clearRowCaches() caller
+-- already has: a paginated row's file list is changing, which can shift
+-- its page/npages. sui_screen_engine.lua's sectionLabel() memoizes each
+-- row's header (text + chevrons) by "mod_id|page|npages", not by the
+-- ScreenWidget instance the chevrons' tap handler closes over — so if the
+-- recomputed page/npages happens to match a combination already cached
+-- under a since-replaced instance (rotation, tab switch, a Custom Screen
+-- reopen, ...), the row would keep showing a header wired to a dead
+-- closure: no error, the chevrons would just silently do nothing.
+-- Invalidating unconditionally here, alongside the file-list clear that
+-- already has to happen at the same moment, means every current and future
+-- clearRowCaches() caller is covered automatically, instead of relying on
+-- each one to separately remember to also invalidate the label cache.
+-- engines/sui_screen_engine.lua is required lazily (pcall, same pattern
+-- that file already uses in the other direction for sui_book_grid.lua) to
+-- avoid a load-order dependency between the two engines.
 -- ---------------------------------------------------------------------------
 function GridRenderer.clearRowCaches(ctx)
     if not ctx then return end
     for key in pairs(GridRenderer._known_row_cache_keys) do
         ctx[key] = nil
+    end
+    local ok_se, ScreenEngine = pcall(require, "engines/sui_screen_engine")
+    if ok_se and ScreenEngine and ScreenEngine.invalidateLabelCache then
+        ScreenEngine.invalidateLabelCache()
     end
 end
 
