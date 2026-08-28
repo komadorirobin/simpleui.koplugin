@@ -1692,8 +1692,10 @@ function HomescreenWidget:_buildCtx()
     local mod_r  = Registry.get("recent")
     local mod_cd = Registry.get("coverdeck")
     local show_c = mod_c and Registry.isEnabled(mod_c, PFX)
+    local coverdeck_uses_recent = mod_cd and Registry.isEnabled(mod_cd, PFX)
+        and cfg.coverdeck.source == "recent"
     local show_r = (mod_r and Registry.isEnabled(mod_r, PFX))
-                or (mod_cd and Registry.isEnabled(mod_cd, PFX))
+                or coverdeck_uses_recent
 
     if not self._cached_books_state then
         local SH = _getBookShared()

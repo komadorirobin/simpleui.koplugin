@@ -12,6 +12,7 @@ local CACHE_AT_KEY = "simpleui_bookorbit_want_updated_at"
 local MATCH_CACHE_KEY = "simpleui_bookorbit_want_id_paths"
 local LOCAL_SCAN_AT_KEY = "simpleui_bookorbit_want_local_scan_at"
 local LOCAL_SCAN_INTERVAL = 6 * 60 * 60
+local AUTO_KEY = "simpleui_bookorbit_want_auto_refresh"
 local M = {}
 local _cached_files
 local _cached_matches
@@ -82,6 +83,15 @@ end
 
 function M.getLastUpdated()
     return tonumber(SUISettings:readSetting(CACHE_AT_KEY))
+end
+
+function M.shouldAutoRefreshHome(pfx, module_enabled_key)
+    pfx = pfx or "simpleui_hs_"
+    module_enabled_key = module_enabled_key or "bookorbit_want_enabled"
+    if not SUISettings:nilOrTrue(AUTO_KEY) then return false end
+    if SUISettings:readSetting(pfx .. module_enabled_key) == true then return true end
+    return SUISettings:readSetting(pfx .. "coverdeck_enabled") == true
+        and SUISettings:readSetting(pfx .. "coverdeck_source") == "bookorbit_want"
 end
 
 function M.mapBookIdsToFiles(book_ids, by_book_id, file_exists)

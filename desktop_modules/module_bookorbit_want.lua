@@ -18,11 +18,19 @@ local function _refreshScreen(screen)
     if screen._ctx_cache then
         screen._ctx_cache[CACHE_KEY] = nil
         screen._ctx_cache["_row_page_" .. ID] = 1
+        screen._ctx_cache._bookorbit_want_coverdeck_fps = nil
+    end
+    local refreshed = false
+    if SUISettings:readSetting("simpleui_hs_coverdeck_source") == "bookorbit_want"
+            and screen._book_mod_slots and screen._book_mod_slots.coverdeck
+            and screen._refreshBookModSlot then
+        refreshed = screen:_refreshBookModSlot("coverdeck") or refreshed
     end
     if screen._book_mod_slots and screen._book_mod_slots[ID]
-            and screen._refreshBookModSlot and screen:_refreshBookModSlot(ID) then
-        return
+            and screen._refreshBookModSlot then
+        refreshed = screen:_refreshBookModSlot(ID) or refreshed
     end
+    if refreshed then return end
     if screen._refreshImmediate then screen:_refreshImmediate(true) end
 end
 
@@ -101,9 +109,7 @@ local M = RowRenderer.makeModule{
 
 function M.scheduleAutoRefresh(screen, pfx)
     pfx = pfx or "simpleui_hs_"
-    if not SUISettings:nilOrTrue(AUTO_KEY) then return false end
-    local enabled = SUISettings:readSetting(pfx .. M.enabled_key)
-    if enabled ~= true then return false end
+    if not BookOrbitWant.shouldAutoRefreshHome(pfx, M.enabled_key) then return false end
     return BookOrbitWant.requestRefresh{
         on_done = function(result)
             if result.ok and result.changed then _refreshScreen(screen) end

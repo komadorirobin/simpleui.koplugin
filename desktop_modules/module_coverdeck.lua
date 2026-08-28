@@ -1,5 +1,6 @@
 -- module_coverdeck.lua
--- Displays recent or TBR books as a cover-flow carousel.
+-- Displays books from recent history, collections, TBR, or BookOrbit as a
+-- cover-flow carousel.
 
 local Blitbuffer  = require("ffi/blitbuffer")
 local BD             = require("ui/bidi")
@@ -68,7 +69,7 @@ end
 -- Settings keys
 -- ---------------------------------------------------------------------------
 
-local SETTING_SOURCE        = "coverdeck_source"         -- pfx .. this; "recent"|"tbr"
+local SETTING_SOURCE        = "coverdeck_source"
 local SETTING_SHOW_FINISHED = "coverdeck_show_finished"   -- pfx .. this; default OFF
 local ELEM_ORDER_KEY        = "coverdeck_stats_order"     -- pfx .. this
 local MAIN_ORDER_KEY        = "coverdeck_main_order"      -- pfx .. this
@@ -102,7 +103,13 @@ local function getSource(pfx)
 end
 
 local function getSourceLabel(source)
-    return source == "tbr" and _("To Be Read") or _("Recent Books")
+    if source == "tbr" then return _("To Be Read") end
+    if source == "bookorbit_want" then return _("BookOrbit Want to Read") end
+    if source == "favorites" then return _("Favorites") end
+    if type(source) == "string" and source:match("^collection:") then
+        return source:sub(12)
+    end
+    return _("Recent Books")
 end
 
 local function showFinished(pfx)
@@ -360,6 +367,18 @@ local function buildTBRFps(ctx)
     return fps
 end
 
+local function buildBookOrbitWantFps(ctx)
+    if not ctx._bookorbit_want_coverdeck_fps then
+        local ok, source = pcall(require, "integrations/sui_bookorbit_want")
+        if ok and source and type(source.getCachedFiles) == "function" then
+            ctx._bookorbit_want_coverdeck_fps = source.getCachedFiles()
+        else
+            ctx._bookorbit_want_coverdeck_fps = {}
+        end
+    end
+    return ctx._bookorbit_want_coverdeck_fps
+end
+
 local function buildCollectionFps(coll_name, ctx)
     local ok_rc, rc = pcall(require, "readcollection")
     if not (ok_rc and rc) then return {} end
@@ -427,6 +446,8 @@ local function getFps(source, ctx)
     local fps
     if source == "tbr" then
         fps = buildTBRFps(ctx)
+    elseif source == "bookorbit_want" then
+        fps = buildBookOrbitWantFps(ctx)
     elseif source == "favorites" then
         fps = buildFavoritesFps(ctx)
     elseif source:match("^collection:") then
@@ -486,6 +507,13 @@ end
 -- Returns the stats table or nil; does NOT set ctx.db_conn_fatal (no ctx here).
 function M.fetchBookStatsForCtx(md5, db_conn, force)
     return fetchBookStats(md5, db_conn, nil, force)
+end
+
+-- Data API used by tests and by other homescreen components that need to
+-- resolve the same source ordering as the carousel. The returned list is not
+-- capped: Cover Deck renders five positions at a time and navigates the rest.
+function M.getSourceFileList(source, ctx)
+    return getFps(source, ctx)
 end
 
 -- ---------------------------------------------------------------------------
@@ -1175,6 +1203,8 @@ function M.getMenuItems(ctx_menu)
                 display_src = _lc("Recent Books")
             elseif src == "tbr" then
                 display_src = _lc("To Be Read")
+            elseif src == "bookorbit_want" then
+                display_src = _lc("BookOrbit Want to Read")
             elseif src == "favorites" then
                 display_src = _lc("Favorites")
             elseif src:match("^collection:") then
@@ -1201,6 +1231,15 @@ function M.getMenuItems(ctx_menu)
                     keep_menu_open = true,
                     callback     = function()
                         SUISettings:saveSetting(pfx .. SETTING_SOURCE, "tbr")
+                        refresh()
+                    end,
+                },
+                {
+                    text         = _lc("BookOrbit Want to Read"), radio = true,
+                    checked_func = function() return getSource(pfx) == "bookorbit_want" end,
+                    keep_menu_open = true,
+                    callback     = function()
+                        SUISettings:saveSetting(pfx .. SETTING_SOURCE, "bookorbit_want")
                         refresh()
                     end,
                 },

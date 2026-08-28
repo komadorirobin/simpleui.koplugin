@@ -21,6 +21,7 @@ package.loaded["ui/uimanager"] = {
 }
 package.loaded["sui_store"] = {
     readSetting = function(_self, key) return settings[key] end,
+    nilOrTrue = function(_self, key) return settings[key] ~= false end,
     setNoFlush = function(_self, key, value) settings[key] = value end,
     flush = function() end,
 }
@@ -63,6 +64,19 @@ test("deduplicates paths and skips missing local files", function()
     }, function(path) return path ~= "/books/missing.epub" end)
     eq(#files, 1)
     eq(files[1], "/books/same.epub")
+end)
+
+test("auto refreshes when BookOrbit is used only as the Cover Deck source", function()
+    settings.simpleui_bookorbit_want_auto_refresh = true
+    settings.simpleui_hs_bookorbit_want_enabled = false
+    settings.simpleui_hs_coverdeck_enabled = true
+    settings.simpleui_hs_coverdeck_source = "bookorbit_want"
+    eq(Source.shouldAutoRefreshHome("simpleui_hs_", "bookorbit_want_enabled"), true)
+
+    settings.simpleui_hs_coverdeck_source = "recent"
+    eq(Source.shouldAutoRefreshHome("simpleui_hs_", "bookorbit_want_enabled"), false)
+    settings.simpleui_hs_bookorbit_want_enabled = true
+    eq(Source.shouldAutoRefreshHome("simpleui_hs_", "bookorbit_want_enabled"), true)
 end)
 
 test("builds a BookOrbit id map from the Library Sync manifest", function()
