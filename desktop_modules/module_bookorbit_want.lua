@@ -37,6 +37,22 @@ local function _resultText(result)
     if result.error == "offline" then return _("BookOrbit refresh skipped: offline.") end
     if result.error == "not_configured" then return _("BookOrbit is not configured.") end
     if result.error == "bookorbit_unavailable" then return _("BookOrbit plugin is not available.") end
+    if result.error == "bookorbit_update_required" then
+        return _("BookOrbit 1.4 or newer is required.")
+    end
+    if result.error == 401 or result.error == 403 then
+        return _("BookOrbit rejected the login. Sign in again in the BookOrbit plugin.")
+    end
+    if result.error == 404 then
+        return _("The BookOrbit server does not support Want to Read yet.")
+    end
+    if result.error == "cancelled" then return _("BookOrbit refresh was cancelled.") end
+    if result.error == "invalid_response" then
+        return _("BookOrbit returned an invalid Want to Read response.")
+    end
+    if type(result.error) == "number" then
+        return string.format(_("BookOrbit refresh failed (server error %d)."), result.error)
+    end
     return _("Could not refresh BookOrbit Want to Read.")
 end
 

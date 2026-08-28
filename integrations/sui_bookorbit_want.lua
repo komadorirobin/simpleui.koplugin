@@ -9,9 +9,6 @@ local SUISettings = require("sui_store")
 
 local CACHE_KEY = "simpleui_bookorbit_want_files"
 local CACHE_AT_KEY = "simpleui_bookorbit_want_updated_at"
-local PAGE_SIZE = 100
-local MAX_PAGES = 100
-
 local M = {}
 local _cached_files
 local _running = false
@@ -102,6 +99,9 @@ local function _fetch()
 
     local ok_client, client = pcall(plugin.newClient, plugin)
     if not ok_client or not client then return nil, "client_unavailable" end
+    if type(client.catalogDashboardSection) ~= "function" then
+        return nil, "bookorbit_update_required"
+    end
 
     local maps_ready = false
     local ok_ready, ready = pcall(StateManager.hasOnDeviceMaps)
@@ -109,27 +109,22 @@ local function _fetch()
 
     local completed, result = client:runInSubprocess(function()
         local ids = {}
-        for page = 1, MAX_PAGES do
-            local body, err = client:catalogBooks{
-                page = page,
-                size = PAGE_SIZE,
-                sort = "recently_added",
-                order = "desc",
-                readStatus = "want_to_read",
-            }
-            if not body then return nil, err end
-            for _, book in ipairs(body.items or {}) do
-                if book.id ~= nil then ids[#ids + 1] = book.id end
-            end
-            if body.hasNext ~= true then
-                local computed_maps
-                if not maps_ready then
-                    computed_maps = StateManager.computeOnDeviceMaps()
-                end
-                return { book_ids = ids, computed_maps = computed_maps }
-            end
+        -- Want to Read is a dashboard source in BookOrbit, not a valid value
+        -- for the ordinary catalog's readStatus filter.
+        local body, err = client:catalogDashboardSection("want-to-read")
+        if not body then return nil, err end
+        local section = type(body.section) == "table" and body.section or nil
+        if not section or type(section.books) ~= "table" then
+            return nil, "invalid_response"
         end
-        return nil, "too_many_pages"
+        for _, book in ipairs(section.books) do
+            if book.id ~= nil then ids[#ids + 1] = book.id end
+        end
+        local computed_maps
+        if not maps_ready then
+            computed_maps = StateManager.computeOnDeviceMaps()
+        end
+        return { book_ids = ids, computed_maps = computed_maps }
     end)
 
     if not completed then return nil, "cancelled" end

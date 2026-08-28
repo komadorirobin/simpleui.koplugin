@@ -318,6 +318,30 @@ msgid "BookOrbit plugin is not available."
 msgstr "BookOrbit-pluginet är inte tillgängligt."
 
 #: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit 1.4 or newer is required."
+msgstr "BookOrbit 1.4 eller senare krävs."
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit rejected the login. Sign in again in the BookOrbit plugin."
+msgstr "BookOrbit avvisade inloggningen. Logga in igen i BookOrbit-pluginet."
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "The BookOrbit server does not support Want to Read yet."
+msgstr "BookOrbit-servern stöder ännu inte Vill läsa."
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit refresh was cancelled."
+msgstr "BookOrbit-uppdateringen avbröts."
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit returned an invalid Want to Read response."
+msgstr "BookOrbit returnerade ett ogiltigt svar för Vill läsa."
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit refresh failed (server error %d)."
+msgstr "BookOrbit-uppdateringen misslyckades (serverfel %d)."
+
+#: desktop_modules/module_bookorbit_want.lua
 msgid "Could not refresh BookOrbit Want to Read."
 msgstr "Kunde inte uppdatera BookOrbit Vill läsa."
 

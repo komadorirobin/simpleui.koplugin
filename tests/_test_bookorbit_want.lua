@@ -64,20 +64,21 @@ test("deduplicates paths and skips missing local files", function()
     eq(files[1], "/books/same.epub")
 end)
 
-test("refreshes every server page into the local filepath cache", function()
-    local requested_pages = {}
+test("refreshes the dashboard Want to Read section into the local filepath cache", function()
+    local requested_sections = {}
     local client = {
         runInSubprocess = function(_self, fn)
             local body, err = fn()
             return true, { body = body, err = err }
         end,
-        catalogBooks = function(_self, params)
-            requested_pages[#requested_pages + 1] = params.page
-            eq(params.readStatus, "want_to_read")
-            if params.page == 1 then
-                return { items = { { id = 7 }, { id = 99 } }, hasNext = true }
-            end
-            return { items = { { id = 5 } }, hasNext = false }
+        catalogDashboardSection = function(_self, section_type)
+            requested_sections[#requested_sections + 1] = section_type
+            return {
+                section = {
+                    type = section_type,
+                    books = { { id = 7 }, { id = 99 }, { id = 5 } },
+                },
+            }
         end,
     }
     local plugin = {
@@ -110,7 +111,8 @@ test("refreshes every server page into the local filepath cache", function()
     }
 
     eq(started, true)
-    eq(#requested_pages, 2)
+    eq(#requested_sections, 1)
+    eq(requested_sections[1], "want-to-read")
     eq(result.ok, true)
     eq(result.changed, true)
     eq(result.count, 2)
@@ -118,6 +120,36 @@ test("refreshes every server page into the local filepath cache", function()
     local cached = Source.getCachedFiles()
     eq(cached[1], "/books/seven.epub")
     eq(cached[2], "/books/five.epub")
+end)
+
+test("reports an old BookOrbit plugin instead of calling the catalog filter", function()
+    local plugin = {
+        isLoggedIn = function() return true end,
+        newClient = function()
+            return {
+                runInSubprocess = function()
+                    error("must not run")
+                end,
+            }
+        end,
+    }
+    package.loaded["pluginloader"] = {
+        getPluginInstance = function() return plugin end,
+    }
+    package.loaded["bookorbit_state_manager"] = {
+        hasOnDeviceMaps = function() return true end,
+    }
+
+    settings = {}
+    Source._resetForTests()
+    local result
+    Source.requestRefresh{
+        delay = 0,
+        on_done = function(value) result = value end,
+    }
+
+    eq(result.ok, false)
+    eq(result.error, "bookorbit_update_required")
 end)
 
 print(string.format("PASS %d  FAIL %d", passed, failed))
