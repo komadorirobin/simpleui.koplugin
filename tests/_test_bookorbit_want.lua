@@ -91,6 +91,12 @@ test("builds a BookOrbit id map from the Library Sync manifest", function()
             remote_key = "id:5",
             refreshed_at = 20,
         },
+        ["/books/legacy.epub"] = {
+            server_type = "bookorbit",
+            bookorbit_book_id = 11,
+            remote_key = "url:/legacy-download",
+            refreshed_at = 30,
+        },
         ["/books/seven.epub"] = {
             server_type = "grimmory",
             remote_key = "id:7",
@@ -102,6 +108,7 @@ test("builds a BookOrbit id map from the Library Sync manifest", function()
     } }, function(path) return path ~= "/books/missing.epub" end)
     eq(files[3], "/books/three.epub")
     eq(files[5], "/books/five.epub")
+    eq(files[11], "/books/legacy.epub")
     eq(files[7], nil)
     eq(files[9], nil)
 end)
@@ -273,6 +280,100 @@ test("uses Library Sync filename matching for books absent from the manifest", f
     eq(result.count, 1)
     eq(result.skipped, 0)
     eq(Source.getCachedFiles()[1], "/books/legacy.epub")
+end)
+
+test("sets and clears Want to Read without changing the cache before server success", function()
+    local requested = {}
+    local applied_version
+    local client = {
+        runInSubprocess = function(_self, fn)
+            local body, err = fn()
+            return true, { body = body, err = err }
+        end,
+        catalogSetReadStatus = function(_self, book_id, status)
+            requested[#requested + 1] = { id = book_id, status = status }
+            return { readStatus = status, libraryVersion = "version-2" }
+        end,
+    }
+    package.loaded["pluginloader"] = {
+        getPluginInstance = function(_self, name)
+            if name == "bookorbit" then
+                return {
+                    isLoggedIn = function() return true end,
+                    newClient = function() return client end,
+                }
+            end
+        end,
+    }
+    package.loaded["bookorbit_state_manager"] = {
+        onDeviceMaps = function() return { byBookId = {} } end,
+        applyLibraryVersion = function(version) applied_version = version end,
+    }
+    package.loaded["ui/trapper"] = { wrap = function(_self, fn) fn() end }
+
+    settings = {
+        simpleui_bookorbit_want_id_paths = { ["3"] = "/books/three.epub" },
+    }
+    Source._resetForTests()
+    local added
+    eq(Source.setWantToRead("/books/three.epub", true, {
+        delay = 0,
+        on_done = function(result) added = result end,
+    }), true)
+    eq(added.ok, true)
+    eq(added.wanted, true)
+    eq(requested[1].id, "3")
+    eq(requested[1].status, "want_to_read")
+    eq(Source.isWantToRead("/books/three.epub"), true)
+    eq(applied_version, "version-2")
+
+    local removed
+    eq(Source.setWantToRead("/books/three.epub", false, {
+        delay = 0,
+        on_done = function(result) removed = result end,
+    }), true)
+    eq(removed.ok, true)
+    eq(removed.wanted, false)
+    eq(requested[2].status, "unread")
+    eq(Source.isWantToRead("/books/three.epub"), false)
+    eq(settings.simpleui_bookorbit_want_id_paths["3"], "/books/three.epub")
+end)
+
+test("keeps the local Want to Read cache unchanged when BookOrbit rejects a write", function()
+    local client = {
+        runInSubprocess = function(_self, fn)
+            local body, err = fn()
+            return true, { body = body, err = err }
+        end,
+        catalogSetReadStatus = function() return nil, 503 end,
+    }
+    package.loaded["pluginloader"] = {
+        getPluginInstance = function(_self, name)
+            if name == "bookorbit" then
+                return {
+                    isLoggedIn = function() return true end,
+                    newClient = function() return client end,
+                }
+            end
+        end,
+    }
+    package.loaded["bookorbit_state_manager"] = {
+        onDeviceMaps = function() return { byBookId = {} } end,
+    }
+    package.loaded["ui/trapper"] = { wrap = function(_self, fn) fn() end }
+
+    settings = {
+        simpleui_bookorbit_want_id_paths = { ["5"] = "/books/five.epub" },
+    }
+    Source._resetForTests()
+    local result
+    Source.setWantToRead("/books/five.epub", true, {
+        delay = 0,
+        on_done = function(value) result = value end,
+    })
+    eq(result.ok, false)
+    eq(result.error, 503)
+    eq(Source.isWantToRead("/books/five.epub"), false)
 end)
 
 print(string.format("PASS %d  FAIL %d", passed, failed))

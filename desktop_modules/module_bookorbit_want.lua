@@ -119,5 +119,9 @@ end
 
 M.getCachedFiles = BookOrbitWant.getCachedFiles
 M.refreshNow = BookOrbitWant.requestRefresh
+function M.refreshVisible()
+    local HS = package.loaded["sui_homescreen"]
+    _refreshScreen(HS and HS._instance)
+end
 
 return M

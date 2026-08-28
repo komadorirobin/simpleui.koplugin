@@ -110,6 +110,8 @@ local _HOT_UPDATE_MODULES = {
     "desktop_modules/sui_book_row",
     "desktop_modules/module_book_rows",
     "desktop_modules/module_tbr",
+    "desktop_modules/module_bookorbit_want",
+    "integrations/sui_bookorbit_want",
     "desktop_modules/module_coll_row",
     "desktop_modules/module_coverdeck",
     "desktop_modules/module_app_launcher",
@@ -140,6 +142,8 @@ local _PLUGIN_MODULES = {
     "desktop_modules/sui_book_row",
     "desktop_modules/module_book_rows",
     "desktop_modules/module_tbr",
+    "desktop_modules/module_bookorbit_want",
+    "integrations/sui_bookorbit_want",
     "desktop_modules/module_coll_row",
     "desktop_modules/module_coverdeck",
     "desktop_modules/module_app_launcher",
@@ -1034,6 +1038,88 @@ function SimpleUIPlugin:init()
                     return _makeTBRRow(file, is_file, book_props, close_refresh)
                 end)
 
+                local ok_bo, BookOrbitWant = pcall(require, "integrations/sui_bookorbit_want")
+                local function _bookOrbitStatusText(result)
+                    if result.ok then
+                        return result.wanted
+                            and _("Added to BookOrbit Want to Read.")
+                            or _("Removed from BookOrbit Want to Read.")
+                    end
+                    if result.error == "offline" then return _("BookOrbit update skipped: offline.") end
+                    if result.error == "not_linked" then return _("This book is not linked to BookOrbit.") end
+                    if result.error == "busy" then return _("BookOrbit is already updating this book.") end
+                    if result.error == "not_configured" then return _("BookOrbit is not configured.") end
+                    if result.error == "bookorbit_unavailable" then
+                        return _("BookOrbit plugin is not available.")
+                    end
+                    if result.error == "bookorbit_update_required" then
+                        return _("BookOrbit 1.4 or newer is required.")
+                    end
+                    if result.error == 401 or result.error == 403 then
+                        return _("BookOrbit rejected the login. Sign in again in the BookOrbit plugin.")
+                    end
+                    if result.error == "cancelled" then return _("BookOrbit update was cancelled.") end
+                    if type(result.error) == "number" then
+                        return string.format(_("BookOrbit update failed (server error %d)."), result.error)
+                    end
+                    return _("Could not update BookOrbit Want to Read.")
+                end
+
+                local function _makeBookOrbitWantRow(file, is_file, _book_props, close_cb)
+                    if not (ok_bo and BookOrbitWant and is_file) then return nil end
+                    local book_id = BookOrbitWant.getBookId(file)
+                    if not book_id then return nil end
+                    local function label()
+                        return BookOrbitWant.isWantToRead(file)
+                            and _("Remove from BookOrbit Want to Read")
+                            or _("Add to BookOrbit Want to Read")
+                    end
+                    return { {
+                        text = label(),
+                        text_func = label,
+                        enabled = not BookOrbitWant.isStatusUpdateRunning(file),
+                        enabled_func = function()
+                            return not BookOrbitWant.isStatusUpdateRunning(file)
+                        end,
+                        callback = function()
+                            local wanted = not BookOrbitWant.isWantToRead(file)
+                            UIManager:show(InfoMessage:new{
+                                text = _("Updating BookOrbit…"),
+                                timeout = 1,
+                            })
+                            BookOrbitWant.setWantToRead(file, wanted, {
+                                on_done = function(result)
+                                    if result.ok then
+                                        local ok_mod, module = pcall(require,
+                                            "desktop_modules/module_bookorbit_want")
+                                        if ok_mod and module and module.refreshVisible then
+                                            pcall(module.refreshVisible)
+                                        end
+                                        if close_cb then close_cb() end
+                                    end
+                                    UIManager:show(InfoMessage:new{
+                                        text = _bookOrbitStatusText(result),
+                                        timeout = 3,
+                                    })
+                                end,
+                            })
+                        end,
+                    } }
+                end
+
+                if ok_bo and BookOrbitWant then
+                    FM.instance:addFileDialogButtons("sui_bookorbit_want",
+                        function(file, is_file, book_props)
+                            local close_refresh = function()
+                                local fc = FM.instance and FM.instance.file_chooser
+                                local dlg = fc and fc.file_dialog
+                                if dlg then UIManager:close(dlg) end
+                                if fc then fc:refreshPath() end
+                            end
+                            return _makeBookOrbitWantRow(file, is_file, book_props, close_refresh)
+                        end)
+                end
+
                 -- 2. Search results (FileSearcher.onMenuHold).
                 --
                 -- The problem: file_dialog_added_buttons row_funcs are called as
@@ -1052,6 +1138,7 @@ function SimpleUIPlugin:init()
                 if ok_fs and FS and not FS._sui_onMenuHold_patched then
                     FS._sui_onMenuHold_patched = true
                     local orig_onMenuHold = FS.onMenuHold
+                    FS._sui_orig_onMenuHold = orig_onMenuHold
                     FS.onMenuHold = function(menu_self, item)
                         -- Wrap every added row_func so it receives a close_cb
                         -- that closes menu_self.file_dialog — same as the native
@@ -1095,6 +1182,15 @@ function SimpleUIPlugin:init()
                         end
                         table.insert(FS.file_dialog_added_buttons, row_func)
                         FS.file_dialog_added_buttons.index["sui_tbr"] =
+                            #FS.file_dialog_added_buttons
+                    end
+                    if ok_bo and BookOrbitWant
+                            and FS.file_dialog_added_buttons.index["sui_bookorbit_want"] == nil then
+                        table.insert(FS.file_dialog_added_buttons,
+                            function(file, is_file, book_props, close_cb)
+                                return _makeBookOrbitWantRow(file, is_file, book_props, close_cb)
+                            end)
+                        FS.file_dialog_added_buttons.index["sui_bookorbit_want"] =
                             #FS.file_dialog_added_buttons
                     end
                 end
@@ -1341,6 +1437,8 @@ local _PLUGIN_MODULES = {
     "desktop_modules/sui_book_row",
     "desktop_modules/module_book_rows",
     "desktop_modules/module_tbr",
+    "desktop_modules/module_bookorbit_want",
+    "integrations/sui_bookorbit_want",
     "desktop_modules/module_coll_row",
     "desktop_modules/quotes",
 }
@@ -1459,6 +1557,7 @@ function SimpleUIPlugin:onTeardown()
     local FM = package.loaded["apps/filemanager/filemanager"]
     if FM and FM.instance and FM.instance.removeFileDialogButtons then
         pcall(function() FM.instance:removeFileDialogButtons("sui_tbr") end)
+        pcall(function() FM.instance:removeFileDialogButtons("sui_bookorbit_want") end)
     end
     -- Remove the TBR button from the FileSearcher table and restore the original onMenuHold.
     local FS = package.loaded["apps/filemanager/filemanagerfilesearcher"]
@@ -1484,6 +1583,22 @@ function SimpleUIPlugin:onTeardown()
                         if i > idx then
                             FS.file_dialog_added_buttons.index[id] = i - 1
                         end
+                    end
+                    if #FS.file_dialog_added_buttons == 0 then
+                        FS.file_dialog_added_buttons = nil
+                    end
+                end)
+            end
+        end
+        if FS.file_dialog_added_buttons then
+            local idx = FS.file_dialog_added_buttons.index
+                and FS.file_dialog_added_buttons.index["sui_bookorbit_want"]
+            if idx then
+                pcall(function()
+                    table.remove(FS.file_dialog_added_buttons, idx)
+                    FS.file_dialog_added_buttons.index["sui_bookorbit_want"] = nil
+                    for id, i in pairs(FS.file_dialog_added_buttons.index) do
+                        if i > idx then FS.file_dialog_added_buttons.index[id] = i - 1 end
                     end
                     if #FS.file_dialog_added_buttons == 0 then
                         FS.file_dialog_added_buttons = nil

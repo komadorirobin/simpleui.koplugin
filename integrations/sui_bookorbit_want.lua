@@ -16,8 +16,12 @@ local AUTO_KEY = "simpleui_bookorbit_want_auto_refresh"
 local M = {}
 local _cached_files
 local _cached_matches
+local _cached_path_ids
 local _running = false
 local _listeners = {}
+local _status_updates = {}
+local _cache_generation = 0
+local _connected
 
 local function _copyList(list)
     local copy = {}
@@ -166,9 +170,12 @@ function M.librarySyncManifestMaps(manifest, file_exists, metadata_key)
         if type(path) == "string" and type(entry) == "table"
                 and entry.server_type == "bookorbit" and file_exists(path) then
             local timestamp = tonumber(entry.refreshed_at or entry.tracked_at) or 0
-            local book_id = type(entry.remote_key) == "string"
-                and entry.remote_key:match("^id:(%d+)$") or nil
+            local book_id = entry.bookorbit_book_id or entry.book_id or entry.bookId
+            if book_id == nil and type(entry.remote_key) == "string" then
+                book_id = entry.remote_key:match("^id:(%d+)$")
+            end
             if book_id then
+                book_id = tostring(book_id)
                 local previous = id_candidates[book_id]
                 if not previous or timestamp > previous.timestamp
                         or (timestamp == previous.timestamp and path < previous.path) then
@@ -223,6 +230,184 @@ local function _librarySyncMaps()
     return plugin, by_book_id, by_metadata
 end
 
+local function _rememberPathIds(path_ids, by_book_id)
+    for book_id, path in pairs(by_book_id or {}) do
+        if _fileExists(path) then path_ids[path] = tostring(book_id) end
+    end
+end
+
+local function _loadPathIds()
+    if _cached_path_ids then return _cached_path_ids end
+
+    local path_ids = {}
+    _rememberPathIds(path_ids, _loadMatchCache())
+
+    local ok_sm, StateManager = pcall(require, "bookorbit_state_manager")
+    if ok_sm and StateManager and type(StateManager.onDeviceMaps) == "function" then
+        local ok_maps, maps = pcall(StateManager.onDeviceMaps)
+        if ok_maps and type(maps) == "table" then
+            _rememberPathIds(path_ids, maps.byBookId)
+        end
+    end
+
+    local _, by_book_id = _librarySyncMaps()
+    _rememberPathIds(path_ids, by_book_id)
+    _cached_path_ids = path_ids
+    return path_ids
+end
+
+function M.getBookId(filepath)
+    if not _fileExists(filepath) then return nil end
+    local book_id = _loadPathIds()[filepath]
+    if book_id then return book_id end
+
+    -- A Library Sync download may have completed since this cache was built.
+    _cached_path_ids = nil
+    return _loadPathIds()[filepath]
+end
+
+function M.isWantToRead(filepath)
+    for _, path in ipairs(_loadCache()) do
+        if path == filepath then return true end
+    end
+    return false
+end
+
+local function _updateLocalStatus(filepath, book_id, wanted)
+    local files, found = _copyList(_loadCache()), false
+    for i = #files, 1, -1 do
+        if files[i] == filepath then
+            found = true
+            if not wanted then table.remove(files, i) end
+        end
+    end
+    if wanted and not found then files[#files + 1] = filepath end
+
+    local matches = {}
+    for id, path in pairs(_loadMatchCache()) do matches[id] = path end
+    matches[tostring(book_id)] = filepath
+
+    _cached_files = files
+    _cached_matches = matches
+    _cached_path_ids = _cached_path_ids or {}
+    _cached_path_ids[filepath] = tostring(book_id)
+    _cache_generation = _cache_generation + 1
+    SUISettings:setNoFlush(CACHE_KEY, files)
+    SUISettings:setNoFlush(CACHE_AT_KEY, os.time())
+    SUISettings:setNoFlush(MATCH_CACHE_KEY, matches)
+    SUISettings:flush()
+end
+
+local function _notifyStatus(callback, result)
+    if type(callback) ~= "function" then return end
+    local function notify() pcall(callback, result) end
+    if UIManager.nextTick then UIManager:nextTick(notify) else notify() end
+end
+
+local function _finishStatus(filepath, callback, result)
+    _status_updates[filepath] = nil
+    _notifyStatus(callback, result)
+end
+
+function M.setWantToRead(filepath, wanted, opts)
+    opts = opts or {}
+    wanted = wanted == true
+    local callback = opts.on_done
+    local book_id = M.getBookId(filepath)
+    if not book_id then
+        _notifyStatus(callback, { ok = false, error = "not_linked" })
+        return false, "not_linked"
+    end
+    if _status_updates[filepath] then
+        _notifyStatus(callback, { ok = false, error = "busy" })
+        return false, "busy"
+    end
+    if not _connected() then
+        _notifyStatus(callback, { ok = false, error = "offline" })
+        return false, "offline"
+    end
+
+    _status_updates[filepath] = true
+    UIManager:scheduleIn(opts.delay or 0, function()
+        if not _connected() then
+            _finishStatus(filepath, callback, { ok = false, error = "offline" })
+            return
+        end
+
+        local function run()
+            local plugin = _pluginInstance("bookorbit")
+            if not plugin or type(plugin.newClient) ~= "function" then
+                _finishStatus(filepath, callback, { ok = false, error = "bookorbit_unavailable" })
+                return
+            end
+            if plugin.isLoggedIn and not plugin:isLoggedIn() then
+                _finishStatus(filepath, callback, { ok = false, error = "not_configured" })
+                return
+            end
+
+            local ok_client, client = pcall(plugin.newClient, plugin)
+            if not ok_client or not client then
+                _finishStatus(filepath, callback, { ok = false, error = "client_unavailable" })
+                return
+            end
+            if type(client.catalogSetReadStatus) ~= "function"
+                    or type(client.runInSubprocess) ~= "function" then
+                _finishStatus(filepath, callback, { ok = false, error = "bookorbit_update_required" })
+                return
+            end
+
+            local status = wanted and "want_to_read" or "unread"
+            local completed, result = client:runInSubprocess(function()
+                return client:catalogSetReadStatus(book_id, status)
+            end)
+            if not completed then
+                _finishStatus(filepath, callback, { ok = false, error = "cancelled" })
+                return
+            end
+            if not result or not result.body then
+                _finishStatus(filepath, callback, {
+                    ok = false,
+                    error = result and result.err or "request_failed",
+                })
+                return
+            end
+
+            local ok_sm, StateManager = pcall(require, "bookorbit_state_manager")
+            if ok_sm and StateManager and type(StateManager.applyLibraryVersion) == "function"
+                    and result.body.libraryVersion then
+                pcall(StateManager.applyLibraryVersion, result.body.libraryVersion)
+            end
+            _updateLocalStatus(filepath, book_id, wanted)
+            _finishStatus(filepath, callback, {
+                ok = true,
+                wanted = wanted,
+                book_id = book_id,
+                changed = true,
+            })
+        end
+
+        local function protectedRun()
+            local ok, err = pcall(run)
+            if not ok and _status_updates[filepath] then
+                logger.warn("simpleui: BookOrbit Want to Read update failed:", tostring(err))
+                _finishStatus(filepath, callback, { ok = false, error = tostring(err) })
+            end
+        end
+
+        local ok_trapper, Trapper = pcall(require, "ui/trapper")
+        if ok_trapper and Trapper and Trapper.wrap then
+            Trapper:wrap(protectedRun)
+        else
+            protectedRun()
+        end
+    end)
+    return true
+end
+
+function M.isStatusUpdateRunning(filepath)
+    return _status_updates[filepath] == true
+end
+
 local function _localLibraryMatches(client, library_sync, books)
     if not library_sync or type(library_sync.scanLocalBooks) ~= "function"
             or type(library_sync.buildLocalBookIndex) ~= "function"
@@ -252,7 +437,7 @@ local function _localLibraryMatches(client, library_sync, books)
     return result.body, true
 end
 
-local function _connected()
+_connected = function()
     local ok, value = pcall(NetworkMgr.isConnected, NetworkMgr)
     return ok and value == true
 end
@@ -365,11 +550,22 @@ local function _notifyListeners(result)
     if UIManager.nextTick then UIManager:nextTick(notify) else notify() end
 end
 
-local function _finish(files, err, skipped, matches, scan_performed)
+local function _finish(files, err, skipped, matches, scan_performed, started_generation)
     _running = false
     if not files then
         logger.warn("simpleui: BookOrbit Want to Read refresh failed:", tostring(err))
         _notifyListeners{ ok = false, error = err }
+        return
+    end
+
+    if started_generation ~= nil and started_generation ~= _cache_generation then
+        _notifyListeners{
+            ok = true,
+            changed = false,
+            count = #_loadCache(),
+            skipped = skipped or 0,
+            stale = true,
+        }
         return
     end
 
@@ -379,6 +575,7 @@ local function _finish(files, err, skipped, matches, scan_performed)
     local matches_changed = not _sameMap(old_matches, matches or {})
     _cached_files = files
     _cached_matches = matches or {}
+    _cached_path_ids = nil
     SUISettings:setNoFlush(CACHE_KEY, files)
     SUISettings:setNoFlush(CACHE_AT_KEY, os.time())
     SUISettings:setNoFlush(MATCH_CACHE_KEY, _cached_matches)
@@ -404,6 +601,7 @@ function M.requestRefresh(opts)
     end
 
     _running = true
+    local started_generation = _cache_generation
     UIManager:scheduleIn(opts.delay or 0.1, function()
         if not _connected() then
             _finish(nil, "offline")
@@ -414,7 +612,7 @@ function M.requestRefresh(opts)
             if not ok then
                 _finish(nil, tostring(files))
             else
-                _finish(files, err, skipped, matches, scan_performed)
+                _finish(files, err, skipped, matches, scan_performed, started_generation)
             end
         end
         local ok_trapper, Trapper = pcall(require, "ui/trapper")
@@ -434,8 +632,11 @@ end
 function M._resetForTests()
     _cached_files = nil
     _cached_matches = nil
+    _cached_path_ids = nil
     _running = false
     _listeners = {}
+    _status_updates = {}
+    _cache_generation = 0
 end
 
 return M

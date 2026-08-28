@@ -4674,3 +4674,36 @@ msgstr ""
 #: desktop_modules/module_bookorbit_want.lua
 msgid "Could not refresh BookOrbit Want to Read."
 msgstr ""
+
+msgid "Add to BookOrbit Want to Read"
+msgstr ""
+
+msgid "Remove from BookOrbit Want to Read"
+msgstr ""
+
+msgid "Updating BookOrbit…"
+msgstr ""
+
+msgid "Added to BookOrbit Want to Read."
+msgstr ""
+
+msgid "Removed from BookOrbit Want to Read."
+msgstr ""
+
+msgid "BookOrbit update skipped: offline."
+msgstr ""
+
+msgid "This book is not linked to BookOrbit."
+msgstr ""
+
+msgid "BookOrbit is already updating this book."
+msgstr ""
+
+msgid "BookOrbit update was cancelled."
+msgstr ""
+
+msgid "BookOrbit update failed (server error %d)."
+msgstr ""
+
+msgid "Could not update BookOrbit Want to Read."
+msgstr ""

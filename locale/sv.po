@@ -345,6 +345,39 @@ msgstr "BookOrbit-uppdateringen misslyckades (serverfel %d)."
 msgid "Could not refresh BookOrbit Want to Read."
 msgstr "Kunde inte uppdatera BookOrbit Vill läsa."
 
+msgid "Add to BookOrbit Want to Read"
+msgstr "Lägg till i BookOrbit Vill läsa"
+
+msgid "Remove from BookOrbit Want to Read"
+msgstr "Ta bort från BookOrbit Vill läsa"
+
+msgid "Updating BookOrbit…"
+msgstr "Uppdaterar BookOrbit…"
+
+msgid "Added to BookOrbit Want to Read."
+msgstr "Tillagd i BookOrbit Vill läsa."
+
+msgid "Removed from BookOrbit Want to Read."
+msgstr "Borttagen från BookOrbit Vill läsa."
+
+msgid "BookOrbit update skipped: offline."
+msgstr "BookOrbit-uppdateringen hoppades över: offline."
+
+msgid "This book is not linked to BookOrbit."
+msgstr "Den här boken är inte länkad till BookOrbit."
+
+msgid "BookOrbit is already updating this book."
+msgstr "BookOrbit uppdaterar redan den här boken."
+
+msgid "BookOrbit update was cancelled."
+msgstr "BookOrbit-uppdateringen avbröts."
+
+msgid "BookOrbit update failed (server error %d)."
+msgstr "BookOrbit-uppdateringen misslyckades (serverfel %d)."
+
+msgid "Could not update BookOrbit Want to Read."
+msgstr "Kunde inte uppdatera BookOrbit Vill läsa."
+
 msgid "Cards"
 msgstr "Kort"
 
