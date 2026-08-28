@@ -18,7 +18,8 @@ local SUISettings = require("infra/sui_store")
 
 -- The built-in Homescreen's instance_cfg. Nothing else should build one of
 -- these — Custom Screens get their own from infra/sui_custom_screens.lua.
-local BUILTIN_INSTANCE_CFG = {
+local BUILTIN_INSTANCE_CFG
+BUILTIN_INSTANCE_CFG = {
     id         = "hs",
     pfx        = "simpleui_hs_",
     layout_key = "simpleui_layout",
