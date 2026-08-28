@@ -38,6 +38,7 @@ The centrepiece of SimpleUI. A home screen that gives you everything at a glance
 - **Recent Books** — a row of up to 5 recent books with cover thumbnails and progress indicators; tap any to resume reading
 - **New Books** — a row of up to 5 recently added books sorted by file date; unread books are labelled "New" and started books show their read percentage; opt-in via Arrange Modules
 - **To Be Read (TBR)** — a row of books you've marked as "to be read", backed by a real KOReader collection
+- **BookOrbit Want to Read** — a separate cached row mirrored automatically from BookOrbit whenever Home opens
 - **Cover Deck** — your recent or TBR books as a horizontal cover-flow carousel
 - **Flat Library** — a single grid of every book in your library, regardless of folder structure
 - **Collections** — your KOReader collections displayed as tappable cover cards, with an **Auto** cover style that switches between a single cover and a 4-cover grid depending on collection size

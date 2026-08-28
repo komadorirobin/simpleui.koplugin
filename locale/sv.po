@@ -158,6 +158,33 @@ msgstr "Lässtatistik"
 msgid "New Books"
 msgstr "Nya böcker"
 
+msgid "BookOrbit Want to Read"
+msgstr "Vill läsa på BookOrbit"
+
+msgid "Refresh from BookOrbit now"
+msgstr "Uppdatera från BookOrbit nu"
+
+msgid "Refresh whenever Home opens"
+msgstr "Uppdatera varje gång Hem öppnas"
+
+msgid "BookOrbit Want to Read updated: %d books."
+msgstr "BookOrbit Vill läsa uppdaterad: %d böcker."
+
+msgid "BookOrbit Want to Read updated: %d books (%d could not be matched)."
+msgstr "BookOrbit Vill läsa uppdaterad: %d böcker (%d kunde inte matchas)."
+
+msgid "BookOrbit refresh skipped: offline."
+msgstr "BookOrbit-uppdateringen hoppades över: offline."
+
+msgid "BookOrbit is not configured."
+msgstr "BookOrbit är inte konfigurerat."
+
+msgid "BookOrbit plugin is not available."
+msgstr "BookOrbit-pluginet är inte tillgängligt."
+
+msgid "Could not refresh BookOrbit Want to Read."
+msgstr "Kunde inte uppdatera BookOrbit Vill läsa."
+
 msgid "New"
 msgstr "Ny"
 

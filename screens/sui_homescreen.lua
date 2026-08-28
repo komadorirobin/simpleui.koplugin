@@ -26,7 +26,14 @@ local BUILTIN_INSTANCE_CFG = {
     -- Only the built-in Homescreen has first-run onboarding (a Custom
     -- Screen has nothing to "onboard" into). Runs once, right after the
     -- built-in Homescreen is first shown.
-    on_after_open = function()
+    on_after_open = function(widget)
+        -- Render cached BookOrbit data first, then refresh it invisibly. The
+        -- module owns deduplication, offline handling and the surgical repaint.
+        local ok_bow, BookOrbitWant = pcall(require, "modules/module_bookorbit_want")
+        if ok_bow and BookOrbitWant and BookOrbitWant.scheduleAutoRefresh then
+            BookOrbitWant.scheduleAutoRefresh(widget, BUILTIN_INSTANCE_CFG.pfx)
+        end
+
         if SUISettings:get("simpleui_onboarding_done") then return end
         local ok, Onboarding = pcall(require, "screens/sui_onboarding")
         if ok and Onboarding then

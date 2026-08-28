@@ -69,6 +69,7 @@ local MODULES = {
     { require_mod = "modules/module_recent"        },
     { require_mod = "modules/module_new_books"      },
     { require_mod = "modules/module_tbr"            },   -- also the TBR data/API layer
+    { require_mod = "modules/module_bookorbit_want" },
     { require_mod = "modules/module_coverdeck"      },
     { require_mod = "modules/module_image"          },
     { require_mod = "modules/module_collections"   },
