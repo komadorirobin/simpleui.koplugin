@@ -181,7 +181,8 @@ function SimpleUIPlugin:init()
                 local base = DataStorage:getSettingsDir() .. "/simpleui"
                 for _, sub in ipairs({
                     "", "/sui_icons", "/sui_icons/packs", "/sui_quotes",
-                    "/sui_wallpapers", "/sui_presets", "/sui_presets/sui_presets_export", "/sui_presets/sui_presets_import"
+                    "/sui_wallpapers", "/sui_presets", "/sui_presets/sui_presets_export", "/sui_presets/sui_presets_import",
+                    "/backups"
                 }) do
                     local path = base .. sub
                     if lfs_early.attributes(path, "mode") ~= "directory" then
@@ -1338,6 +1339,7 @@ local _PLUGIN_MODULES = {
     "features/library/sui_filter_state", "features/library/sui_virtual_path",
     "features/library/sui_metadata_source", "features/library/sui_cover_overrides",
     "features/library/sui_group_actions", "features/library/sui_cover_finder",
+    "features/library/sui_metadata_providers",
     "infra/sui_store", "infra/sui_cover_cache", "infra/sui_paths",
     "features/sui_presets", "features/sui_style",
     "screens/sui_settings_window",
@@ -2343,8 +2345,17 @@ function SimpleUIPlugin:onCloseDocument()
                 any_needs_refresh = true
             end
         end
+        -- Surgical invalidation, mirroring the Cover Deck block below: evict
+        -- only the closed book's cached stats when its md5 is known, falling
+        -- back to a full flush otherwise.
         local MC = package.loaded["modules/module_currently"]
-        if MC and MC.invalidateCache then MC.invalidateCache() end
+        if MC then
+            if closed_md5 and MC.invalidateCacheForMd5 then
+                MC.invalidateCacheForMd5(closed_md5)
+            elseif MC.invalidateCache then
+                MC.invalidateCache()
+            end
+        end
     end
 
     -- Cover Deck: invalidate book list and stats cache so the carousel

@@ -357,6 +357,10 @@ msgstr "Mais"
 #: engines/sui_screen_engine.lua:420
 msgid "No books opened yet"
 msgstr "Nenhum livro aberto ainda"
+#: modules/module_currently.lua modules/module_coverdeck.lua
+msgid "No books to show yet — open a book to see it here."
+msgstr "Ainda não há livros para mostrar — abre um livro para o veres aqui."
+
 
 #: engines/sui_screen_engine.lua:429
 msgid "Open a book to get started"
@@ -2383,6 +2387,10 @@ msgstr "Também nas capas laterais"
 #: modules/module_recent.lua:50
 msgid "Show finished books"
 msgstr "Mostrar livros terminados"
+#: modules/module_recent.lua
+msgid "Hide Currently Reading book"
+msgstr "Ocultar livro de A Ler"
+
 
 #: modules/module_coverdeck.lua:1677 modules/module_currently.lua:1930
 #: modules/module_reading_goals.lua:1063 modules/module_reading_stats.lua:938
@@ -3878,16 +3886,16 @@ msgstr ""
 "automaticamente desta lista."
 
 #: screens/sui_menu.lua:2722
-msgid "PocketBook Home Button Opens Home Screen"
-msgstr "Botão Home do PocketBook Abre o Ecrã Inicial"
+msgid "Home Button Opens Home Screen"
+msgstr "Botão Home Abre o Ecrã Inicial"
 
 #: screens/sui_menu.lua:2723
 msgid ""
-"Makes the device's physical Home button always open the SimpleUI Home Screen "
-"— while reading and while browsing files — instead of KOReader's native Home "
+"Makes the device's Home button always open the SimpleUI Home Screen — while "
+"reading and while browsing files — instead of KOReader's native Home "
 "behaviour."
 msgstr ""
-"Faz com que o botão físico Home do dispositivo abra sempre o Ecrã Inicial do "
+"Faz com que o botão Home do dispositivo abra sempre o Ecrã Inicial do "
 "SimpleUI — durante a leitura e ao navegar nos ficheiros — em vez do "
 "comportamento nativo do botão Home do KOReader."
 

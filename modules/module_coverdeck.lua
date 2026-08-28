@@ -1,18 +1,19 @@
 -- module_coverdeck.lua
 -- Displays recent or TBR books as a cover-flow carousel.
 
-local Blitbuffer  = require("ffi/blitbuffer")
-local BD             = require("ui/bidi")
-local Device         = require("device")
-local Font           = require("ui/font")
-local FrameContainer = require("ui/widget/container/framecontainer")
-local Geom           = require("ui/geometry")
-local GestureRange   = require("ui/gesturerange")
-local InputContainer = require("ui/widget/container/inputcontainer")
-local OverlapGroup   = require("ui/widget/overlapgroup")
-local TextWidget     = require("ui/widget/textwidget")
-local VerticalGroup  = require("ui/widget/verticalgroup")
-local Screen         = Device.screen
+local Blitbuffer       = require("ffi/blitbuffer")
+local BD               = require("ui/bidi")
+local Device           = require("device")
+local Font             = require("ui/font")
+local CenterContainer  = require("ui/widget/container/centercontainer")
+local FrameContainer   = require("ui/widget/container/framecontainer")
+local Geom             = require("ui/geometry")
+local GestureRange     = require("ui/gesturerange")
+local InputContainer   = require("ui/widget/container/inputcontainer")
+local OverlapGroup     = require("ui/widget/overlapgroup")
+local TextWidget       = require("ui/widget/textwidget")
+local VerticalGroup    = require("ui/widget/verticalgroup")
+local Screen           = Device.screen
 local _ = require("infra/sui_i18n").translate
 local N_ = require("infra/sui_i18n").ngettext
 local logger         = require("logger")
@@ -78,13 +79,9 @@ end
 -- Author list rendering
 -- ---------------------------------------------------------------------------
 -- Author strings arrive as a single newline-separated string ("A\nB\nC").
--- Aligned with KOReader's actual data format.
--- _splitAuthors breaks it into names (trimmed, empty tokens dropped).
--- _formatAuthors renders the result with these rules:
--- 1. empty/whitespace input → "Unknown Author";
--- 2. single author          → returned verbatim;
--- 3. two or more author     → "Name1 et al."
---    only the first name is kept, every other co-author is discarded.
+-- _formatAuthors returns nil when there is no usable name (caller hides the
+-- row, same policy as description), a single name verbatim, or "Name et al."
+-- when there are two or more.
 local function _splitAuthors(s)
     local parts = {}
     if not s or s == "" then return parts end
@@ -99,7 +96,7 @@ end
 
 local function _formatAuthors(authors_str)
     local parts = _splitAuthors(authors_str)
-    if #parts == 0 then return _("Unknown Author") end
+    if #parts == 0 then return nil end
     if #parts == 1 then return parts[1] end
     return parts[1] .. _(" et al.")
 end
@@ -648,9 +645,12 @@ function M.reset()
     _bstats_cache_count = 0
 end
 
+-- Clears the entire stats cache. Called from main.lua:onCloseDocument as a
+-- fallback when the closed book's md5 could not be resolved; safe since
+-- fetchBookStats() re-populates entries on demand.
 function M.invalidateCache()
-    -- No-op: M.updateStats always force-refreshes the centre book's stats,
-    -- so the cache self-corrects on the next paint.
+    _bstats_cache       = {}
+    _bstats_cache_count = 0
 end
 
 -- Removes only the cache entry for the given md5, leaving all other books
@@ -674,6 +674,20 @@ end
 -- build
 -- ---------------------------------------------------------------------------
 
+-- Empty placeholder when the chosen source has no books (same pattern as
+-- Quick Actions / Featured Collection / Collections).
+local function _emptyPlaceholder(w, h)
+    return CenterContainer:new{
+        dimen = Geom:new{ w = w, h = h },
+        UI.makeColoredText{
+            text    = _("No books to show yet — open a book to see it here."),
+            face    = Font:getFace(SUIStyle.FACE_REGULAR, SUIStyle.FS_BODY),
+            fgcolor = CLR_TEXT_SUB,
+            width   = w - PAD * 2,
+        },
+    }
+end
+
 function M.build(w, ctx)
     local pfx    = ctx.pfx
 
@@ -688,12 +702,14 @@ function M.build(w, ctx)
 
     local fps = getFps(source, ctx)
     if not fps or #fps == 0 then
-        logger.warn(string.format("coverdeck: no books found (source=%s)", tostring(source)))
-        return nil
+        logger.dbg(string.format("coverdeck: no books found (source=%s)", tostring(source)))
+        return _emptyPlaceholder(w, M.getHeight(ctx))
     end
 
     local SH = getSH()
-    if not SH then return nil end
+    if not SH then
+        return _emptyPlaceholder(w, M.getHeight(ctx))
+    end
 
     local CLR_TEXT_EFF     = SUIStyle.COLOR.text_primary
     local CLR_TEXT_SUB_EFF = CLR_TEXT_SUB
@@ -933,22 +949,29 @@ function M.build(w, ctx)
         }
     end
 
-    -- Author widget
+    -- Author widget (hidden when no usable name, same as description)
     local author_widget
-    if show_author and bd.authors and bd.authors ~= "" then
-        local author_fs   = math.floor(SUIStyle.FS_SUBTITLE * scale * lbl_scale)
-        local face_author = Font:getFace(SUIStyle.FACE_REGULAR, math.max(8, author_fs))
-        author_widget = UI.makeColoredText{
-            text            = _formatAuthors(bd.authors),
-            face            = face_author,
-            fgcolor         = CLR_TEXT_SUB_EFF,
-            width           = inner_w,
-            alignment       = "center",
-            truncation_char = "…",
-        }
+    if show_author then
+        local author_text = _formatAuthors(bd.authors)
+        if author_text then
+            local author_fs   = math.floor(SUIStyle.FS_SUBTITLE * scale * lbl_scale)
+            local face_author = Font:getFace(SUIStyle.FACE_REGULAR, math.max(8, author_fs))
+            author_widget = UI.makeColoredText{
+                text            = author_text,
+                face            = face_author,
+                fgcolor         = CLR_TEXT_SUB_EFF,
+                width           = inner_w,
+                alignment       = "center",
+                truncation_char = "…",
+            }
+        end
     end
 
-    local _cd_update_funcs = {}
+    -- Closures used by updateStats for in-place refresh.
+    -- _cd_update_funcs: DB-backed stats text (needs bstats).
+    -- _cd_bd_only_funcs: progress bar (needs only book data).
+    local _cd_update_funcs  = {}
+    local _cd_bd_only_funcs = {}
     local function _updateColoredText(wgt, txt, fg)
         if wgt._inner and wgt._inner.setText then
             wgt._inner:setText(txt)
@@ -960,28 +983,38 @@ function M.build(w, ctx)
         end
     end
 
-    -- Progress bar widget
+    -- Progress bar: wrapped in a single-child container so updateStats can
+    -- replace the bar without touching the surrounding VerticalGroup.
     local progress_widget
     if show_progress then
-        progress_widget = UI.progressBar(center_w, bd.percent, bar_h)
+        local _bar_w = center_w
+        local _bar_h = bar_h
+        local _init_bar = UI.progressBar(_bar_w, bd.percent, _bar_h)
+        local bar_container = OverlapGroup:new{
+            dimen = _init_bar:getSize(),
+            _init_bar,
+        }
+        local function _update_bar(_nb, nd)
+            bar_container[1] = UI.progressBar(_bar_w, (nd and nd.percent or 0), _bar_h)
+        end
+        table.insert(_cd_bd_only_funcs, _update_bar)
+        progress_widget = bar_container
     end
 
-    -- Stats widget
+    -- Stats: single compact line rebuilt from the arranged stats order.
     local stats_widget
     local has_any_stats = show_stats and vis.has_stat
 
     if has_any_stats then
         local bstats
         if vis.has_stat then
-            -- Fast path: use stats pre-computed by _buildCtx() when the centre cover
-            -- matches the pre-fetched entry (common case on first render).
+            -- Fast path: stats pre-computed by _buildCtx() for this centre book.
             local pre = ctx.coverdeck_center_stats
             if pre and pre.fp == fps[curIdx] then
                 bstats = pre.stats
             else
-                -- Slow path: no pre-computed stats for this centre book.
-                -- Result lands in _bstats_cache so subsequent carousel
-                -- navigations are instant.
+                -- Slow path: query once; result lands in _bstats_cache for
+                -- subsequent carousel navigations.
                 local prefetched_entry = ctx.prefetched and ctx.prefetched[fps[curIdx]]
                 local md5 = _resolveMd5(fps[curIdx], prefetched_entry)
                 if md5 then
@@ -1077,9 +1110,10 @@ function M.build(w, ctx)
         bordersize = 0, padding = PAD, padding_top = PAD, padding_bottom = 0,
         final_vg,
     }
-    result._cover_slots = cover_slots
+    result._cover_slots     = cover_slots
     result._cd_update_funcs = _cd_update_funcs
-    result._center_fp = fps[curIdx]
+    result._cd_bd_only_funcs = _cd_bd_only_funcs
+    result._center_fp       = fps[curIdx]
     return result
 end
 
@@ -1120,27 +1154,19 @@ function M.updateCovers(widget, ctx)
 end
 
 function M.updateStats(widget, ctx)
-    local actual_widget = (widget._cd_update_funcs) and widget
-                          or (widget[1] and widget[1]._cd_update_funcs and widget[1])
-    if not actual_widget or not actual_widget._cd_update_funcs then return false end
-
-    -- Progress bar and progress badge are built into the widget tree at
-    -- build time and are not among _cd_update_funcs (the bar is a static
-    -- LineWidget/OverlapGroup; the badge is composited onto the centre
-    -- cover). Status/percent changes need a full rebuild — same contract
-    -- as GridRenderer.updateStats for progress_style "badge".
-    local pfx = (ctx and ctx.pfx) or ""
-    local vis = getVisibleElements(pfx, ctx and ctx.cfg and ctx.cfg.coverdeck)
-    if (vis and vis.progress) or showProgressBadge(pfx) then return false end
+    local actual_widget = (widget._cd_update_funcs or widget._cd_bd_only_funcs) and widget
+                          or (widget[1] and (widget[1]._cd_update_funcs or widget[1]._cd_bd_only_funcs) and widget[1])
+    if not actual_widget then return false end
+    if not actual_widget._cd_update_funcs and not actual_widget._cd_bd_only_funcs then
+        return false
+    end
 
     local fp = actual_widget._center_fp
     if not fp then return false end
 
-    -- The widget only carries data for the carousel's centre book at build
-    -- time (_center_fp). The underlying list/order can change between
-    -- renders (book closed, "show finished" toggled, TBR list changed), so
-    -- recompute the centre fp build() would currently produce and bail on
-    -- any mismatch, to avoid patching the wrong book's stats.
+    -- Widget is bound to the centre book at build time. Recompute the centre
+    -- fp build() would produce and bail on mismatch so we never patch the
+    -- wrong book's numbers (list/order can change between renders).
     do
         local c        = ctx.cfg and ctx.cfg.coverdeck
         local source   = c and c.source or getSource(ctx.pfx)
@@ -1151,6 +1177,12 @@ function M.updateStats(widget, ctx)
         local expected_center_fp = count > 0 and fps[cur_idx] or nil
         if expected_center_fp ~= fp then return false end
     end
+
+    -- Progress badge is composited into the cover widget tree at build time.
+    -- Percent/status changes on the badge require a full rebuild — same
+    -- contract as GridRenderer.updateStats for progress_style "badge".
+    local pfx = (ctx and ctx.pfx) or ""
+    if showProgressBadge(pfx) then return false end
 
     local bstats
     local pre = ctx.coverdeck_center_stats
@@ -1166,11 +1198,19 @@ function M.updateStats(widget, ctx)
         end
     end
 
-    if bstats then
-        local SH = getSH()
-        local bd = SH.getBookData(fp, prefetched_entry)
+    local SH = getSH()
+    if not SH then return true end
+    local bd = SH.getBookData(fp, prefetched_entry)
+
+    if bstats and actual_widget._cd_update_funcs then
         for _, fn in ipairs(actual_widget._cd_update_funcs) do
             fn(bstats, bd)
+        end
+    end
+    -- Progress bar only needs bd; update even when there is no SQLite history.
+    if actual_widget._cd_bd_only_funcs then
+        for _, fn in ipairs(actual_widget._cd_bd_only_funcs) do
+            fn(nil, bd)
         end
     end
     return true

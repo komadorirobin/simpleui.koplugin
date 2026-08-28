@@ -329,13 +329,9 @@ end
 -- Author list rendering
 -- ---------------------------------------------------------------------------
 -- Author strings arrive as a single newline-separated string ("A\nB\nC").
--- Aligned with KOReader's actual data format.
--- _splitAuthors breaks it into names (trimmed, empty tokens dropped).
--- _formatAuthors renders the result with these rules:
--- 1. empty/whitespace input → "Unknown Author";
--- 2. single author          → returned verbatim;
--- 3. two or more author     → "Name1 et al."
---    only the first name is kept, every other co-author is discarded.
+-- _formatAuthors returns nil when there is no usable name (caller hides the
+-- row, same policy as description), a single name verbatim, or "Name et al."
+-- when there are two or more.
 local function _splitAuthors(s)
     local parts = {}
     if not s or s == "" then return parts end
@@ -350,7 +346,7 @@ end
 
 local function _formatAuthors(authors_str)
     local parts = _splitAuthors(authors_str)
-    if #parts == 0 then return _("Unknown Author") end
+    if #parts == 0 then return nil end
     if #parts == 1 then return parts[1] end
     return parts[1] .. _(" et al.")
 end
@@ -426,9 +422,19 @@ local function _hasBox(pfx)
 end
 
 
--- Clears the stats cache (called from main.lua:onCloseDocument before rebuild).
+-- Clears the entire stats cache. Called from main.lua:onCloseDocument as a
+-- fallback when the closed book's md5 could not be resolved; safe since
+-- fetchBookStats() re-populates entries on demand.
 function M.invalidateCache()
-    -- Stale data is intentionally kept for the async UI update.
+    _bstats_cache = {}
+end
+
+-- Removes only the cache entry for the given md5, leaving stats cached for
+-- every other book intact. Mirrors module_coverdeck.invalidateCacheForMd5;
+-- called from main.lua:onCloseDocument so the closed book's stats are fresh
+-- on the next render without discarding the rest of the cache.
+function M.invalidateCacheForMd5(md5)
+    if md5 then _bstats_cache[md5] = nil end
 end
 
 -- Exposed for pre-computation in _buildCtx (sui_homescreen.lua).
@@ -439,14 +445,32 @@ function M.fetchBookStatsForCtx(md5, db_conn, force)
 end
 
 
+-- Empty placeholder when history has no existing books (same pattern as
+-- Quick Actions / Featured Collection / Collections).
+local function _emptyPlaceholder(w, h)
+    return CenterContainer:new{
+        dimen = Geom:new{ w = w, h = h },
+        UI.makeColoredText{
+            text    = _("No books to show yet — open a book to see it here."),
+            face    = Font:getFace(SUIStyle.FACE_REGULAR, SUIStyle.FS_BODY),
+            fgcolor = CLR_TEXT_SUB,
+            width   = w - PAD * 2,
+        },
+    }
+end
+
 -- Builds the module widget: cover on the left, text column on the right.
 -- Elements in the text column are rendered in user-configured order.
 function M.build(w, ctx)
     Config.applyLabelToggle(M, _("Currently Reading"))
-    if not ctx.current_fp then return nil end
+    if not ctx.current_fp then
+        return _emptyPlaceholder(w, M.getHeight(ctx))
+    end
 
     local SH = getSH()
-    if not SH then return nil end
+    if not SH then
+        return _emptyPlaceholder(w, M.getHeight(ctx))
+    end
 
     -- Use pre-read settings bundle from ctx when available (normal HS path).
     -- Falls back to direct reads only when called outside the homescreen.
@@ -677,16 +701,19 @@ function M.build(w, ctx)
             meta_has_content = true
 
         elseif elem == "author" and show.author then
-            gap_before(author_gap)
-            meta[#meta+1] = UI.makeColoredText{
-                text            = _formatAuthors(bd.authors),
-                face            = face_author,
-                fgcolor         = CLR_TEXT_SUB_EFF,
-                width           = tw,
-                max_width       = tw,
-                truncation_char = "…",  -- ellipsis
-            }
-            meta_has_content = true
+            local author_text = _formatAuthors(bd.authors)
+            if author_text then
+                gap_before(author_gap)
+                meta[#meta+1] = UI.makeColoredText{
+                    text            = author_text,
+                    face            = face_author,
+                    fgcolor         = CLR_TEXT_SUB_EFF,
+                    width           = tw,
+                    max_width       = tw,
+                    truncation_char = "…",
+                }
+                meta_has_content = true
+            end
 
         elseif elem == "series" and show.series and series_text ~= "" then
             gap_before(series_gap)
