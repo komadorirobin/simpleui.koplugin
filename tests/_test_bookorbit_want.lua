@@ -4,6 +4,7 @@ local existing_files = {
     ["/books/seven.epub"] = true,
     ["/books/three.epub"] = true,
     ["/books/five.epub"] = true,
+    ["/books/legacy.epub"] = true,
 }
 local settings = {}
 
@@ -89,6 +90,18 @@ test("builds a BookOrbit id map from the Library Sync manifest", function()
     eq(files[5], "/books/five.epub")
     eq(files[7], nil)
     eq(files[9], nil)
+end)
+
+test("matches an older Library Sync manifest entry by unambiguous metadata", function()
+    local _, metadata = Source.librarySyncManifestMaps({ books = {
+        ["/books/legacy.epub"] = {
+            server_type = "bookorbit",
+            remote_key = "url:/legacy-download",
+            title = "Äldre bok",
+            author = "Författare",
+        },
+    } }, function() return true end)
+    eq(metadata["aldre bok|forfattare"], "/books/legacy.epub")
 end)
 
 test("refreshes the dashboard Want to Read section into the local filepath cache", function()
@@ -188,6 +201,64 @@ test("reports an old BookOrbit plugin instead of calling the catalog filter", fu
 
     eq(result.ok, false)
     eq(result.error, "bookorbit_update_required")
+end)
+
+test("uses Library Sync filename matching for books absent from the manifest", function()
+    local client = {
+        runInSubprocess = function(_self, fn)
+            local body, err = fn()
+            return true, { body = body, err = err }
+        end,
+        catalogDashboardSection = function()
+            return { section = { books = {
+                { id = 11, title = "Legacy", authors = { "Writer" } },
+            } } }
+        end,
+    }
+    local plugin = {
+        isLoggedIn = function() return true end,
+        newClient = function() return client end,
+    }
+    local library_sync = {
+        loadManifest = function() return { books = {} } end,
+        bookApiMatchKey = function(_self, title, author)
+            return tostring(title):lower() .. "|" .. tostring(author):lower()
+        end,
+        scanLocalBooks = function()
+            return { { path = "/books/legacy.epub", filename = "Writer - Legacy.epub" } }
+        end,
+        buildLocalBookIndex = function(_self, books) return books end,
+        findLocalMatch = function(_self, remote)
+            eq(remote.title, "Legacy")
+            eq(remote.author, "Writer")
+            return { path = "/books/legacy.epub" }
+        end,
+    }
+    package.loaded["pluginloader"] = {
+        getPluginInstance = function(_self, name)
+            if name == "bookorbit" then return plugin end
+            if name == "grimmorysync" then return library_sync end
+        end,
+    }
+    package.loaded["bookorbit_state_manager"] = {
+        hasOnDeviceMaps = function() return true end,
+        onDeviceMaps = function() return { byBookId = {} } end,
+    }
+    package.loaded["ui/trapper"] = { wrap = function(_self, fn) fn() end }
+
+    settings = {}
+    Source._resetForTests()
+    local result
+    Source.requestRefresh{
+        delay = 0,
+        force_local_scan = true,
+        on_done = function(value) result = value end,
+    }
+
+    eq(result.ok, true)
+    eq(result.count, 1)
+    eq(result.skipped, 0)
+    eq(Source.getCachedFiles()[1], "/books/legacy.epub")
 end)
 
 print(string.format("PASS %d  FAIL %d", passed, failed))

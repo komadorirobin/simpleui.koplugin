@@ -65,6 +65,7 @@ local function _menuItems(ctx_menu)
             callback = function()
                 BookOrbitWant.requestRefresh{
                     delay = 0,
+                    force_local_scan = true,
                     on_done = function(result)
                         if result.ok and result.changed then refresh() end
                         UIManager:show(InfoMessage:new{ text = _resultText(result), timeout = 4 })
