@@ -285,6 +285,42 @@ msgstr "Platt"
 msgid "Row"
 msgstr "Rad"
 
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit Want to Read"
+msgstr "BookOrbit Vill läsa"
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "Refresh from BookOrbit now"
+msgstr "Uppdatera från BookOrbit nu"
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "Refresh whenever Home opens"
+msgstr "Uppdatera varje gång Hem öppnas"
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit Want to Read updated: %d books (%d could not be matched)."
+msgstr "BookOrbit Vill läsa uppdaterades: %d böcker (%d kunde inte matchas)."
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit Want to Read updated: %d books."
+msgstr "BookOrbit Vill läsa uppdaterades: %d böcker."
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit refresh skipped: offline."
+msgstr "BookOrbit-uppdateringen hoppades över: offline."
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit is not configured."
+msgstr "BookOrbit är inte konfigurerat."
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit plugin is not available."
+msgstr "BookOrbit-pluginet är inte tillgängligt."
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "Could not refresh BookOrbit Want to Read."
+msgstr "Kunde inte uppdatera BookOrbit Vill läsa."
+
 msgid "Cards"
 msgstr "Kort"
 
@@ -1318,12 +1354,6 @@ msgstr "Uppdateringsintervall: %d min"
 msgid "Uppdateringsintervall (minuter)"
 msgstr "Uppdateringsintervall (minuter)"
 
-msgid "Text Size"
-msgstr "Textstorlek"
-
-msgid "Text Size — %d%%"
-msgstr "Textstorlek — %d%%"
-
 msgid "Size of the text inside the Hardcover widget.\n100% is the default size."
 msgstr "Storleken på texten i Hardcover-widgeten.\n100% är standardstorleken."
 
@@ -1332,6 +1362,3 @@ msgstr "Typ"
 
 msgid "Card"
 msgstr "Kort"
-
-msgid "Row"
-msgstr "Rad"

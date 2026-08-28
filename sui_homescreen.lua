@@ -3644,6 +3644,13 @@ function Homescreen.show(on_qa_tap, on_goal_tap)
     Homescreen._instance = w
     UIManager:show(w)
 
+    -- Use cached BookOrbit data for the first frame, then refresh it without
+    -- blocking Home. The module is opt-in and deduplicates concurrent opens.
+    local ok_bow, BookOrbitWant = pcall(require, "desktop_modules/module_bookorbit_want")
+    if ok_bow and BookOrbitWant and BookOrbitWant.scheduleAutoRefresh then
+        pcall(BookOrbitWant.scheduleAutoRefresh, w, "simpleui_hs_")
+    end
+
     if onboarding_pending then
         local ok, Onboarding = pcall(require, "sui_onboarding")
         if ok and Onboarding then

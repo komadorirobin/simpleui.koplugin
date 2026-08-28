@@ -4614,3 +4614,39 @@ msgid "page read"
 msgid_plural "pages read"
 msgstr[0] ""
 msgstr[1] ""
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit Want to Read"
+msgstr ""
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "Refresh from BookOrbit now"
+msgstr ""
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "Refresh whenever Home opens"
+msgstr ""
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit Want to Read updated: %d books (%d could not be matched)."
+msgstr ""
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit Want to Read updated: %d books."
+msgstr ""
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit refresh skipped: offline."
+msgstr ""
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit is not configured."
+msgstr ""
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "BookOrbit plugin is not available."
+msgstr ""
+
+#: desktop_modules/module_bookorbit_want.lua
+msgid "Could not refresh BookOrbit Want to Read."
+msgstr ""
