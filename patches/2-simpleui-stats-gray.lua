@@ -20,7 +20,7 @@
 local logger = require("logger")
 logger.dbg("simpleui-patch: loading stats gray-background patch")
 
-local _RS_KEY = "desktop_modules/module_reading_stats"
+local _RS_KEY = "modules/module_reading_stats"
 
 -- ---------------------------------------------------------------------------
 -- Gray-background value — adjust to taste:

@@ -1,11 +1,11 @@
--- Cached BookOrbit "Want to Read" data source for the legacy/beta UI.
+-- Cached BookOrbit "Want to Read" data source for SimpleUI.
 
 local lfs = require("libs/libkoreader-lfs")
 local logger = require("logger")
 local NetworkMgr = require("ui/network/manager")
 local UIManager = require("ui/uimanager")
 
-local SUISettings = require("sui_store")
+local SUISettings = require("infra/sui_store")
 
 local CACHE_KEY = "simpleui_bookorbit_want_files"
 local CACHE_AT_KEY = "simpleui_bookorbit_want_updated_at"
@@ -640,3 +640,4 @@ function M._resetForTests()
 end
 
 return M
+

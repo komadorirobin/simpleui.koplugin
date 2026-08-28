@@ -19,7 +19,7 @@ package.loaded["ui/uimanager"] = {
     scheduleIn = function(_self, _delay, fn) fn() end,
     nextTick = function(_self, fn) fn() end,
 }
-package.loaded["sui_store"] = {
+package.loaded["infra/sui_store"] = {
     readSetting = function(_self, key) return settings[key] end,
     nilOrTrue = function(_self, key) return settings[key] ~= false end,
     setNoFlush = function(_self, key, value) settings[key] = value end,
@@ -378,3 +378,4 @@ end)
 
 print(string.format("PASS %d  FAIL %d", passed, failed))
 if failed > 0 then os.exit(1) end
+

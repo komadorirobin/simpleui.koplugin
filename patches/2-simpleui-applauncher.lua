@@ -5,7 +5,7 @@
 --   This file ships in koreader/patches/ as part of the komadorirobin fork.
 --   No manual copying is required.
 --
---   module_app_launcher.lua must be present in the plugin's desktop_modules/
+--   module_app_launcher.lua must be present in the plugin's modules/
 --   directory (it is bundled with this fork).
 --
 -- HOW IT WORKS
@@ -21,8 +21,8 @@
 local logger = require("logger")
 logger.dbg("simpleui-patch: loading app-launcher registry patch")
 
-local _REGISTRY_KEY    = "desktop_modules/moduleregistry"
-local _LAUNCHER_KEY    = "desktop_modules/module_app_launcher"
+local _REGISTRY_KEY    = "modules/moduleregistry"
+local _LAUNCHER_KEY    = "modules/module_app_launcher"
 local _LAUNCHER_ENTRY  = { require_mod = _LAUNCHER_KEY }
 
 -- ---------------------------------------------------------------------------
