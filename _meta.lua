@@ -4,6 +4,6 @@ return {
     name        = "simpleui",
     fullname    = _("Simple UI"),
     description = _([[A simple UI for KOReader]]),
-    version     = "2.1.16-beta.3",
+    version     = "2.1.16-beta.4",
     author      = "Doctor Hetfield",
 }

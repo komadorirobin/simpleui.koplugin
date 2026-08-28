@@ -74,14 +74,46 @@ function M.mapBookIdsToFiles(book_ids, by_book_id, file_exists)
     return files
 end
 
-local function _pluginInstance()
+local function _pluginInstance(name)
     local ok, PluginLoader = pcall(require, "pluginloader")
     if not ok or not PluginLoader or not PluginLoader.getPluginInstance then
         return nil
     end
-    local ok_instance, plugin = pcall(PluginLoader.getPluginInstance, PluginLoader, "bookorbit")
+    local ok_instance, plugin = pcall(PluginLoader.getPluginInstance, PluginLoader, name)
     if ok_instance then return plugin end
     return nil
+end
+
+function M.librarySyncBookIdMap(manifest, file_exists)
+    local by_book_id, candidates = {}, {}
+    file_exists = file_exists or _fileExists
+    for path, entry in pairs((type(manifest) == "table" and manifest.books) or {}) do
+        if type(path) == "string" and type(entry) == "table"
+                and entry.server_type == "bookorbit" and file_exists(path) then
+            local book_id = type(entry.remote_key) == "string"
+                and entry.remote_key:match("^id:(%d+)$") or nil
+            if book_id then
+                local timestamp = tonumber(entry.refreshed_at or entry.tracked_at) or 0
+                local previous = candidates[book_id]
+                if not previous or timestamp > previous.timestamp
+                        or (timestamp == previous.timestamp and path < previous.path) then
+                    candidates[book_id] = { path = path, timestamp = timestamp }
+                end
+            end
+        end
+    end
+    for book_id, candidate in pairs(candidates) do
+        by_book_id[tonumber(book_id) or book_id] = candidate.path
+    end
+    return by_book_id
+end
+
+local function _librarySyncBookIdMap()
+    local plugin = _pluginInstance("grimmorysync")
+    if not plugin or type(plugin.loadManifest) ~= "function" then return {} end
+    local ok, manifest = pcall(plugin.loadManifest, plugin)
+    if not ok or type(manifest) ~= "table" then return {} end
+    return M.librarySyncBookIdMap(manifest)
 end
 
 local function _connected()
@@ -90,7 +122,7 @@ local function _connected()
 end
 
 local function _fetch()
-    local plugin = _pluginInstance()
+    local plugin = _pluginInstance("bookorbit")
     if not plugin or not plugin.newClient then return nil, "bookorbit_unavailable" end
     if plugin.isLoggedIn and not plugin:isLoggedIn() then return nil, "not_configured" end
 
@@ -141,7 +173,11 @@ local function _fetch()
     local ok_maps, maps = pcall(StateManager.onDeviceMaps)
     if not ok_maps or not maps then return nil, "local_map_unavailable" end
 
-    local files = M.mapBookIdsToFiles(payload.book_ids, maps.byBookId)
+    local by_book_id = _librarySyncBookIdMap()
+    for book_id, path in pairs(maps.byBookId or {}) do
+        by_book_id[book_id] = path
+    end
+    local files = M.mapBookIdsToFiles(payload.book_ids, by_book_id)
     return files, nil, math.max(0, #(payload.book_ids or {}) - #files)
 end
 

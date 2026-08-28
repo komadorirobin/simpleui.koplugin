@@ -64,6 +64,33 @@ test("deduplicates paths and skips missing local files", function()
     eq(files[1], "/books/same.epub")
 end)
 
+test("builds a BookOrbit id map from the Library Sync manifest", function()
+    local files = Source.librarySyncBookIdMap({ books = {
+        ["/books/three.epub"] = {
+            server_type = "bookorbit",
+            remote_key = "id:3",
+            refreshed_at = 10,
+        },
+        ["/books/five.epub"] = {
+            server_type = "bookorbit",
+            remote_key = "id:5",
+            refreshed_at = 20,
+        },
+        ["/books/seven.epub"] = {
+            server_type = "grimmory",
+            remote_key = "id:7",
+        },
+        ["/books/missing.epub"] = {
+            server_type = "bookorbit",
+            remote_key = "id:9",
+        },
+    } }, function(path) return path ~= "/books/missing.epub" end)
+    eq(files[3], "/books/three.epub")
+    eq(files[5], "/books/five.epub")
+    eq(files[7], nil)
+    eq(files[9], nil)
+end)
+
 test("refreshes the dashboard Want to Read section into the local filepath cache", function()
     local requested_sections = {}
     local client = {
@@ -85,10 +112,20 @@ test("refreshes the dashboard Want to Read section into the local filepath cache
         isLoggedIn = function() return true end,
         newClient = function() return client end,
     }
+    local library_sync = {
+        loadManifest = function()
+            return { books = {
+                ["/books/five.epub"] = {
+                    server_type = "bookorbit",
+                    remote_key = "id:5",
+                },
+            } }
+        end,
+    }
     package.loaded["pluginloader"] = {
         getPluginInstance = function(_self, name)
-            eq(name, "bookorbit")
-            return plugin
+            if name == "bookorbit" then return plugin end
+            if name == "grimmorysync" then return library_sync end
         end,
     }
     package.loaded["bookorbit_state_manager"] = {
@@ -96,7 +133,6 @@ test("refreshes the dashboard Want to Read section into the local filepath cache
         onDeviceMaps = function()
             return { byBookId = {
                 [7] = "/books/seven.epub",
-                [5] = "/books/five.epub",
             } }
         end,
     }
@@ -134,7 +170,9 @@ test("reports an old BookOrbit plugin instead of calling the catalog filter", fu
         end,
     }
     package.loaded["pluginloader"] = {
-        getPluginInstance = function() return plugin end,
+        getPluginInstance = function(_self, name)
+            if name == "bookorbit" then return plugin end
+        end,
     }
     package.loaded["bookorbit_state_manager"] = {
         hasOnDeviceMaps = function() return true end,
