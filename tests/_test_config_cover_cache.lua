@@ -58,9 +58,11 @@ local BIM = {
     extractInBackground = function(_self, _files) extract_calls = extract_calls + 1 end,
 }
 
+local reader_settings = {}
 _G.G_reader_settings = {
-    readSetting = function() return nil end,
-    saveSetting = function() end,
+    readSetting = function(_, key) return reader_settings[key] end,
+    saveSetting = function(_, key, value) reader_settings[key] = value end,
+    delSetting = function(_, key) reader_settings[key] = nil end,
 }
 package.loaded["ffi/blitbuffer"] = {
     new = function(w, h) return makeBB(w, h) end,
@@ -98,6 +100,34 @@ package.loaded["lib/bookshelf_settings_store"] = {
 
 local CoverCache = dofile("infra/sui_cover_cache.lua")
 local Config = dofile("infra/sui_config.lua")
+
+test("native Bento widths preserve legacy settings and menu entries", function()
+    local key = "simpleui_bento_width_clock"
+    reader_settings[key] = nil
+    eq(Config.getBentoWidthPct("clock"), 100)
+
+    reader_settings[key] = 15
+    eq(Config.getBentoWidthPct("clock"), 20, "legacy values must be clamped")
+
+    Config.setBentoWidthPct(55, "clock")
+    eq(reader_settings[key], 55)
+
+    local items = Config.appendModuleAppearanceItems({}, "clock", "simpleui_hs_", function() end)
+    local bento_count = 0
+    for _, item in ipairs(items) do
+        if item._sui_bento_width then bento_count = bento_count + 1 end
+    end
+    eq(bento_count, 1)
+    Config.appendModuleAppearanceItems(items, "clock", "simpleui_hs_", function() end)
+    bento_count = 0
+    for _, item in ipairs(items) do
+        if item._sui_bento_width then bento_count = bento_count + 1 end
+    end
+    eq(bento_count, 1, "appearance helper must not duplicate Bento settings")
+
+    Config.setBentoWidthPct(100, "clock")
+    eq(reader_settings[key], nil, "default width should remove the legacy key")
+end)
 
 test("LRU eviction drops cache ownership without freeing live buffers", function()
     freed = 0

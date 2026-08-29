@@ -834,7 +834,8 @@ local function buildScreens(st)
         ctx_menu.show_arrange = function(params) ctx.push("arrange", params) end
         ctx_menu.ConfirmBox  = require("ui/widget/confirmbox")
 
-        local menu_items = mod.getMenuItems(ctx_menu)
+        local menu_items = Config.appendModuleAppearanceItems(
+            mod.getMenuItems(ctx_menu), mod.id, st.pfx, ctx_menu.refresh, _)
         return makeMenuTable(ctx, menu_items)
     end
 

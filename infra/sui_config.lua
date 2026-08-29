@@ -1316,6 +1316,54 @@ function M.makeModuleBackgroundItem(mod_id, pfx, refresh, _lc)
     }
 end
 
+-- Bento widths originally belonged to the optional companion patch and were
+-- stored in KOReader's global settings. Keep that key and storage location so
+-- existing layouts become native without a migration step.
+local BENTO_WIDTH_KEY_PREFIX = "simpleui_bento_width_"
+
+local function _bentoWidthKey(mod_id)
+    return BENTO_WIDTH_KEY_PREFIX .. tostring(mod_id)
+end
+
+function M.getBentoWidthPct(mod_id)
+    local value = G_reader_settings
+        and G_reader_settings:readSetting(_bentoWidthKey(mod_id))
+    value = tonumber(value) or 100
+    return math_max(20, math_min(100, value))
+end
+
+function M.setBentoWidthPct(value, mod_id)
+    if not G_reader_settings then return end
+    value = math_max(20, math_min(100, tonumber(value) or 100))
+    local key = _bentoWidthKey(mod_id)
+    if value == 100 then
+        G_reader_settings:delSetting(key)
+    else
+        G_reader_settings:saveSetting(key, value)
+    end
+end
+
+function M.makeBentoWidthItem(mod_id, refresh, _lc)
+    local lc = _lc or _
+    local item = M.makeScaleItem({
+        text_func = function()
+            return string.format(lc("Bento Grid Column Width  (%d%%)"),
+                M.getBentoWidthPct(mod_id))
+        end,
+        title         = lc("Bento Grid Column Width"),
+        info          = lc("Set the module width used by the Bento Grid.\nModules that fit in the same row are placed side by side."),
+        get           = function() return M.getBentoWidthPct(mod_id) end,
+        set           = function(v) M.setBentoWidthPct(v, mod_id) end,
+        refresh       = refresh or function() end,
+        value_min     = 20,
+        value_max     = 100,
+        value_step    = 5,
+        default_value = 100,
+    })
+    item._sui_bento_width = true
+    return item
+end
+
 function M.hasSectionLabelToggle(items)
     if type(items) ~= "table" then return false end
     for _, item in ipairs(items) do
@@ -1370,12 +1418,16 @@ end
 
 function M.appendModuleAppearanceItems(items, mod_id, pfx, refresh, _lc)
     if type(items) ~= "table" then items = {} end
-    local has_bg = false
+    _lc = _lc or _
+    local has_bg, has_bento = false, false
     for _, item in ipairs(items) do
-        if type(item) == "table" and item._sui_module_background_toggle then
-            has_bg = true
-            break
+        if type(item) == "table" then
+            if item._sui_module_background_toggle then has_bg = true end
+            if item._sui_bento_width then has_bento = true end
         end
+    end
+    if not has_bento then
+        items[#items + 1] = M.makeBentoWidthItem(mod_id, refresh, _lc)
     end
     if not has_bg then
         items[#items + 1] = M.makeModuleBackgroundItem(mod_id, pfx, refresh, _lc)

@@ -183,13 +183,17 @@ end
 -- Custom Screens get the equivalent per-id bookkeeping in
 -- ScreenEngine._cs_state[id] instead (see _sget/_sset below) — nothing
 -- external depends on that shape, so it's free to be per-id from day one.
-local ScreenEngine = { _instance = nil, _cs_state = {} }
+local ScreenEngine = {
+    _instance = nil,
+    _cs_state = {},
+    BENTO_GRID_NATIVE = true,
+}
 
--- Optional companion-patch hook. The Bento patch owns the persisted width
--- settings and module menu entries; the screen engine owns rendering so Bento
--- layouts keep using the same cache, slot bookkeeping and refresh paths as the
--- standard portrait layout.
-local _bento_width_provider = nil
+-- Bento is native to the shared screen engine. installBentoGrid remains as a
+-- compatibility hook for older companion patches and custom providers.
+local _bento_width_provider = function(mod_id)
+    return Config.getBentoWidthPct(mod_id)
+end
 
 function ScreenEngine.installBentoGrid(provider)
     if type(provider) == "function" then
@@ -197,7 +201,9 @@ function ScreenEngine.installBentoGrid(provider)
     elseif type(provider) == "table" and type(provider.getWidthPct) == "function" then
         _bento_width_provider = provider.getWidthPct
     else
-        _bento_width_provider = nil
+        _bento_width_provider = function(mod_id)
+            return Config.getBentoWidthPct(mod_id)
+        end
     end
 end
 
@@ -2803,10 +2809,9 @@ function ScreenWidget:_updatePage(keep_cache, books_only, stats_only)
         end
 
     else
-        -- Portrait layout. The companion Bento patch may group modules into
-        -- percentage-width rows through installBentoGrid(); without the hook,
-        -- or when every module is 100%, this follows the standard one-column
-        -- path.
+        -- Portrait layout. Modules with native Bento widths are grouped into
+        -- percentage-width rows; when every module is 100%, this follows the
+        -- standard one-column path.
         self._clock_landscape_factor = nil
 
         local function appendPortraitModule(target, mod, col_w)
