@@ -48,6 +48,7 @@ local _                = require("infra/sui_i18n").translate
 local N_               = require("infra/sui_i18n").ngettext
 local T                = require("ffi/util").template
 local Config           = require("infra/sui_config")
+local Bento            = require("infra/sui_bento")
 local Registry         = require("modules/moduleregistry")
 local SUISettings = require("infra/sui_store")
 local Event            = require("ui/event")
@@ -217,34 +218,9 @@ end
 
 local function _bentoRows(mods, pfx)
     if not _bento_width_provider then return nil end
-
-    local rows = {}
-    local row = { total = 0 }
-    local has_bento_width = false
-
-    local function flush()
-        if #row > 0 then rows[#rows + 1] = row end
-        row = { total = 0 }
-    end
-
-    for _, mod in ipairs(mods) do
-        local pct = _bentoWidthPct(mod.id, pfx)
-        if pct < 100 then has_bento_width = true end
-        if pct >= 100 then
-            flush()
-            rows[#rows + 1] = { { mod = mod, pct = 100 }, total = 100 }
-        elseif row.total + pct <= 100 then
-            row[#row + 1] = { mod = mod, pct = pct }
-            row.total = row.total + pct
-        else
-            flush()
-            row[#row + 1] = { mod = mod, pct = pct }
-            row.total = pct
-        end
-    end
-    flush()
-
-    return has_bento_width and rows or nil
+    return Bento.buildRows(mods, function(mod)
+        return _bentoWidthPct(mod.id, pfx)
+    end)
 end
 
 -- ---------------------------------------------------------------------------
@@ -2902,14 +2878,27 @@ function ScreenWidget:_updatePage(keep_cache, books_only, stats_only)
                         used_w = used_w + col_w
                     end
                     local col = VerticalGroup:new{ align = "left" }
-                    if appendPortraitModule(col, entry.mod, col_w) then
+                    local built_any = false
+                    for _, mod in ipairs(entry.mods or {}) do
+                        local insertion_index = #col + 1
+                        if built_any then
+                            col[insertion_index] = self:_vspan(mod_gaps[mod.id] or MOD_GAP)
+                        end
+                        if appendPortraitModule(col, mod, col_w) then
+                            built_any = true
+                        elseif col[insertion_index] then
+                            table.remove(col, insertion_index)
+                        end
+                    end
+                    if built_any then
                         built_cols[#built_cols + 1] = col
                     end
                 end
 
                 if #built_cols > 0 then
                     local first_entry = row[1]
-                    local gap_px = first_entry and (mod_gaps[first_entry.mod.id] or MOD_GAP) or MOD_GAP
+                    local first_entry_mod = first_entry and first_entry.mods and first_entry.mods[1]
+                    local gap_px = first_entry_mod and (mod_gaps[first_entry_mod.id] or MOD_GAP) or MOD_GAP
                     local pad = first_mod and (topbar_on and gap_px or (gap_px + MOD_GAP)) or gap_px
                     body[#body+1] = self:_vspan(pad)
                     first_mod = false
