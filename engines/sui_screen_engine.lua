@@ -185,6 +185,61 @@ end
 -- external depends on that shape, so it's free to be per-id from day one.
 local ScreenEngine = { _instance = nil, _cs_state = {} }
 
+-- Optional companion-patch hook. The Bento patch owns the persisted width
+-- settings and module menu entries; the screen engine owns rendering so Bento
+-- layouts keep using the same cache, slot bookkeeping and refresh paths as the
+-- standard portrait layout.
+local _bento_width_provider = nil
+
+function ScreenEngine.installBentoGrid(provider)
+    if type(provider) == "function" then
+        _bento_width_provider = provider
+    elseif type(provider) == "table" and type(provider.getWidthPct) == "function" then
+        _bento_width_provider = provider.getWidthPct
+    else
+        _bento_width_provider = nil
+    end
+end
+
+local function _bentoWidthPct(mod_id, pfx)
+    if not _bento_width_provider then return 100 end
+    local ok, value = pcall(_bento_width_provider, mod_id, pfx)
+    value = ok and tonumber(value) or 100
+    return math.max(20, math.min(100, value or 100))
+end
+
+local function _bentoRows(mods, pfx)
+    if not _bento_width_provider then return nil end
+
+    local rows = {}
+    local row = { total = 0 }
+    local has_bento_width = false
+
+    local function flush()
+        if #row > 0 then rows[#rows + 1] = row end
+        row = { total = 0 }
+    end
+
+    for _, mod in ipairs(mods) do
+        local pct = _bentoWidthPct(mod.id, pfx)
+        if pct < 100 then has_bento_width = true end
+        if pct >= 100 then
+            flush()
+            rows[#rows + 1] = { { mod = mod, pct = 100 }, total = 100 }
+        elseif row.total + pct <= 100 then
+            row[#row + 1] = { mod = mod, pct = pct }
+            row.total = row.total + pct
+        else
+            flush()
+            row[#row + 1] = { mod = mod, pct = pct }
+            row.total = pct
+        end
+    end
+    flush()
+
+    return has_bento_width and rows or nil
+end
+
 -- ---------------------------------------------------------------------------
 -- Soft-park (reader round-trip optimisation)
 --
@@ -2748,80 +2803,131 @@ function ScreenWidget:_updatePage(keep_cache, books_only, stats_only)
         end
 
     else
-        -- Portrait single-column layout.
+        -- Portrait layout. The companion Bento patch may group modules into
+        -- percentage-width rows through installBentoGrid(); without the hook,
+        -- or when every module is 100%, this follows the standard one-column
+        -- path.
         self._clock_landscape_factor = nil
-        for _, mod in ipairs(cur_page_mods) do
+
+        local function appendPortraitModule(target, mod, col_w)
             if mod.has_covers then page_has_covers = true end
-            local ok_w, widget = pcall(mod.build, inner_w, ctx)
+            local ok_w, widget = pcall(mod.build, col_w, ctx)
             if not ok_w then
                 logger.warn("simpleui: screen (" .. tostring(self._id) .. "): build failed for "
                             .. tostring(mod.id) .. ": " .. tostring(widget))
-            elseif widget then
-                if first_mod then
-                    first_mod = false
-                    local gap_px = mod_gaps[mod.id] or MOD_GAP
-                    local initial_pad = topbar_on and gap_px or (gap_px + MOD_GAP)
-                    body[#body+1] = self:_vspan(initial_pad)
-                else
-                    local gap_px = mod_gaps[mod.id] or MOD_GAP
-                    body[#body+1] = self:_vspan(gap_px)
+                return false
+            end
+            if not widget then return false end
+
+            local bg_enabled = Config.isModuleBackgroundEnabled(mod.id, self._pfx)
+            local label_right = labelRightTextFor(mod, ctx)
+            local label_text = (type(mod.label_func) == "function" and mod.label_func(ctx)) or mod.label
+            local page_nav = pageNavFor(self, mod, ctx)
+            if label_text and not bg_enabled then
+                target[#target+1] = sectionLabel(label_text, col_w, mod.id,
+                    label_right, page_nav, ctx.landscape_factor, self._pfx)
+                if mod.is_book_mod then
+                    self._book_mod_label_slots[mod.id] = {
+                        parent = target,
+                        index  = #target,
+                        mod    = mod,
+                        col_w  = col_w,
+                    }
                 end
-                local bg_enabled = Config.isModuleBackgroundEnabled(mod.id, self._pfx)
-                local label_right = labelRightTextFor(mod, ctx)
-                local label_text = (type(mod.label_func) == "function" and mod.label_func(ctx)) or mod.label
-                local page_nav = pageNavFor(self, mod, ctx)
-                if label_text and not bg_enabled then
-                    body[#body+1] = sectionLabel(label_text, inner_w, mod.id,
-                        label_right, page_nav, ctx.landscape_factor, self._pfx)
-                    if mod.is_book_mod then
-                        self._book_mod_label_slots[mod.id] = {
-                            parent = body,
-                            index  = #body,
-                            mod    = mod,
-                            col_w  = inner_w,
-                        }
+            end
+            local has_menu = type(mod.getMenuItems) == "function"
+            if mod.id == "header" then
+                self._header_body_idx   = #target + 1
+                self._header_body_ref   = target
+                self._header_inner_w    = col_w
+                self._header_is_wrapped = has_menu
+            end
+            if mod.id == "clock" then
+                self._clock_body_idx   = #target + 1
+                self._clock_body_ref   = target
+                self._clock_is_wrapped = has_menu
+                self._clock_label      = mod.label
+            end
+            local display_widget = applyModuleBackground(mod.id, widget, col_w,
+                bg_enabled and label_text or nil, label_right, false,
+                page_nav, ctx.landscape_factor, self._pfx)
+            target[#target+1] = has_menu
+                and self:_makeModWrapper(mod, display_widget, col_w)
+                or display_widget
+
+            if mod.has_covers and type(mod.updateCovers) == "function" then
+                self._cover_mod_slots[mod.id] = { mod = mod, widget = widget }
+            end
+            if mod.is_book_mod then
+                self._book_mod_slots[mod.id] = {
+                    mod        = mod,
+                    widget     = widget,
+                    parent     = target,
+                    index      = #target,
+                    col_w      = col_w,
+                    has_menu   = has_menu,
+                    bg_enabled = bg_enabled,
+                    label_text = label_text,
+                }
+            end
+            if type(mod.updateStats) == "function" then
+                self._stats_mod_slots[mod.id] = { mod = mod, widget = widget }
+            end
+            return true
+        end
+
+        local bento_rows = _bentoRows(cur_page_mods, self._pfx)
+        if bento_rows then
+            local col_gap = MOD_GAP
+            for _, row in ipairs(bento_rows) do
+                local count = #row
+                local total_pct = row.total or 100
+                local row_w = math.max(1, math.floor(inner_w * math.min(100, total_pct) / 100))
+                local available_w = math.max(1, row_w - col_gap * math.max(0, count - 1))
+                local used_w = 0
+                local built_cols = {}
+
+                for i, entry in ipairs(row) do
+                    local col_w
+                    if i == count then
+                        col_w = math.max(1, available_w - used_w)
+                    else
+                        col_w = math.max(1, math.floor(available_w * entry.pct / total_pct))
+                        used_w = used_w + col_w
+                    end
+                    local col = VerticalGroup:new{ align = "left" }
+                    if appendPortraitModule(col, entry.mod, col_w) then
+                        built_cols[#built_cols + 1] = col
                     end
                 end
-                local has_menu = type(mod.getMenuItems) == "function"
-                if mod.id == "header" then
-                    self._header_body_idx   = #body + 1
-                    self._header_is_wrapped = has_menu
+
+                if #built_cols > 0 then
+                    local first_entry = row[1]
+                    local gap_px = first_entry and (mod_gaps[first_entry.mod.id] or MOD_GAP) or MOD_GAP
+                    local pad = first_mod and (topbar_on and gap_px or (gap_px + MOD_GAP)) or gap_px
+                    body[#body+1] = self:_vspan(pad)
+                    first_mod = false
+
+                    local row_widget = HorizontalGroup:new{ align = "top" }
+                    for i, col in ipairs(built_cols) do
+                        if i > 1 then
+                            row_widget[#row_widget + 1] = HorizontalSpan:new{ width = col_gap }
+                        end
+                        row_widget[#row_widget + 1] = col
+                    end
+                    body[#body+1] = row_widget
                 end
-                if mod.id == "clock" then
-                    self._clock_body_idx   = #body + 1
-                    self._clock_body_ref   = body
-                    self._clock_is_wrapped = has_menu
-                    self._clock_label      = mod.label
-                end
-                local display_widget = applyModuleBackground(mod.id, widget, inner_w,
-                    bg_enabled and label_text or nil, label_right, false,
-                    page_nav, ctx.landscape_factor, self._pfx)
-                if has_menu then
-                    body[#body+1] = self:_makeModWrapper(mod, display_widget, inner_w)
+            end
+        else
+            for _, mod in ipairs(cur_page_mods) do
+                local gap_px = mod_gaps[mod.id] or MOD_GAP
+                local pad = first_mod and (topbar_on and gap_px or (gap_px + MOD_GAP)) or gap_px
+                local insertion_index = #body + 1
+                body[insertion_index] = self:_vspan(pad)
+                if appendPortraitModule(body, mod, inner_w) then
+                    first_mod = false
                 else
-                    body[#body+1] = display_widget
-                end
-                -- Record slot for per-module cover poll (only for cover modules).
-                if mod.has_covers and type(mod.updateCovers) == "function" then
-                    self._cover_mod_slots[mod.id] = {
-                        mod    = mod,
-                        widget = widget,
-                    }
-                end
-                if mod.is_book_mod then
-                    self._book_mod_slots[mod.id] = {
-                        mod      = mod,
-                        widget   = widget,
-                        parent   = body,
-                        index    = #body,
-                        col_w    = inner_w,
-                        has_menu = has_menu,
-                        bg_enabled = bg_enabled,
-                        label_text = label_text,
-                    }
-                end
-                if type(mod.updateStats) == "function" then
-                    self._stats_mod_slots[mod.id] = { mod = mod, widget = widget }
+                    table.remove(body, insertion_index)
                 end
             end
         end

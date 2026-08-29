@@ -12,6 +12,8 @@ local PATCH_NAME     = "Bento Grid Patch"
 local PATCH_FILE     = "2-simpleui-bento-grid.lua"
 local RAW_URL        = "https://raw.githubusercontent.com/komadorirobin/koreader-patches/main/" .. PATCH_FILE
 local VERSION_PATTERN = 'BENTO_GRID_PATCH_VERSION%s*=%s*"([^"]+)"'
+local API_PATTERN     = 'BENTO_GRID_SIMPLEUI_API%s*=%s*"([^"]+)"'
+local REQUIRED_API    = "screen-engine-v1"
 
 local _plugin_dir = (debug.getinfo(1, "S").source or ""):match("^@?(.+)/[^/]+$")
     or "/mnt/us/koreader/plugins/simpleui.koplugin"
@@ -137,10 +139,17 @@ local function _doFetch()
     if not body:find("Bento Grid Layout Engine", 1, true) then
         return { error = "remote file did not look like the Bento Grid patch" }
     end
+    local api = body:match(API_PATTERN)
+    if api ~= REQUIRED_API then
+        return { error = "remote patch is incompatible with this SimpleUI version" }
+    end
+    local current_body = _readFile(_patchPath())
     return {
         body = body,
         version = version,
-        current_version = _parseVersion(_readFile(_patchPath())),
+        api = api,
+        current_version = _parseVersion(current_body),
+        current_api = (current_body or ""):match(API_PATTERN),
         path = _patchPath(),
     }
 end
@@ -216,6 +225,7 @@ end
 local function _showPatchDialog(release)
     local current = release.current_version
     local has_update = current == nil or _versionGt(release.version, current)
+        or release.current_api ~= REQUIRED_API
 
     if not has_update then
         _toast(string.format(_("%s is up to date (%s)."), PATCH_NAME, current))
