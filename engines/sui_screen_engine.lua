@@ -187,6 +187,7 @@ local ScreenEngine = {
     _instance = nil,
     _cs_state = {},
     BENTO_GRID_NATIVE = true,
+    _bento_patched = true,
 }
 
 -- Bento is native to the shared screen engine. installBentoGrid remains as a
