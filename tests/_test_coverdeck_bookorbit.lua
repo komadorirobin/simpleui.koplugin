@@ -25,6 +25,7 @@ package.loaded["ui/geometry"] = {}
 package.loaded["ui/gesturerange"] = {}
 package.loaded["ui/widget/container/inputcontainer"] = {}
 package.loaded["ui/widget/overlapgroup"] = {}
+package.loaded["ui/widget/textboxwidget"] = {}
 package.loaded["ui/widget/textwidget"] = {}
 package.loaded["ui/widget/verticalgroup"] = {}
 package.loaded["infra/sui_i18n"] = {

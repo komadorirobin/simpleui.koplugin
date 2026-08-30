@@ -68,9 +68,10 @@ package.loaded["ffi/blitbuffer"] = {
     new = function(w, h) return makeBB(w, h) end,
 }
 package.loaded["datastorage"] = { getDataDir = function() return "/tmp/simpleui-test" end }
+local store_settings = {}
 package.loaded["infra/sui_store"] = {
-    get = function() return nil end,
-    set = function() end,
+    get = function(_, key) return store_settings[key] end,
+    set = function(_, key, value) store_settings[key] = value end,
     readSetting = function() return nil end,
     saveSetting = function() end,
     flush = function() end,
@@ -102,31 +103,28 @@ local CoverCache = dofile("infra/sui_cover_cache.lua")
 local Config = dofile("infra/sui_config.lua")
 
 test("native Bento widths preserve legacy settings and menu entries", function()
-    local key = "simpleui_bento_width_clock"
-    reader_settings[key] = nil
-    eq(Config.getBentoWidthPct("clock"), 100)
+    local legacy_key = "simpleui_bento_width_clock"
+    local native_key = "simpleui_hs_bento_width_clock"
+    reader_settings[legacy_key] = nil
+    store_settings[native_key] = nil
+    eq(Config.getBentoWidth("clock", "simpleui_hs_"), 100)
 
-    reader_settings[key] = 15
-    eq(Config.getBentoWidthPct("clock"), 20, "legacy values must be clamped")
+    reader_settings[legacy_key] = 15
+    eq(Config.getBentoWidth("clock", "simpleui_hs_"), 20, "legacy values must be clamped")
+    eq(store_settings[native_key], 20, "legacy width must migrate to native storage")
 
-    Config.setBentoWidthPct(55, "clock")
-    eq(reader_settings[key], 55)
+    Config.setBentoWidth(55, "clock", "simpleui_hs_")
+    eq(store_settings[native_key], 55)
 
-    local items = Config.appendModuleAppearanceItems({}, "clock", "simpleui_hs_", function() end)
-    local bento_count = 0
-    for _, item in ipairs(items) do
-        if item._sui_bento_width then bento_count = bento_count + 1 end
-    end
-    eq(bento_count, 1)
-    Config.appendModuleAppearanceItems(items, "clock", "simpleui_hs_", function() end)
-    bento_count = 0
-    for _, item in ipairs(items) do
-        if item._sui_bento_width then bento_count = bento_count + 1 end
-    end
-    eq(bento_count, 1, "appearance helper must not duplicate Bento settings")
+    local item = Config.makeBentoWidthItem{
+        get = function() return Config.getBentoWidth("clock", "simpleui_hs_") end,
+        set = function(v) Config.setBentoWidth(v, "clock", "simpleui_hs_") end,
+        refresh = function() end,
+    }
+    eq(item.value_func(), "55%")
 
-    Config.setBentoWidthPct(100, "clock")
-    eq(reader_settings[key], nil, "default width should remove the legacy key")
+    Config.setBentoWidth(100, "clock", "simpleui_hs_")
+    eq(store_settings[native_key], 100)
 end)
 
 test("LRU eviction drops cache ownership without freeing live buffers", function()
