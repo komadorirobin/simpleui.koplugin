@@ -358,6 +358,7 @@ local M = {}
 M.id          = "currently"
 M.name        = _("Currently Reading")
 M.label       = _("Currently Reading")
+M._section_label = M.label
 M.enabled_key = "currently_enabled"
 M.default_on  = true
 M.has_covers  = true   -- activates e-ink dithering and cover poll
@@ -1214,8 +1215,11 @@ end
 -- under-allocating space and causing overlap with the module below.
 function M.getHeight(_ctx)
     local SH = getSH()
-    if not SH then return Config.getScaledLabelH() end
     local pfx = _ctx and _ctx.pfx
+    if not SH then
+        return Config.isLabelHidden("currently")
+            and 0 or Config.getScaledLabelH("currently", pfx)
+    end
     -- Use pre-read settings bundle from ctx when available (normal HS path).
     -- c.scale/c.thumb_scale/c.lbl_scale (from ctx.cfg) are RAW; apply
     -- ctx.landscape_factor here, on both the cached and fallback path.
@@ -1385,7 +1389,9 @@ function M.getHeight(_ctx)
             content_h = content_h + SUIStyle.BORDER_SZ * 2
         end
     end
-    return Config.getScaledLabelH("currently", pfx) + content_h
+    local label_h = Config.isLabelHidden("currently")
+        and 0 or Config.getScaledLabelH("currently", pfx)
+    return label_h + content_h
 end
 
 

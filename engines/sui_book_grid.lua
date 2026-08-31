@@ -1381,7 +1381,9 @@ function GridRenderer.getHeight(_ctx, opts)
     -- outside the padding — see computeBox's doc comment), so no separate
     -- border_sz*2 addition is needed here.
     h = h + box.inset_v
-    return Config.getScaledLabelH() + h
+    local label_h = Config.isLabelHidden(id)
+        and 0 or Config.getScaledLabelH(id, pfx)
+    return label_h + h
 end
 
 -- ---------------------------------------------------------------------------
@@ -1662,6 +1664,7 @@ function GridRenderer.makeModule(spec)
     M.id          = id
     M.name        = spec.name or id
     M.label       = spec.label
+    M._section_label = spec.label
     M.enabled_key = spec.enabled_key or (id .. "_enabled")
     M.default_on  = spec.default_on or false
     M.has_covers  = true

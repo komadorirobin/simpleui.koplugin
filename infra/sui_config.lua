@@ -1225,11 +1225,25 @@ function M.isLabelHidden(mod_id)
 end
 
 function M.applyLabelToggle(mod, default_label)
+    -- Keep the declared label separate from the mutable compatibility field.
+    -- Some render paths rebuild or refresh modules after mod.label has been
+    -- cleared while hidden; the immutable value lets the renderer restore the
+    -- label as soon as the toggle is enabled again.
+    mod._section_label = default_label
     if M.isLabelHidden(mod.id) then
         mod.label = nil
     else
         mod.label = default_label
     end
+end
+
+function M.getModuleSectionLabel(mod, ctx)
+    if not mod or M.isLabelHidden(mod.id) then return nil end
+    if type(mod.label_func) == "function" then
+        local label = mod.label_func(ctx)
+        if label ~= nil then return label end
+    end
+    return mod._section_label or mod.label
 end
 
 -- ===========================================================================

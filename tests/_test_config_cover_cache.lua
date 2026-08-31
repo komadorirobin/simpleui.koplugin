@@ -127,6 +127,29 @@ test("native Bento widths preserve legacy settings and menu entries", function()
     eq(store_settings[native_key], 100)
 end)
 
+test("section labels survive hidden and rebuilt Bento modules", function()
+    local hide_key = "simpleui_hide_label_currently"
+    local mod = {
+        id = "currently",
+        label = "Currently Reading",
+    }
+
+    store_settings[hide_key] = true
+    Config.applyLabelToggle(mod, "Currently Reading")
+    eq(mod.label, nil, "hidden compatibility label must be cleared")
+    eq(mod._section_label, "Currently Reading", "declared label must survive")
+    eq(Config.getModuleSectionLabel(mod, {}), nil, "hidden label must stay hidden")
+
+    store_settings[hide_key] = nil
+    -- Rebuild paths may still see the compatibility field cleared from the
+    -- previous render. The immutable declaration must restore the heading.
+    mod.label = nil
+    eq(Config.getModuleSectionLabel(mod, {}), "Currently Reading")
+
+    mod.label_func = function() return "Dynamic heading" end
+    eq(Config.getModuleSectionLabel(mod, {}), "Dynamic heading")
+end)
+
 test("LRU eviction drops cache ownership without freeing live buffers", function()
     freed = 0
     CoverCache:clear()

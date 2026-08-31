@@ -467,6 +467,10 @@ local function labelRightTextFor(mod, ctx)
     return pageIndicatorFor(mod, ctx)
 end
 
+local function labelTextFor(mod, ctx)
+    return Config.getModuleSectionLabel(mod, ctx)
+end
+
 -- Chevron pair descriptor for the same paginated module, passed to
 -- sectionLabel as page_nav. Mirrors pageIndicatorFor's nil case exactly (a
 -- single page or a non-paginated module gets neither the text nor the
@@ -2622,7 +2626,7 @@ function ScreenWidget:_updatePage(keep_cache, books_only, stats_only)
 
             local cell = VerticalGroup:new{ align = "left" }
             local bg_enabled = Config.isModuleBackgroundEnabled(mod.id, self._pfx)
-            local label_text = (type(mod.label_func) == "function" and mod.label_func(ctx)) or mod.label
+            local label_text = labelTextFor(mod, ctx)
             local label_right = labelRightTextFor(mod, ctx)
             local page_nav = pageNavFor(self, mod, ctx)
 
@@ -3151,8 +3155,7 @@ function ScreenWidget:_refresh(keep_cache, books_only, stats_only)
                                 -- module_coverdeck.updateStats).
                                 local new_widget = slot.mod.build(slot.col_w, self._ctx_cache)
                                 if new_widget then
-                                    local label_text = (type(slot.mod.label_func) == "function"
-                                        and slot.mod.label_func(self._ctx_cache)) or slot.mod.label
+                                    local label_text = labelTextFor(slot.mod, self._ctx_cache)
                                     local label_right = pageIndicatorFor(slot.mod, self._ctx_cache)
                                     local page_nav = pageNavFor(self, slot.mod, self._ctx_cache)
                                     local display_widget = applyModuleBackground(
@@ -3332,9 +3335,9 @@ end
 -- ---------------------------------------------------------------------------
 function ScreenWidget:_syncBookModLabel(mod_id)
     local label_slot = self._book_mod_label_slots and self._book_mod_label_slots[mod_id]
-    if not (label_slot and label_slot.parent and label_slot.mod.label) then return end
-    local label_text = (type(label_slot.mod.label_func) == "function"
-        and label_slot.mod.label_func(self._ctx_cache)) or label_slot.mod.label
+    if not (label_slot and label_slot.parent and label_slot.mod) then return end
+    local label_text = labelTextFor(label_slot.mod, self._ctx_cache)
+    if not label_text then return end
     local new_label = sectionLabel(label_text, label_slot.col_w,
         label_slot.mod.id, labelRightTextFor(label_slot.mod, self._ctx_cache),
         pageNavFor(self, label_slot.mod, self._ctx_cache),
@@ -3360,8 +3363,7 @@ function ScreenWidget:_refreshBookModSlot(mod_id)
         slot.mod.id,
         new_widget,
         slot.col_w,
-        slot.bg_enabled and ((type(slot.mod.label_func) == "function"
-            and slot.mod.label_func(self._ctx_cache)) or slot.mod.label) or nil,
+        slot.bg_enabled and labelTextFor(slot.mod, self._ctx_cache) or nil,
         pageIndicatorFor(slot.mod, self._ctx_cache),
         true,
         pageNavFor(self, slot.mod, self._ctx_cache),
