@@ -273,147 +273,111 @@ local _MODULE_BG_COLOR  = Blitbuffer.gray(0.08)
 local _MODULE_BG_RADIUS = Screen:scaleBySize(12)
 local _MODULE_BG_PAD_Y  = PAD
 
--- Section label widget cache — keyed by module, text, width, scale and
--- right-side content, plus
--- "mod_id|page|npages" for a paginated row's header (see sectionLabel's
--- page_nav parameter below). That extra key segment tracks pagination
--- STATE, not the identity of the ScreenWidget whose chevrons a cached
--- widget's tap handler closes over — so anything that can change a
--- paginated row's page/npages without necessarily replacing this module's
--- own local widget cache must also invalidate this one, or a stale cached
--- header can end up wired to a dead closure (chevrons that silently do
--- nothing on tap).
---
--- Invalidated via invalidateLabelCache() from:
---   • main.lua's onCloseDocument — reader-return path, every document close.
---   • infra/sui_core.lua's invalidateDimCache — screen resize/rotation.
---   • engines/sui_book_grid.lua's GridRenderer.clearRowCaches — every place
---     a row module's file-list cache is cleared (status changes, TBR/
---     collection add-remove, the debounced background refresh, ...), since
---     that is precisely when a paginated row's page/npages can shift.
---     Centralised there instead of at each clearRowCaches() call site so
---     future callers get this for free.
-local _label_cache = {}
-
+-- Compatibility hook for callers which invalidate layout caches. Section
+-- label widgets must not be cached: KOReader frees a widget's inner text
+-- object when the previous screen tree closes. Reusing that widget preserves
+-- its height but paints no text on the next automatic Homescreen refresh.
 local function invalidateLabelCache()
-    _label_cache = {}
+    return true
 end
 
 -- page_nav (optional): { mod_id, page, npages, turnPageFn } — see
 -- pageNavFor below. When present, a pair of chevrons is drawn flanking
--- right_text, tappable to move to the previous/next page. mod_id is folded
--- into the cache key below: unlike plain display text, a chevron's tap
--- closure is bound to one specific module, so two modules that happen to
--- render the same text/width/page can no longer share the cached widget —
--- doing so would wire the wrong module's pagination to the tap.
+-- right_text, tappable to move to the previous/next page.
 -- landscape_factor (optional): scale multiplier for the label; defaults to 1.
 local function sectionLabel(text, w, mod_id, right_text, page_nav, landscape_factor, pfx)
     local label_fg = SUIStyle.COLOR.text_primary
     local scale = Config.getSectionLabelScale(mod_id, pfx) * (landscape_factor or 1)
     local fs = math.max(8, math.floor(SUIStyle.FS_BODY * scale))
-    local key = table.concat({
-        tostring(mod_id or ""), text, tostring(w),
-        tostring(scale), tostring(right_text or ""), tostring(pfx or ""),
-    }, "|")
-    if page_nav then
-        -- has_wallpaper is folded in too: it changes how the chevrons are
-        -- built (see GridRenderer.buildPageNavButtons), so toggling the
-        -- wallpaper must not reuse a cached widget built for the other state.
-        key = key .. "|" .. page_nav.mod_id .. "|" .. tostring(page_nav.page) .. "|" .. tostring(page_nav.npages)
-            .. "|" .. tostring(page_nav.has_wallpaper)
-    end
-    if not _label_cache[key] then
-        local face = Font:getFace(SUIStyle.FACE_REGULAR, fs)
-        local avail_w  = w - PAD * 2
-        local content
+    local face = Font:getFace(SUIStyle.FACE_REGULAR, fs)
+    local avail_w  = w - PAD * 2
+    local content
 
-        if right_text then
-            -- Page indicator ("1/2"): same line as the title, pushed
-            -- to the right of the line — distinguished from the title (bold, larger) without
-            -- needing extra vertical space.
-            --
-            -- One level below on the named size scale (FS_BODY ->
-            -- FS_DETAIL), not the same `fs` as the title.
-            local fs_right = math.max(8, math.floor(SUIStyle.FS_DETAIL * scale))
-            local face_right = Font:getFace(SUIStyle.FACE_REGULAR, fs_right)
-            local right_widget = UI.makeColoredText{
-                text    = right_text,
-                face    = face_right,
-                bold    = false,
-                fgcolor = SUIStyle.COLOR.text_secondary,
-            }
-            local gap = PAD
-            local title_widget = UI.makeColoredText{
-                text    = text,
-                face    = face,
-                bold    = true,
-                fgcolor = label_fg,
-            }
-            -- Shared row height so title, "1/2", and chevrons centre on one line.
-            local title_h = title_widget:getSize().h
-            local right_h = right_widget:getSize().h
-            local row_h   = math.max(title_h, right_h)
+    if right_text then
+        -- Page indicator ("1/2"): same line as the title, pushed
+        -- to the right of the line — distinguished from the title (bold, larger) without
+        -- needing extra vertical space.
+        --
+        -- One level below on the named size scale (FS_BODY ->
+        -- FS_DETAIL), not the same `fs` as the title.
+        local fs_right = math.max(8, math.floor(SUIStyle.FS_DETAIL * scale))
+        local face_right = Font:getFace(SUIStyle.FACE_REGULAR, fs_right)
+        local right_widget = UI.makeColoredText{
+            text    = right_text,
+            face    = face_right,
+            bold    = false,
+            fgcolor = SUIStyle.COLOR.text_secondary,
+        }
+        local gap = PAD
+        local title_widget = UI.makeColoredText{
+            text    = text,
+            face    = face,
+            bold    = true,
+            fgcolor = label_fg,
+        }
+        -- Shared row height so title, "1/2", and chevrons centre on one line.
+        local title_h = title_widget:getSize().h
+        local right_h = right_widget:getSize().h
+        local row_h   = math.max(title_h, right_h)
 
-            -- Chevrons, one on each side of right_widget. Built lazily
-            -- (same require-on-first-use pattern as elsewhere in this file)
-            -- to avoid a hard dependency from this generic label helper on
-            -- the book-grid engine when no module actually needs paging.
-            local prev_button, next_button
-            local nav_w = 0
-            if page_nav then
-                local ok_gr, GridRenderer = pcall(require, "engines/sui_book_grid")
-                if ok_gr and GridRenderer then
-                    prev_button, next_button = GridRenderer.buildPageNavButtons(
-                        page_nav.page, page_nav.npages, row_h, page_nav.turnPageFn, page_nav.has_wallpaper)
-                    if prev_button then
-                        nav_w = prev_button:getSize().w + next_button:getSize().w + gap * 2
-                    end
+        -- Chevrons, one on each side of right_widget. Built lazily
+        -- (same require-on-first-use pattern as elsewhere in this file)
+        -- to avoid a hard dependency from this generic label helper on
+        -- the book-grid engine when no module actually needs paging.
+        local prev_button, next_button
+        local nav_w = 0
+        if page_nav then
+            local ok_gr, GridRenderer = pcall(require, "engines/sui_book_grid")
+            if ok_gr and GridRenderer then
+                prev_button, next_button = GridRenderer.buildPageNavButtons(
+                    page_nav.page, page_nav.npages, row_h, page_nav.turnPageFn, page_nav.has_wallpaper)
+                if prev_button then
+                    nav_w = prev_button:getSize().w + next_button:getSize().w + gap * 2
                 end
             end
-
-            local right_w  = right_widget:getSize().w + nav_w
-            local title_w  = math.max(1, avail_w - right_w - gap)
-            -- LeftContainer gives the title a real title_w-wide slot so the
-            -- page indicator stays at the row's right edge (TextWidget's
-            -- getSize() only reports glyph width, never pads to max_width).
-            local title_slot = LeftContainer:new{
-                dimen = Geom:new{ w = title_w, h = row_h },
-                title_widget,
-            }
-            local right_slot = CenterContainer:new{
-                dimen = Geom:new{ w = right_widget:getSize().w, h = row_h },
-                right_widget,
-            }
-            content = HorizontalGroup:new{ align = "center" }
-            table.insert(content, title_slot)
-            table.insert(content, HorizontalSpan:new{ width = gap })
-            if prev_button then
-                table.insert(content, prev_button)
-                table.insert(content, HorizontalSpan:new{ width = gap })
-            end
-            table.insert(content, right_slot)
-            if next_button then
-                table.insert(content, HorizontalSpan:new{ width = gap })
-                table.insert(content, next_button)
-            end
-        else
-            content = UI.makeColoredText{
-                text    = text,
-                face    = face,
-                bold    = true,
-                width   = avail_w,
-                fgcolor = label_fg,
-            }
         end
 
-        _label_cache[key] = FrameContainer:new{
-            bordersize = 0, padding = 0,
-            padding_left = PAD, padding_right = PAD,
-            padding_bottom = UI.LABEL_PAD_BOT,
-            content,
+        local right_w  = right_widget:getSize().w + nav_w
+        local title_w  = math.max(1, avail_w - right_w - gap)
+        -- LeftContainer gives the title a real title_w-wide slot so the
+        -- page indicator stays at the row's right edge (TextWidget's
+        -- getSize() only reports glyph width, never pads to max_width).
+        local title_slot = LeftContainer:new{
+            dimen = Geom:new{ w = title_w, h = row_h },
+            title_widget,
+        }
+        local right_slot = CenterContainer:new{
+            dimen = Geom:new{ w = right_widget:getSize().w, h = row_h },
+            right_widget,
+        }
+        content = HorizontalGroup:new{ align = "center" }
+        table.insert(content, title_slot)
+        table.insert(content, HorizontalSpan:new{ width = gap })
+        if prev_button then
+            table.insert(content, prev_button)
+            table.insert(content, HorizontalSpan:new{ width = gap })
+        end
+        table.insert(content, right_slot)
+        if next_button then
+            table.insert(content, HorizontalSpan:new{ width = gap })
+            table.insert(content, next_button)
+        end
+    else
+        content = UI.makeColoredText{
+            text    = text,
+            face    = face,
+            bold    = true,
+            width   = avail_w,
+            fgcolor = label_fg,
         }
     end
-    return _label_cache[key]
+
+    return FrameContainer:new{
+        bordersize = 0, padding = 0,
+        padding_left = PAD, padding_right = PAD,
+        padding_bottom = UI.LABEL_PAD_BOT,
+        content,
+    }
 end
 
 local function applyModuleBackground(mod_id, widget, w, label_text, right_text,
@@ -469,6 +433,25 @@ end
 
 local function labelTextFor(mod, ctx)
     return Config.getModuleSectionLabel(mod, ctx)
+end
+
+-- Primitive render-state key used only to skip redundant label rebuilds.
+-- Unlike the old cache this never owns a widget, so KOReader remains the
+-- sole owner of every label's lifecycle.
+local function sectionLabelSignature(text, w, mod_id, right_text, page_nav,
+        landscape_factor, pfx)
+    local scale = Config.getSectionLabelScale(mod_id, pfx) * (landscape_factor or 1)
+    local parts = {
+        tostring(mod_id or ""), tostring(text or ""), tostring(w or ""),
+        tostring(scale), tostring(right_text or ""), tostring(pfx or ""),
+    }
+    if page_nav then
+        parts[#parts + 1] = tostring(page_nav.mod_id or "")
+        parts[#parts + 1] = tostring(page_nav.page or "")
+        parts[#parts + 1] = tostring(page_nav.npages or "")
+        parts[#parts + 1] = tostring(page_nav.has_wallpaper)
+    end
+    return table.concat(parts, "|")
 end
 
 -- Chevron pair descriptor for the same paginated module, passed to
@@ -2641,6 +2624,9 @@ function ScreenWidget:_updatePage(keep_cache, books_only, stats_only)
                         index  = #cell,
                         mod    = mod,
                         col_w  = col_w,
+                        signature = sectionLabelSignature(label_text, col_w,
+                            mod.id, label_right, page_nav,
+                            ctx.landscape_factor, self._pfx),
                     }
                 end
             end
@@ -3330,20 +3316,29 @@ end
 --
 -- Reads ctx fresh (via pageIndicatorFor/pageNavFor) rather than trusting the
 -- caller to know the current page/npages, so this is always safe to call
--- speculatively: it's a no-op (no setDirty) when the recomputed label widget
--- is identical to the one already mounted.
+-- speculatively: its primitive render signature avoids rebuilding the owned
+-- widget when none of the visible label state changed.
 -- ---------------------------------------------------------------------------
 function ScreenWidget:_syncBookModLabel(mod_id)
     local label_slot = self._book_mod_label_slots and self._book_mod_label_slots[mod_id]
     if not (label_slot and label_slot.parent and label_slot.mod) then return end
     local label_text = labelTextFor(label_slot.mod, self._ctx_cache)
     if not label_text then return end
+    local label_right = labelRightTextFor(label_slot.mod, self._ctx_cache)
+    local page_nav = pageNavFor(self, label_slot.mod, self._ctx_cache)
+    local landscape_factor = self._ctx_cache and self._ctx_cache.landscape_factor
+    local signature = sectionLabelSignature(label_text, label_slot.col_w,
+        label_slot.mod.id, label_right, page_nav, landscape_factor, self._pfx)
+    if signature == label_slot.signature then return end
     local new_label = sectionLabel(label_text, label_slot.col_w,
-        label_slot.mod.id, labelRightTextFor(label_slot.mod, self._ctx_cache),
-        pageNavFor(self, label_slot.mod, self._ctx_cache),
-        self._ctx_cache and self._ctx_cache.landscape_factor, self._pfx)
-    if new_label == label_slot.parent[label_slot.index] then return end
+        label_slot.mod.id, label_right, page_nav,
+        landscape_factor, self._pfx)
+    local old_label = label_slot.parent[label_slot.index]
     label_slot.parent[label_slot.index] = new_label
+    label_slot.signature = signature
+    if old_label and type(old_label.free) == "function" then
+        pcall(old_label.free, old_label)
+    end
     if new_label.dimen then
         UIManager:setDirty(self, function() return "ui", new_label.dimen, true end)
     else
