@@ -3713,6 +3713,12 @@ msgstr ""
 msgid "Recent Books"
 msgstr ""
 
+msgid "Remove from Recent Books"
+msgstr ""
+
+msgid "Show hidden books again"
+msgstr ""
+
 #: infra/sui_updater.lua:852
 msgid "Record and install the current revision of branch %s?\n\nCommit: %s"
 msgstr ""

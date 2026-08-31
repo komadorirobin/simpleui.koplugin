@@ -9,6 +9,7 @@ local _ = require("infra/sui_i18n").translate
 
 local SUISettings  = require("infra/sui_store")
 local GridRenderer = require("engines/sui_book_grid")
+local RecentHidden = require("features/library/sui_recent_hidden")
 
 local recent_module = GridRenderer.makeModule{
     id          = "recent",
@@ -28,6 +29,7 @@ local recent_module = GridRenderer.makeModule{
     -- Filters finished books (unless "Show finished books") and optionally
     -- the Currently Reading book (default ON via recent_exclude_currently).
     filterItem = function(fp, ctx)
+        if RecentHidden.isHidden(fp) then return false end
         local pfx = ctx.pfx or ""
         local excl = SUISettings:readSetting(pfx .. "recent_exclude_currently")
         if excl == nil then excl = true end
@@ -59,14 +61,12 @@ local recent_module = GridRenderer.makeModule{
         local pfx = ctx_menu.pfx or ""
         local Registry = require("modules/moduleregistry")
         local currently = Registry.get("currently")
-        if not (currently and Registry.isEnabled(currently, pfx)) then
-            return {}
-        end
         local skey = pfx .. "recent_exclude_currently"
         local refresh = ctx_menu.refresh
         local _lc = ctx_menu._
-        return {
-            {
+        local items = {}
+        if currently and Registry.isEnabled(currently, pfx) then
+            items[#items + 1] = {
                 text = _lc("Hide Currently Reading book"),
                 checked_func = function()
                     local v = SUISettings:readSetting(skey)
@@ -80,9 +80,21 @@ local recent_module = GridRenderer.makeModule{
                     SUISettings:saveSetting(skey, not cur)
                     refresh()
                 end,
-            },
-        }
+            }
+        end
+        if RecentHidden.count() > 0 then
+            items[#items + 1] = {
+                text = _lc("Show hidden books again"),
+                callback = function()
+                    RecentHidden.clear()
+                    refresh()
+                end,
+            }
+        end
+        return items
     end,
+
+    hideFile = function(fp) return RecentHidden.hide(fp) end,
 
     reset = function() GridRenderer.reset() end,
 }

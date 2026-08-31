@@ -57,7 +57,7 @@
 --                                       metadata, via module_books_shared's
 --                                       SH.getBookData), falling back to the
 --                                       filename when no metadata is available.
---     opts.extra_rows      function? (file) -> { row, ... }
+--     opts.extra_rows      function? (file, close_and_refresh) -> { row, ... }
 --                                       -- caller-specific rows appended
 --                                       at the end (e.g. "Remove from this
 --                                       list"), same {button,button} row
@@ -480,7 +480,7 @@ function M.show(file, opts)
     end
 
     if opts.extra_rows then
-        local ok_extra, extra = pcall(opts.extra_rows, file)
+        local ok_extra, extra = pcall(opts.extra_rows, file, close_dialog_refresh_callback)
         if ok_extra and extra then
             for _, row in ipairs(extra) do
                 buttons[#buttons + 1] = row

@@ -2183,6 +2183,21 @@ function ScreenWidget:_showBookHoldDialog(fp, mod_id)
         navigate_fn      = function() self_ref:onClose() end,
         navigate_row_ids = { sui_browse_author = true },
         open_settings_fn = mod and function() self_ref:_openModuleSettingsFor(mod) end or nil,
+        extra_rows = mod_id == "recent" and mod and mod.hideFile and
+            function(file, close_and_refresh)
+                return {
+                    {
+                        {
+                            text = _("Remove from Recent Books"),
+                            callback = function()
+                                if mod.hideFile(file) then
+                                    close_and_refresh()
+                                end
+                            end,
+                        },
+                    },
+                }
+            end or nil,
         -- "Collections…" and "Book information" open a native FM/ReaderUI
         -- sub-screen on top of us; closing that sub-screen should reveal us
         -- again on its own, but can instead resurface FileManager's native

@@ -164,6 +164,12 @@ msgstr "Ny"
 msgid "Recent Books"
 msgstr "Pågående böcker"
 
+msgid "Remove from Recent Books"
+msgstr "Ta bort från Pågående böcker"
+
+msgid "Show hidden books again"
+msgstr "Visa dolda böcker igen"
+
 msgid "Simple UI"
 msgstr "Simple UI"
 

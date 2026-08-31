@@ -948,6 +948,17 @@ function SH.prefetchBooks(show_currently, show_recent, max_recent, opts)
     local state = { current_fp = nil, recent_fps = {}, prefetched_data = {} }
     if not show_currently and not show_recent then return state end
 
+    -- Hidden Recent Books are skipped while walking history, rather than
+    -- filtered only at render time. This lets older entries fill the vacated
+    -- slots instead of leaving the module partially empty.
+    local hidden_recent = {}
+    if show_recent then
+        local ok_hidden, RecentHidden = pcall(require, "features/library/sui_recent_hidden")
+        if ok_hidden and RecentHidden then
+            hidden_recent = RecentHidden.snapshot()
+        end
+    end
+
     local ReadHistory = package.loaded["readhistory"] or require("readhistory")
     if not ReadHistory then return state end
     if not ReadHistory.hist or #ReadHistory.hist == 0 then
@@ -1031,11 +1042,12 @@ function SH.prefetchBooks(show_currently, show_recent, max_recent, opts)
                     end
                 end
                 -- When exclusion is off, the same book may also appear in Recent.
-                if show_recent and not exclude_current
+                if show_recent and not exclude_current and not hidden_recent[fp]
                         and #state.recent_fps < max_recent then
                     state.recent_fps[#state.recent_fps + 1] = fp
                 end
-            elseif show_recent and #state.recent_fps < max_recent then
+            elseif show_recent and not hidden_recent[fp]
+                    and #state.recent_fps < max_recent then
                 local pct = 0
                 local book_summary = nil
                 if DS then
