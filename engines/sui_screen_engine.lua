@@ -2159,6 +2159,16 @@ function ScreenWidget:_showBookHoldDialog(fp, mod_id)
     if not ok or not BookHoldDialog then return end
     local self_ref = self
     local mod = mod_id and Registry.get(mod_id)
+    local is_recent = mod_id == "recent" or (mod and mod.id == "recent")
+    local recent_hidden
+    if is_recent then
+        local ok_hidden, hidden = pcall(require, "features/library/sui_recent_hidden")
+        if ok_hidden and hidden then
+            recent_hidden = hidden
+        else
+            logger.warn("simpleui: could not load Recent Books exclusions: " .. tostring(hidden))
+        end
+    end
     BookHoldDialog.show(fp, {
         -- Most actions here (status, reset, collections, ...) can change
         -- what a module shows or how a cover looks (e.g. status badges),
@@ -2183,14 +2193,19 @@ function ScreenWidget:_showBookHoldDialog(fp, mod_id)
         navigate_fn      = function() self_ref:onClose() end,
         navigate_row_ids = { sui_browse_author = true },
         open_settings_fn = mod and function() self_ref:_openModuleSettingsFor(mod) end or nil,
-        extra_rows = mod_id == "recent" and mod and mod.hideFile and
+        -- Use the exclusions store directly instead of going through the
+        -- registry's module table. After an OTA update KOReader may retain an
+        -- older module_recent instance until the next full process restart;
+        -- gating this row on mod.hideFile then made the action disappear even
+        -- though the hold originated in Recent Books.
+        extra_rows = recent_hidden and
             function(file, close_and_refresh)
                 return {
                     {
                         {
                             text = _("Remove from Recent Books"),
                             callback = function()
-                                if mod.hideFile(file) then
+                                if recent_hidden.hide(file) then
                                     close_and_refresh()
                                 end
                             end,

@@ -102,6 +102,7 @@ local BD                = require("ui/bidi")
 local DocumentRegistry   = require("document/documentregistry")
 local BookList           = require("ui/widget/booklist")
 local filemanagerutil    = require("apps/filemanager/filemanagerutil")
+local logger             = require("logger")
 local SH                 = require("modules/module_books_shared")
 local _ = require("infra/sui_i18n").translate
 
@@ -485,6 +486,8 @@ function M.show(file, opts)
             for _, row in ipairs(extra) do
                 buttons[#buttons + 1] = row
             end
+        elseif not ok_extra then
+            logger.warn("simpleui: book hold dialog extra rows failed: " .. tostring(extra))
         end
     end
 
