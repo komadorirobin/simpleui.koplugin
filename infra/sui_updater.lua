@@ -809,14 +809,14 @@ end
 --- channels or when that branch has a newer commit than the installed one.
 function M._doManualBranchCheck(branch, current)
     local ok_tr, Trapper = pcall(require, "ui/trapper")
-    local checking_msg = _toast(_("Checking for updates…"), 15)
+    local checking_msg = UI.Notify.toast(_("Checking for updates…"), 15)
 
     local function handleCheckResult(result)
         _closeWidget(checking_msg)
         if not result or result.error then
             local err = result and result.error or _("unknown error")
             logger.err("simpleui updater branch check:", err)
-            _toast(_("Error checking for updates: ") .. tostring(err))
+            UI.Notify.toast(_("Error checking for updates: ") .. tostring(err), 4)
             return
         end
 
@@ -825,7 +825,7 @@ function M._doManualBranchCheck(branch, current)
         local installed_commit = M.installedCommit()
         local expected_source = "branch:" .. branch
         if source == expected_source and installed_commit == head_sha then
-            _toast(string.format(
+            UI.Notify.toast(string.format(
                 _("Simple UI is up to date.\n\nBranch: %s\nCommit: %s"),
                 branch, _shortSha(head_sha)), 4)
             return
@@ -882,7 +882,7 @@ function M._doManualBranchCheck(branch, current)
             UIManager:scheduleIn(0.2, function() handleCheckResult(result) end)
         elseif completed == false then
             _closeWidget(checking_msg)
-            _toast(_("Update check cancelled."))
+            UI.Notify.toast(_("Update check cancelled."), 4)
         end
     else
         UIManager:scheduleIn(0.3, function()
