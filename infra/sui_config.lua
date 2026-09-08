@@ -963,11 +963,7 @@ function M.makeScaleItem(opts)
         callback       = function()
             if enabled_func and not enabled_func() then
                 local UIManager   = require("ui/uimanager")
-                local InfoMessage = require("ui/widget/infomessage")
-                UIManager:show(InfoMessage:new{
-                    text    = _("Disable \"Lock Scale\" first to set a per-module scale."),
-                    timeout = 3,
-                })
+                UI.Notify.toast(_("Disable \"Lock Scale\" first to set a per-module scale."))
                 return
             end
             local SpinWidget = require("ui/widget/spinwidget")
@@ -976,10 +972,11 @@ function M.makeScaleItem(opts)
                 title_text    = opts.title,
                 info_text     = opts.info,
                 value         = opts.get(),
-                value_min     = opts.value_min   or SCALE_MIN,
-                value_max     = opts.value_max   or SCALE_MAX,
-                value_step    = opts.value_step  or SCALE_STEP,
-                unit          = "%",
+                value_min       = opts.value_min      or SCALE_MIN,
+                value_max       = opts.value_max      or SCALE_MAX,
+                value_step      = opts.value_step     or SCALE_STEP,
+                value_hold_step = opts.value_hold_step,
+                unit            = "%",
                 ok_text       = _("Apply"),
                 cancel_text   = _("Cancel"),
                 default_value = opts.default_value or SCALE_DEF,
@@ -1214,6 +1211,51 @@ function M.makeBentoWidthItem(opts)
     }
 end
 
+
+-- ---------------------------------------------------------------------------
+-- Module Settings Chrome — Top Margin + Column Width
+-- Every module's settings screen ends with these two items, regardless of
+-- which window built that screen (long-press on a module vs the Settings ▸
+-- Modules screen). Single source of truth for the pair, so the different
+-- windows that show module settings can't drift out of sync on which items
+-- are shown or how they're wired.
+--
+-- opts: {
+--   mod       — module descriptor (id, name, no_top_margin)
+--   pfx       — settings-key prefix for the screen the items belong to
+--   refresh   — ctx_menu-style refresh; must already repaint the caller's
+--               window (see SUIWindow.withRepaint) or the new value won't
+--               show until the window is reopened
+--   on_change — optional extra work to run after either value is set,
+--               e.g. invalidating a live screen's module-list cache
+-- }
+-- ---------------------------------------------------------------------------
+function M.appendModuleChromeItems(items, opts)
+    local mod, pfx, refresh, on_change = opts.mod, opts.pfx, opts.refresh, opts.on_change
+
+    if not mod.no_top_margin then
+        items[#items + 1] = M.makeGapItem({
+            text_func = function() return _("Top Margin") end,
+            title     = mod.name or mod.id,
+            info      = _("Vertical space above this module.\n100% is the default spacing."),
+            get       = function() return M.getModuleGapPct(mod.id, pfx) end,
+            set       = function(v)
+                M.setModuleGap(v, mod.id, pfx)
+                if on_change then on_change() end
+            end,
+            refresh   = refresh,
+        })
+    end
+    items[#items + 1] = M.makeBentoWidthItem({
+        get     = function() return M.getBentoWidth(mod.id, pfx) end,
+        set     = function(v)
+            M.setBentoWidth(v, mod.id, pfx)
+            if on_change then on_change() end
+        end,
+        refresh = refresh,
+    })
+    return items
+end
 
 -- Module Labels (Section Title) Toggle
 local function _labelHideKey(mod_id)
@@ -1785,6 +1827,29 @@ local function _enqueueCoverExtract(filepath, w, h)
     M._cover_extract_queue[#M._cover_extract_queue + 1] = filepath
 end
 
+-- True when BIM's cached thumbnail is smaller than this slot needs and the
+-- original cover can yield a larger one (Cover Browser list-mode specs, etc.).
+local function _coverTooSmall(bim, bookinfo, w, h)
+    if not (bim and bookinfo and bookinfo.has_cover) then return false end
+    if type(bim.isCachedCoverInvalid) ~= "function" then return false end
+    return bim.isCachedCoverInvalid(bookinfo, {
+        max_cover_w = w,
+        max_cover_h = h,
+    }) and true or false
+end
+
+-- Drop stretch + ref entries so a later put after re-extract can install the
+-- higher-quality bb (prefer-larger alone keeps same pixel-count upscales).
+local function _dropLocalCoverCaches(filepath)
+    SUICoverCache:drop(filepath)
+    local entry = _bim_ref_cache[filepath]
+    if not entry then return end
+    _removeRefOrderKey(filepath)
+    _bim_ref_cache[filepath] = nil
+    _bim_ref_bytes = _bim_ref_bytes - (entry.bytes or 0)
+    if _bim_ref_bytes < 0 then _bim_ref_bytes = 0 end
+end
+
 -- Stretches `raw_bb` (bookinfo.cover_bb — BookInfoManager's own persistent
 -- entry for this file, shared with KOReader core) to exactly
 -- target_w x target_h, aspect NOT preserved. Never hands raw_bb itself to
@@ -1817,14 +1882,7 @@ end
 function M.getStretchedCoverBB(filepath, w, h)
     if M.isCoverMissing(filepath) then return nil end
 
-    local cached = SUICoverCache:get(filepath)
-    if cached and cached:getWidth() >= w and cached:getHeight() >= h then
-        return cached
-    end
-
-    -- Reject non-regular-file paths (e.g. directories, ".." traversals)
-    -- before hitting the native extractor, which can segfault on invalid
-    -- input.
+    -- Reject non-regular-file paths before the extractor (can segfault).
     if _lfsMode(filepath) ~= "file" then _markNoCover(filepath); return nil end
 
     local bim = M.getBookInfoManager()
@@ -1838,13 +1896,26 @@ function M.getStretchedCoverBB(filepath, w, h)
     end
     if bookinfo and bookinfo.cover_fetched then
         if bookinfo.has_cover and bookinfo.cover_bb then
+            -- List-mode / undersized BIM thumbnail: show stretched placeholder
+            -- and re-extract larger. Drop local caches so the upgraded bb can
+            -- replace a same-size upscale (prefer-larger is pixel-count only).
+            if _coverTooSmall(bim, bookinfo, w, h) then
+                local placeholder = SUICoverCache:get(filepath)
+                _dropLocalCoverCaches(filepath)
+                _enqueueCoverExtract(filepath, w, h)
+                M.cover_extraction_pending = true
+                if placeholder and placeholder:getWidth() >= w
+                        and placeholder:getHeight() >= h then
+                    return placeholder
+                end
+                return _stretchBBToSize(bookinfo.cover_bb, w, h)
+            end
             M._cover_extract_pending[filepath] = nil
+            local cached = SUICoverCache:get(filepath)
+            if cached and cached:getWidth() >= w and cached:getHeight() >= h then
+                return cached
+            end
             local bb = _stretchBBToSize(bookinfo.cover_bb, w, h)
-            -- put() returns the bb now serving as the cache entry — our
-            -- fresh bb if it was inserted/upgraded, or a larger existing
-            -- entry if one was already resident (prefer-larger). Either
-            -- way this is the bb the caller should build its ImageWidget
-            -- from; see the "Stretch-only cover API" note above.
             return SUICoverCache:put(filepath, bb)
         else
             M._cover_extract_pending[filepath] = nil; _markNoCover(filepath); return nil
@@ -1871,17 +1942,15 @@ function M.getCroppedCoverBB(filepath, w, h, align)
     end
     if bookinfo and bookinfo.cover_fetched then
         if bookinfo.has_cover and bookinfo.cover_bb then
+            if _coverTooSmall(bim, bookinfo, w, h) then
+                _dropLocalCoverCaches(filepath)
+                _enqueueCoverExtract(filepath, w, h)
+                M.cover_extraction_pending = true
+                -- Crop placeholder from the small source (no ref cache).
+                return _scaleBBToSlot(bookinfo.cover_bb, w, h, align)
+            end
             M._cover_extract_pending[filepath] = nil
-            -- Same shared, bounded, uncropped per-book reference is used
-            -- regardless of `align` — cropping happens fresh from it on
-            -- every call, so different callers can legitimately ask for
-            -- different alignments of the SAME book without needing
-            -- separate cache entries per alignment. `align` defaults to
-            -- "center" (via _scaleBBToSlot's own default below) — that's
-            -- what Quad wants (centre-cropped quadrant, no directional
-            -- bias). CoverDeck's side/far "peek" slots pass "left"/"right"
-            -- explicitly instead — see module_coverdeck.lua's
-            -- buildCroppedCover.
+            -- Shared uncropped ref; crop fresh so callers can differ on align.
             local ref_bb = _getRefCoverBB(filepath, bookinfo.cover_bb)
             return _scaleBBToSlot(ref_bb, w, h, align)
         else
@@ -2020,46 +2089,71 @@ function M.invalidateTopbarConfigCache() _topbar_cfg_menu_cache = nil end
 
 -- Stats Database
 local _SQ3, _lfs_mod, _indexes_created = nil, nil, false
+-- Blocks openStatsDB while a Statistics cloud sync is running.
+-- Set by ScreenEngine.prepareForStatsSync; cleared by finishStatsSync.
+local _stats_sync_guard = false
+
 function M.getStatsDbPath() return DataStorage:getSettingsDir() .. "/statistics.sqlite3" end
 
--- Single source of truth for resolving a book's `md5` (partial_md5_checksum)
--- to its `book.id` in statistics.sqlite3. A %s placeholder for the md5
--- value — meant to be embedded via string.format(), either standalone or
--- nested inside a larger query (e.g. a CTE), not executed as-is.
---
--- ORDER BY last_open DESC: the same file can end up with more than one row
--- in `book` (e.g. after being moved/renamed and re-indexed). Ordering by
--- last_open picks the row that was most recently active, deterministically,
--- instead of whichever row a plain LIMIT 1 happens to visit first.
---
--- Every query in this plugin that resolves a book id from an md5 should go
--- through this constant rather than inlining the WHERE/ORDER BY itself, so
--- the tie-break rule only ever needs to change in one place.
+-- Resolves book.md5 → book.id. ORDER BY last_open DESC picks the most
+-- recently active row when the same file has more than one entry.
+-- Embed via string.format; do not execute as-is.
 M.BOOK_ID_BY_MD5_SQL = "SELECT id FROM book WHERE md5 = '%s' ORDER BY last_open DESC LIMIT 1"
 
-function M.openStatsDB()
+local function _ensureSqlite()
     if not _SQ3 then
         local ok, s = pcall(require, "lua-ljsqlite3/init")
-        if not ok or not s then return nil end
+        if not ok or not s then return false end
         _SQ3 = s
     end
     if not _lfs_mod then
         local ok, l = pcall(require, "libs/libkoreader-lfs")
-        if not ok or not l then return nil end
+        if not ok or not l then return false end
         _lfs_mod = l
     end
+    return true
+end
+
+-- Merges the WAL into the main DB file so a plain copy/upload of
+-- statistics.sqlite3 includes every committed row. Uses a private handle
+-- that is not subject to _stats_sync_guard.
+function M.checkpointStatsDB()
+    if not _ensureSqlite() then return end
+    local db_path = M.getStatsDbPath()
+    if not _lfs_mod.attributes(db_path, "mode") then return end
+    local ok, conn = pcall(_SQ3.open, db_path)
+    if not (ok and conn) then return end
+    pcall(function()
+        conn:exec("PRAGMA busy_timeout = 3000;")
+        conn:exec("PRAGMA wal_checkpoint(TRUNCATE);")
+        conn:close()
+    end)
+end
+
+function M.beginStatsSyncGuard()
+    _stats_sync_guard = true
+end
+
+function M.endStatsSyncGuard()
+    _stats_sync_guard = false
+end
+
+function M.isStatsSyncGuarded()
+    return _stats_sync_guard
+end
+
+-- Opens statistics.sqlite3 for read queries. Returns nil when a cloud sync
+-- is in progress or the DB is unavailable. Callers that keep the handle
+-- open must release it before any Statistics sync
+-- (ScreenEngine.prepareForStatsSync).
+function M.openStatsDB()
+    if _stats_sync_guard then return nil end
+    if not _ensureSqlite() then return nil end
     local db_path = M.getStatsDbPath()
     if not _lfs_mod.attributes(db_path, "mode") then return nil end
     local ok, conn = pcall(_SQ3.open, db_path)
     if not (ok and conn) then return nil end
-    -- statistics.sqlite3 is also written to by KOReader's own ReadingStats
-    -- plugin during an active reading session. Without a busy timeout, a
-    -- query that lands while that write is in progress fails immediately
-    -- with "database is locked" instead of waiting for it to finish; the
-    -- caller then silently keeps whatever it had cached before. Setting a
-    -- busy timeout here makes SQLite retry internally for up to the given
-    -- window before giving up, so a transient write no longer surfaces as a
-    -- query failure.
+    -- Retry briefly when the Statistics plugin is mid-write.
     pcall(function() conn:exec("PRAGMA busy_timeout = 3000;") end)
     if not _indexes_created then
         local idx_ok = pcall(function()

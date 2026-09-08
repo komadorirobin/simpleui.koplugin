@@ -16,10 +16,10 @@
 --     the "update available" banner appears immediately on next startup)
 
 local UIManager   = require("ui/uimanager")
-local InfoMessage = require("ui/widget/infomessage")
 local ConfirmBox  = require("ui/widget/confirmbox")
 local logger      = require("logger")
 local _           = require("infra/sui_i18n").translate
+local UI          = require("infra/sui_core")
 
 -- ---------------------------------------------------------------------------
 -- Configuration
@@ -444,12 +444,6 @@ end
 -- UI helpers
 -- ---------------------------------------------------------------------------
 
-local function _toast(msg, timeout)
-    local w = InfoMessage:new{ text = msg, timeout = timeout or 4 }
-    UIManager:show(w)
-    return w
-end
-
 local function _closeWidget(w)
     if w then UIManager:close(w) end
 end
@@ -485,9 +479,7 @@ local function _applyUpdate(download_url, new_version, opts)
     local tmp_zip    = _tmpZipPath()
     local parent_dir = _plugin_dir:match("^(.+)/[^/]+$") or _plugin_dir
 
-    local progress_msg = _toast(
-        string.format(_("Downloading Simple UI %s…"), new_version), 120
-    )
+    local progress_msg = UI.Notify.toast(string.format(_("Downloading Simple UI %s…"), new_version), 120)
 
     local ok_tr, Trapper = pcall(require, "ui/trapper")
 
@@ -515,11 +507,9 @@ local function _applyUpdate(download_url, new_version, opts)
             local stage = result and result.stage or "unknown"
             local err   = result and result.err   or "unknown error"
             logger.err("simpleui updater: failed in", stage, "-", err)
-            _toast(
-                stage == "download"
+            UI.Notify.toast(stage == "download"
                     and (_("Download error: ") .. tostring(err))
-                    or  (_("Extraction error: ") .. tostring(err))
-            )
+                    or  (_("Extraction error: ") .. tostring(err)), 4)
             return
         end
         _clear_update_state()
@@ -546,7 +536,7 @@ local function _applyUpdate(download_url, new_version, opts)
         elseif completed == false then
             _closeWidget(progress_msg)
             pcall(os.remove, tmp_zip)
-            _toast(_("Update cancelled."))
+            UI.Notify.toast(_("Update cancelled."), 4)
         end
     else
         -- Synchronous fallback (no Trapper): avoids blocking the UI via scheduleIn.
@@ -567,7 +557,7 @@ local function _showUpdateDialog(release, current, force_switch)
 
     if not force_switch and not _versionGt(latest, current) then
         logger.info("simpleui updater: already up to date (" .. current .. ")")
-        _toast(string.format(_("Simple UI is up to date (%s)."), current))
+        UI.Notify.toast(string.format(_("Simple UI is up to date (%s)."), current), 4)
         return
     end
 
@@ -772,17 +762,17 @@ end
 --- clean and to allow direct calls in tests).
 function M._doManualCheck(current)
     local ok_tr, Trapper = pcall(require, "ui/trapper")
-    local checking_msg   = _toast(_("Checking for updates…"), 15)
+    local checking_msg   = UI.Notify.toast(_("Checking for updates…"), 15)
 
     local function handleCheckResult(release)
         _closeWidget(checking_msg)
         if not release then
-            _toast(_("Error checking for updates."))
+            UI.Notify.toast(_("Error checking for updates."), 4)
             return
         end
         if release.error then
             logger.err("simpleui updater:", release.error)
-            _toast(_("Error checking for updates: ") .. tostring(release.error))
+            UI.Notify.toast(_("Error checking for updates: ") .. tostring(release.error), 4)
             return
         end
         -- Persist the result so the next startup can show the banner
@@ -805,7 +795,7 @@ function M._doManualCheck(current)
             UIManager:scheduleIn(0.2, function() handleCheckResult(result) end)
         elseif completed == false then
             _closeWidget(checking_msg)
-            _toast(_("Update check cancelled."))
+            UI.Notify.toast(_("Update check cancelled."), 4)
         end
     else
         UIManager:scheduleIn(0.3, function()

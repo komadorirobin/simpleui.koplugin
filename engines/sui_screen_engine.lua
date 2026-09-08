@@ -201,14 +201,22 @@ end
 -- Soft-park (reader round-trip optimisation)
 --
 -- Internal-only kill switch — NOT a persisted SUISettings value and NOT
--- exposed in any menu. When true (default), ScreenWidget:onShowingReader
--- keeps the Homescreen's widget tree, bitmaps and cached state alive,
--- hidden underneath the reader, instead of tearing it all down and
--- rebuilding cold on every reader round-trip (see
--- ScreenWidget:onShowingReader below and _raiseParkedScreen in
--- infra/sui_patches.lua). Flip to false during development/bisecting to
--- restore the always-cold-close behaviour this replaces.
-ScreenEngine.SOFT_PARK_ENABLED = true
+-- exposed in any menu. When true, ScreenWidget:onShowingReader keeps the
+-- Homescreen's widget tree, bitmaps and cached state alive, hidden
+-- underneath the reader, instead of tearing it all down and rebuilding
+-- cold on every reader round-trip (see ScreenWidget:onShowingReader
+-- below and _raiseParkedScreen in infra/sui_patches.lua). Default is
+-- false (cold close); flip to true to enable soft-park.
+ScreenEngine.SOFT_PARK_ENABLED = false
+
+-- When true (default) and SOFT_PARK_ENABLED is also true, a soft-parked
+-- Homescreen is left alive under the system ScreenSaver instead of being
+-- closed by the UIManager.show fullscreen-widget guard. On wakeup the
+-- parked instance is still under the Reader and the normal raise path
+-- works on book close. Flip to false to restore the pre-existing behaviour
+-- (HS closed on every suspend, cold rebuild on the next book close).
+-- Code-only; not exposed in any menu.
+ScreenEngine.KEEP_PARKED_ACROSS_SUSPEND = true
 
 -- The built-in Homescreen's id — the one place in this file that still
 -- "knows" the built-in Homescreen exists, needed because _sget/_sset (below)
@@ -1897,10 +1905,9 @@ function ScreenWidget:_buildCtx()
     -- The "recent" module (mod_r) shows no DB-backed stats, so it is excluded.
     local wants_db = show_c or coverdeck_needs_db or wants_stats or ext_needs_db
 
-    if wants_db and not self._db_conn and not self._db_sync_guard then
-        if not self._defer_stats then
-            self._db_conn = Config.openStatsDB()
-        end
+    if wants_db and not self._db_conn and not self._defer_stats then
+        -- openStatsDB returns nil while a Statistics cloud sync is in progress.
+        self._db_conn = Config.openStatsDB()
     end
 
     -- Pre-fetch numeric stats via the shared provider (at most 2 DB roundtrips).
@@ -2100,43 +2107,21 @@ function ScreenWidget:_updateFooter(current_page, total_pages, topbar_on)
 end
 
 -- ---------------------------------------------------------------------------
--- _getCtxMenu — lazy-initialised context table for module settings menus.
--- Cached after first call so the closure object is not reallocated per page turn.
+-- _refreshLiveData — invalidates this screen's cached module/config state
+-- and re-renders it. This is the one piece of "refresh" that is specific to
+-- ScreenWidget (as opposed to the generic ctx_menu fields SUIWindow.makeCtxMenu
+-- already provides) and is passed as extra_refresh into
+-- SUIWindow.buildModuleSettingsScreen.
 -- ---------------------------------------------------------------------------
-function ScreenWidget:_getCtxMenu()
-    if self._ctx_menu then return self._ctx_menu end
-    local c = setmetatable({
-        pfx           = self._pfx,
-        pfx_qa        = self._pfx_qa,
-        is_sui        = true,          -- signals that we are inside a SUIWindow
-        refresh       = function()
-            local live = _sget(self._id, "_instance")
-            if live then
-                live._enabled_mods_cache = nil
-                live._ctx_cache          = nil
-                live._cfg_cache          = nil
-                _sset(self._id, "_cfg_cache", nil)
-                live:_refresh(false)
-            end
-        end,
-        UIManager     = UIManager,
-        _             = _,
-        N_            = N_,
-        MAX_LABEL_LEN = Config.MAX_LABEL_LEN,
-        _cover_picker = nil,
-    }, {
-        __index = function(t, k)
-            if k == "InfoMessage" then
-                local v = require("ui/widget/infomessage")
-                rawset(t, k, v); return v
-            elseif k == "SortWidget" then
-                local v = require("ui/widget/sortwidget")
-                rawset(t, k, v); return v
-            end
-        end,
-    })
-    self._ctx_menu = c
-    return c
+function ScreenWidget:_refreshLiveData()
+    local live = _sget(self._id, "_instance")
+    if live then
+        live._enabled_mods_cache = nil
+        live._ctx_cache          = nil
+        live._cfg_cache          = nil
+        _sset(self._id, "_cfg_cache", nil)
+        live:_refresh(false)
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -2258,51 +2243,12 @@ function ScreenWidget:_openModuleSettingsFor(mod)
         local SUIWindow = require("engines/sui_window")
 
         local function buildRoot(ctx)
-            local ctx_menu = screen:_getCtxMenu()
-            local local_ctx_menu = setmetatable({
-                refresh           = function() ctx_menu.refresh(); ctx.repaint() end,
-                show_arrange      = function(params) ctx.push("arrange",      params) end,
-                show_item_picker  = function(params) ctx.push("item_picker",  params) end,
-            }, { __index = ctx_menu })
-
-            local items    = type(mod.getMenuItems) == "function" and mod.getMenuItems(local_ctx_menu) or {}
-            Config.appendModuleAppearanceItems(items, mod.id, self._pfx, local_ctx_menu.refresh, _)
-            if not mod.no_top_margin then
-                local gap_item = Config.makeGapItem({
-                    text_func = function()
-                        return _("Top Margin")
-                    end,
-                    title   = mod.name or mod.id,
-                    info    = _("Vertical space above this module.\n100% is the default spacing."),
-                    get     = function() return Config.getModuleGapPct(mod.id, self._pfx) end,
-                    set     = function(v)
-                        Config.setModuleGap(v, mod.id, self._pfx)
-                        screen._enabled_mods_cache = nil
-                    end,
-                    refresh = ctx_menu.refresh,
-                })
-                items[#items + 1] = gap_item
-            end
-            -- Column width (bento grid) — same chrome slot for every module.
-            items[#items + 1] = Config.makeBentoWidthItem({
-                get     = function() return Config.getBentoWidth(mod.id, self._pfx) end,
-                set     = function(v)
-                    Config.setBentoWidth(v, mod.id, self._pfx)
-                    screen._enabled_mods_cache = nil
-                end,
-                refresh = ctx_menu.refresh,
+            return SUIWindow.buildModuleSettingsScreen(ctx, mod, {
+                pfx           = self._pfx,
+                pfx_qa        = self._pfx_qa,
+                extra_refresh = function() screen:_refreshLiveData() end,
+                on_change     = function() screen._enabled_mods_cache = nil end,
             })
-            return SUIWindow.MenuTable{
-                items          = items,
-                inner_w        = ctx.inner_w,
-                repaint        = function() ctx.repaint() end,
-                lock_overlay   = ctx.lockOverlay,
-                unlock_overlay = ctx.unlockOverlay,
-                push_stack     = function(id, params)
-                    if type(id) == "string" then ctx.push(id, params) else ctx.push("nested_menu", params) end
-                end,
-                on_close       = function() end,
-            }
         end
 
         local function titleFn(ctx)
@@ -2952,10 +2898,7 @@ function ScreenWidget:_updatePage(keep_cache, books_only, stats_only)
                     if _sget(self_ref._id, "_instance") ~= self_ref then return end
                     if (self_ref._layout_sw or Screen:getWidth()) ~= snap_sw then return end
                     if (self_ref._layout_content_h or UI.getContentHeight()) ~= snap_avail_h then return end
-                    UIManager:show(require("ui/widget/infomessage"):new{
-                        text    = _("Modules exceed the visible area.\nMove some to another page or adjust the scale."),
-                        timeout = 4,
-                    })
+                    UI.Notify.toast(_("Modules exceed the visible area.\nMove some to another page or adjust the scale."), 4)
                 end)
             end
         else
@@ -3029,8 +2972,7 @@ function ScreenWidget:_refresh(keep_cache, books_only, stats_only)
                 -- caller may have upgraded this pending refresh (see above).
                 local stats_only = self._refresh_pending_stats_only
 
-                -- Open a DB connection if needed
-                if not self._db_conn and not self._db_sync_guard then
+                if not self._db_conn then
                     self._db_conn = Config.openStatsDB()
                 end
 
@@ -3764,73 +3706,66 @@ function ScreenWidget:onClose()
     return true
 end
 
--- Close our SQLite connection before the Statistics plugin's sync runs.
--- When SQLite is in WAL mode (the default on capable devices), a connection
--- held open during the sync corrupts the diff that SyncService.onSync uses
--- to detect deleted records: the WAL read-snapshot makes newly-written rows
--- invisible to the merge query, so they are incorrectly treated as "deleted
--- on this device" and stripped from the income_db before upload.  The result
--- is permanent, silent data loss on all synced devices.
+-- ---------------------------------------------------------------------------
+-- Statistics cloud sync
 --
--- Closing the connection here (synchronously, before returning false) is
--- necessary but not sufficient: ReaderStatistics:onSyncBookStats defers the
--- actual sync to UIManager:nextTick, so any repaint scheduled between this
--- handler and that tick could call _buildCtx and reopen _db_conn with a new
--- WAL snapshot that again hides the just-written rows.
+-- ReaderStatistics.onSync merges local / cached / income. An open SimpleUI
+-- handle on statistics.sqlite3 can keep WAL frames out of the main file and
+-- hide rows from the merge, which then treats them as local deletions.
 --
--- _db_sync_guard prevents _buildCtx from reopening the connection during
--- that window.  tickAfterNext schedules the guard clear for two ticks after
--- this one — the sync runs in tick N+1 (nextTick) and is fully blocking, so
--- tick N+2 is guaranteed to run only after SyncService.sync has returned.
--- The guard clear also invalidates _ctx_cache so the next render fetches
--- fresh data from the updated DB.
---
--- Returning false lets the event propagate to ReaderStatistics as normal.
---
--- _db_sync_guard is an instance field, so clearing it is always safe on
--- self_ref regardless of whether the instance is still live or has since
--- been replaced/closed. Only _refresh() itself is gated on the instance
--- still being the current one (refreshing a dead widget is a no-op at best
--- and a crash at worst). A scheduleIn(10) fallback provides a second safety
--- net for the edge case where the tick callbacks are never invoked (e.g.
--- UIManager teardown during a hot plugin reload).
-function ScreenWidget:onSyncBookStats()
-    if self._db_conn then
-        pcall(function() self._db_conn:close() end)
-        self._db_conn = nil
-    end
-    self._db_sync_guard = true
-    local self_ref = self
-    -- One-shot flag so the fallback timer and the tick path don't both fire.
-    local cleared = false
+-- prepareForStatsSync closes every live screen connection, blocks new opens
+-- via Config.beginStatsSyncGuard, and checkpoints the WAL. finishStatsSync
+-- restores opens and refreshes visible screens. Idempotent — both the
+-- ScreenWidget event handler and the main.lua ReaderStatistics patch call it.
+-- ---------------------------------------------------------------------------
+local _stats_sync_finish_scheduled = false
 
-    local function clearGuard()
-        if cleared then return end
-        cleared = true
-        -- Always clear the guard on this instance — safe whether alive or dead.
-        self_ref._db_sync_guard = false
-        self_ref._ctx_cache     = nil
-        -- Parked: nothing to repaint right now — _raiseParkedScreen already
-        -- does a full refresh (which will pick up whatever this sync
-        -- changed) when the screen is next promoted back to the foreground.
-        if self_ref._parked then return end
-        -- Only repaint when this instance is still the one on screen.
-        if _sget(self_ref._id, "_instance") == self_ref then
-            self_ref:_refresh(false)
+function ScreenEngine.prepareForStatsSync()
+    for _, id in ipairs(ScreenEngine.liveScreenIds()) do
+        local inst = ScreenEngine.getInstance(id)
+        if inst and inst._db_conn then
+            pcall(function() inst._db_conn:close() end)
+            inst._db_conn = nil
         end
     end
+    Config.beginStatsSyncGuard()
+    Config.checkpointStatsDB()
 
-    -- Primary path: two UIManager ticks guarantee the sync has finished.
+    if _stats_sync_finish_scheduled then return end
+    _stats_sync_finish_scheduled = true
+
+    local function finish()
+        if not _stats_sync_finish_scheduled then return end
+        _stats_sync_finish_scheduled = false
+        ScreenEngine.finishStatsSync()
+    end
+
+    -- SyncService.sync runs on the next tick to completion; two further
+    -- ticks are safely after the merge. scheduleIn(10) covers missed ticks.
     UIManager:tickAfterNext(function()
-        UIManager:nextTick(clearGuard)
+        UIManager:nextTick(finish)
     end)
+    UIManager:scheduleIn(10, finish)
+end
 
-    -- Safety-net: if the tick callbacks are never invoked (edge case),
-    -- release the guard after 10 s so the homescreen does not stay broken
-    -- for the rest of the KOReader session.
-    UIManager:scheduleIn(10, clearGuard)
+function ScreenEngine.finishStatsSync()
+    Config.endStatsSyncGuard()
+    for _, id in ipairs(ScreenEngine.liveScreenIds()) do
+        local inst = ScreenEngine.getInstance(id)
+        if inst then
+            inst._ctx_cache = nil
+            if not inst._parked and _sget(inst._id, "_instance") == inst then
+                pcall(function() inst:_refresh(false) end)
+            end
+        end
+    end
+end
 
-    return false  -- do not consume; Statistics plugin must still handle this
+-- Broadcast path when a screen is on the stack. The main.lua patch covers
+-- Reader/menu/auto-sync when no screen widget receives the event.
+function ScreenWidget:onSyncBookStats()
+    ScreenEngine.prepareForStatsSync()
+    return false
 end
 
 -- Stops background timers so a screen does no wasted work while it cannot
@@ -4087,7 +4022,6 @@ function ScreenWidget:onCloseWidget()
     self._total_pages        = nil
     self.page                = nil
     self.page_num            = nil
-    self._ctx_menu           = nil
     self._ctx_cache          = nil
     self._stats_need_refresh = nil
     self._body               = nil
@@ -4339,12 +4273,36 @@ function ScreenEngine.setCachedBooksState(id, v)
     _sset(id, "_cached_books_state", v)
 end
 
--- Gets/sets the flat, id-level _cfg_cache (per-module settings snapshot —
--- see ScreenWidget:_buildCtx). Mirrors get/setCachedBooksState above for
--- callers that force a full cold rebuild (both fields are always cleared
--- together elsewhere in this file) on a screen that isn't necessarily live.
+-- Gets/sets the per-screen _cfg_cache (module-settings snapshot used by
+-- ScreenWidget:_buildCtx). The store is written for closed screens; when a
+-- live instance exists it must be updated too — _buildCtx reads
+-- self._cfg_cache and never re-consults the store. Clearing (v == nil) also
+-- drops self._ctx_cache: ctx embeds the cfg table, so a kept-alive ctx would
+-- keep serving the pre-change main_order / visibility flags after
+-- refreshScreen(..., false) promotes to its keep_cache path whenever
+-- _body and _ctx_cache are both still set.
 function ScreenEngine.setCfgCache(id, v)
     _sset(id, "_cfg_cache", v)
+    local inst = _sget(id, "_instance")
+    if not inst then return end
+    inst._cfg_cache = v
+    if v == nil then
+        inst._ctx_cache = nil
+    end
+end
+
+-- Drop cfg (and optionally books state) on every known screen, then rebuild
+-- live ones. Call after module settings that the cfg snapshot captures
+-- (order, visibility, scales, …). Pass clear_books=true when book metadata
+-- must be re-fetched too (e.g. "Update Stats Now").
+function ScreenEngine.invalidateAllCfgAndRefresh(clear_books)
+    for _, id in ipairs(ScreenEngine.knownScreenIds()) do
+        if clear_books then
+            ScreenEngine.setCachedBooksState(id, nil)
+        end
+        ScreenEngine.setCfgCache(id, nil)
+        ScreenEngine.refreshScreen(id, false)
+    end
 end
 
 -- Flags screen `id` for a refresh next time it becomes visible — covers

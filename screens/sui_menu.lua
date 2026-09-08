@@ -16,7 +16,6 @@ local T = require("ffi/util").template
 -- does not pull them into memory before the user ever opens the settings menu.
 -- On low-memory devices these requires were the most likely point of silent
 -- failure that caused the menu entry to open nothing.
-local function InfoMessage()      return require("ui/widget/infomessage")      end
 local function ConfirmBox()       return require("ui/widget/confirmbox")        end
 local function InputDialog()      return require("ui/widget/inputdialog")       end
 local function MultiInputDialog() return require("ui/widget/multiinputdialog") end
@@ -369,21 +368,16 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                     end
                     if active_pos then
                         if #tabs <= min_tabs then
-                            UIManager:show(InfoMessage():new{
-                                text = Config.isNavpagerEnabled()
+                            UI.Notify.toast(Config.isNavpagerEnabled()
                                     and _("Minimum 1 tab required in navpager mode.")
-                                    or  _("Minimum 2 tabs required. Select another tab first."),
-                                timeout = 2,
-                            })
+                                    or  _("Minimum 2 tabs required. Select another tab first."), 2)
                             return
                         end
                         table.remove(tabs, active_pos)
                     else
                         if #tabs >= limit then
-                            UIManager:show(InfoMessage():new{
-                                text = string.format(N_("The maximum of %d tab has been reached. Remove one first.",
-                                       "The maximum of %d tabs has been reached. Remove one first.", limit), limit), timeout = 2,
-                            })
+                            UI.Notify.toast(string.format(N_("The maximum of %d tab has been reached. Remove one first.",
+                                   "The maximum of %d tabs has been reached. Remove one first.", limit), limit), 2)
                             return
                         end
                         tabs[#tabs + 1] = _aid
@@ -735,12 +729,8 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                     if not sep_left_pos or not sep_center_pos or not sep_right_pos
                             or sep_left_pos > sep_center_pos or sep_center_pos > sep_right_pos
                             or (sort_items[1] and sort_items[1].orig_item ~= SEP_LEFT) then
-                        local InfoMessage = ctx_menu and ctx_menu.InfoMessage or require("ui/widget/infomessage")
                         local uim = ctx_menu and ctx_menu.UIManager or UIManager
-                        uim:show(InfoMessage:new{
-                            text    = _("Invalid arrangement.\nKeep the Left, Center and Right separators in order."),
-                            timeout = 3,
-                        })
+                        UI.Notify.toast(_("Invalid arrangement.\nKeep the Left, Center and Right separators in order."))
                         return
                     end
                     local new_left, new_center, new_right = {}, {}, {}
@@ -1058,6 +1048,9 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                             -- Screen), not just the flat built-in-Homescreen instance.
                             local ok_se, ScreenEngine = pcall(require, "engines/sui_screen_engine")
                             if ok_se and ScreenEngine then ScreenEngine.refreshAllLiveImmediate(true) end
+                            -- Repaint the settings screen itself so this row's value_func
+                            -- picks up the new percentage now, not the next time it's opened.
+                            if ctx_menu and ctx_menu.refresh then ctx_menu.refresh() end
                             UIManager:show(ConfirmBox():new{
                                 text       = _("A restart is required to apply the new bar size across all layouts.\n\nRestart now?"),
                                 ok_text    = _("Restart"),
@@ -1232,13 +1225,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                                     local cur = loadTabConfig()
                                                     local limit = Config.effectiveMaxTabs()
                                                     if #cur >= limit then
-                                                        local InfoMessage = ctx_menu and ctx_menu.InfoMessage or require("ui/widget/infomessage")
-                                                        local uim = ctx_menu and ctx_menu.UIManager or require("ui/uimanager")
-                                                        local N_ = ctx_menu and ctx_menu.N_ or require("infra/sui_i18n").ngettext
-                                                        uim:show(InfoMessage:new{
-                                                            text = string.format(N_("The maximum of %d tab has been reached. Remove one first.",
-                                                                   "The maximum of %d tabs has been reached. Remove one first.", limit), limit), timeout = 2,
-                                                        })
+                                                        UI.Notify.toast(string.format(N_("The maximum of %d tab has been reached. Remove one first.", "The maximum of %d tabs has been reached. Remove one first.", limit), limit), 2)
                                                         return
                                                     end
                                                     cur[#cur + 1] = _aid
@@ -1338,6 +1325,9 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                             -- Screen), not just the flat built-in-Homescreen instance.
                             local ok_se, ScreenEngine = pcall(require, "engines/sui_screen_engine")
                             if ok_se and ScreenEngine then ScreenEngine.refreshAllLiveImmediate(true) end
+                            -- Repaint the settings screen itself so this row's value_func
+                            -- picks up the new percentage now, not the next time it's opened.
+                            if ctx_menu and ctx_menu.refresh then ctx_menu.refresh() end
                             UIManager:show(ConfirmBox():new{
                                 text       = _("A restart is required to apply the new bar size across all layouts.\n\nRestart now?"),
                                 ok_text    = _("Restart"),
@@ -1357,7 +1347,10 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                 info          = _("Size of the tab icons.\n100% is the default size."),
                 get           = function() return Config.getIconScalePct() end,
                 set           = function(pct) Config.setIconScalePct(pct) end,
-                refresh       = function() UI.invalidateDimCache(); plugin:_rebuildAllNavbars() end,
+                refresh       = function()
+                    UI.invalidateDimCache(); plugin:_rebuildAllNavbars()
+                    if ctx_menu and ctx_menu.refresh then ctx_menu.refresh() end
+                end,
                 value_min     = Config.ICON_SCALE_MIN, value_max = Config.ICON_SCALE_MAX,
                 value_step    = Config.ICON_SCALE_STEP, default_value = Config.ICON_SCALE_DEF,
             }),
@@ -1367,7 +1360,10 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                 info          = _("Size of the tab label text.\n100% is the default size."),
                 get           = function() return Config.getNavbarLabelScalePct() end,
                 set           = function(pct) Config.setNavbarLabelScalePct(pct) end,
-                refresh       = function() UI.invalidateDimCache(); plugin:_rebuildAllNavbars() end,
+                refresh       = function()
+                    UI.invalidateDimCache(); plugin:_rebuildAllNavbars()
+                    if ctx_menu and ctx_menu.refresh then ctx_menu.refresh() end
+                end,
                 value_min     = Config.NAVBAR_LABEL_SCALE_MIN, value_max = Config.NAVBAR_LABEL_SCALE_MAX,
                 value_step    = Config.NAVBAR_LABEL_SCALE_STEP, default_value = Config.NAVBAR_LABEL_SCALE_DEF,
             }),
@@ -1384,6 +1380,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                     -- Screen), not just the flat built-in-Homescreen instance.
                     local ok_se, ScreenEngine = pcall(require, "engines/sui_screen_engine")
                     if ok_se and ScreenEngine then ScreenEngine.refreshAllLiveImmediate(true) end
+                    if ctx_menu and ctx_menu.refresh then ctx_menu.refresh() end
                 end,
                 value_min     = Config.BOT_MARGIN_MIN, value_max = Config.BOT_MARGIN_MAX,
                 value_step    = Config.BOT_MARGIN_STEP, default_value = Config.BOT_MARGIN_DEF,
@@ -1506,12 +1503,8 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                 end
                 if not sep_l or not sep_r or sep_l > sep_r
                         or (sort_items[1] and sort_items[1].orig_item ~= SEP_LEFT) then
-                    local InfoMessage = ctx_menu and ctx_menu.InfoMessage or require("ui/widget/infomessage")
                     local uim = ctx_menu and ctx_menu.UIManager or UIManager
-                    uim:show(InfoMessage:new{
-                        text    = _("Invalid arrangement.\nKeep items between the Left and Right separators."),
-                        timeout = 3,
-                    })
+                    UI.Notify.toast(_("Invalid arrangement.\nKeep items between the Left and Right separators."))
                     return
                 end
                 local new_left, new_right = {}, {}
@@ -1939,8 +1932,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
             for _i, v in ipairs(items) do if v == id then found = true else new_items[#new_items+1] = v end end
             if not found then
                 if #items >= MAX_QA_ITEMS then
-                    UIManager:show(InfoMessage():new{ text = string.format(N_("The maximum of %d action per module has been reached. Remove one first.",
-                              "The maximum of %d actions per module has been reached. Remove one first.", MAX_QA_ITEMS), MAX_QA_ITEMS), timeout = 2 })
+                    UI.Notify.toast(string.format(N_("The maximum of %d action per module has been reached. Remove one first.", "The maximum of %d actions per module has been reached. Remove one first.", MAX_QA_ITEMS), MAX_QA_ITEMS), 2)
                     return
                 end
                 new_items[#new_items+1] = id
@@ -1958,7 +1950,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
             enabled_func   = function() return #getItems() >= 2 end,
             callback       = function()
               local qa_ids = getItems()
-              if #qa_ids < 2 then UIManager:show(InfoMessage():new{ text = _("Add at least 2 actions to arrange."), timeout = 2 }); return end
+              if #qa_ids < 2 then UI.Notify.toast(_("Add at least 2 actions to arrange."), 2); return end
               local pool_labels = {}; for _i, a in ipairs(getQAPool()) do pool_labels[a.id] = a.label end
               local sort_items = {}
               for _i, id in ipairs(qa_ids) do sort_items[#sort_items+1] = { text = pool_labels[id] or id, orig_item = id } end
@@ -2054,13 +2046,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                                 on_tap = function(picker_ctx)
                                                     local cur = getItems()
                                                     if #cur >= MAX_QA_ITEMS then
-                                                        local InfoMessage = ctx.InfoMessage or require("ui/widget/infomessage")
-                                                        local uim = ctx.UIManager or require("ui/uimanager")
-                                                        local N_ = ctx.N_ or require("infra/sui_i18n").ngettext
-                                                        uim:show(InfoMessage:new{
-                                                            text = string.format(N_("The maximum of %d action per module has been reached. Remove one first.",
-                                                                   "The maximum of %d actions per module has been reached. Remove one first.", MAX_QA_ITEMS), MAX_QA_ITEMS), timeout = 2,
-                                                        })
+                                                        UI.Notify.toast(string.format(N_("The maximum of %d action per module has been reached. Remove one first.", "The maximum of %d actions per module has been reached. Remove one first.", MAX_QA_ITEMS), MAX_QA_ITEMS), 2)
                                                         return
                                                     end
                                                     cur[#cur + 1] = _id
@@ -2090,9 +2076,9 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
     -- Fully registry-driven: no module ids hardcoded here.
     local function makeModulesMenu(ctx)
         -- ctx_menu passed to each module's getMenuItems()
-        -- InfoMessage and SortWidget are resolved lazily on first access via
-        -- __index so that require("ui/widget/...") is deferred until the user
-        -- actually opens a module settings menu, not when makeModulesMenu runs.
+        -- SortWidget is resolved lazily on first access via __index so that
+        -- require("ui/widget/...") is deferred until the user actually opens
+        -- a module settings menu, not when makeModulesMenu runs.
         local ctx_menu_data = {
             pfx           = ctx.pfx,
             pfx_qa        = ctx.pfx_qa,
@@ -2106,9 +2092,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
         }
         local ctx_menu = setmetatable(ctx_menu_data, {
             __index = function(t, k)
-                if k == "InfoMessage" then
-                    local v = InfoMessage(); rawset(t, k, v); return v
-                elseif k == "SortWidget" then
+                if k == "SortWidget" then
                     local v = SortWidget(); rawset(t, k, v); return v
                 end
             end,
@@ -2153,11 +2137,11 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
             local qa_items = {}
             local function _moduleSettingsItems(_mod)
                 local list = type(_mod.getMenuItems) == "function" and (_mod.getMenuItems(ctx_menu) or {}) or {}
-                list = Config.appendModuleAppearanceItems(
-                    list, _mod.id, ctx.pfx, ctx_menu.refresh, _)
-                list[#list + 1] = Config.makeBentoWidthItem({
-                    get     = function() return Config.getBentoWidth(_mod.id, ctx.pfx) end,
-                    set     = function(v) Config.setBentoWidth(v, _mod.id, ctx.pfx) end,
+                -- Top Margin + Column Width — same chrome as every other
+                -- module settings screen, see Config.appendModuleChromeItems.
+                Config.appendModuleChromeItems(list, {
+                    mod     = _mod,
+                    pfx     = ctx.pfx,
                     refresh = ctx_menu.refresh,
                 })
                 return list
@@ -2509,12 +2493,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                         keep_menu_open = true,
                         callback = function()
                             if Config.isScaleLinked() then
-                                local UIManager_  = require("ui/uimanager")
-                                local InfoMessage = require("ui/widget/infomessage")
-                                UIManager_:show(InfoMessage:new{
-                                    text    = _("Disable \"Lock Scale\" first to set a custom label scale."),
-                                    timeout = 3,
-                                })
+                                UI.Notify.toast(_("Disable \"Lock Scale\" first to set a custom label scale."))
                                 return
                             end
                             local SpinWidget = require("ui/widget/spinwidget")
@@ -2582,7 +2561,9 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                         keep_menu_open = true,
                         checked_func = function()
                             local mode = SUISettings:readSetting("simpleui_hs_closing_notice_mode")
-                            if not mode then return SUISettings:nilOrTrue("simpleui_hs_closing_notice") end
+                            if not mode then
+                                return SUISettings:readSetting("simpleui_hs_closing_notice") ~= false
+                            end
                             return mode == "always"
                         end,
                         callback = function()
@@ -2606,7 +2587,9 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                         keep_menu_open = true,
                         checked_func = function()
                             local mode = SUISettings:readSetting("simpleui_hs_closing_notice_mode")
-                            if not mode then return not SUISettings:nilOrTrue("simpleui_hs_closing_notice") end
+                            if not mode then
+                                return SUISettings:readSetting("simpleui_hs_closing_notice") == false
+                            end
                             return mode == "never"
                         end,
                         callback = function()
@@ -2707,7 +2690,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
             },
             {
                 text           = _("Preserve Deleted Books in Statistics"),
-                help_text      = _("When a finished book is deleted from the device, keep it counted in the Books Read statistics on the Home Screen.\n\nBooks changed back to Reading or Abandoned are automatically removed from this list."),
+                help_text      = _("When a finished book is deleted from the device (file or folder), keep it counted in the Books Read statistics on the Home Screen.\n\nBooks changed back to Reading or Abandoned are automatically removed from this list."),
                 checked_func   = function()
                     return SUISettings:nilOrTrue("simpleui_preserve_deleted_books_in_stats")
                 end,
@@ -2725,12 +2708,13 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
         -- Shown only when the device maps a key to KOReader's "Home" name
         -- (PocketBook, reMarkable, Cervantes, Sony, some Kindles, …). Natively
         -- the Home key closes the reader into the file manager (or navigates
-        -- the FM to home_dir); this option redirects both paths to the
-        -- SimpleUI Home Screen, matching the "Go to Homescreen" gesture.
+        -- the FM to home_dir). This option redirects the physical Home key to
+        -- the SimpleUI Home Screen; the file browser title-bar home icon still
+        -- goes to the home folder.
         if Config.deviceHasHomeKey() then
             table.insert(items, 3, {
-                text           = _("Home Button Opens Home Screen"),
-                help_text      = _("Makes the device's Home button always open the SimpleUI Home Screen — while reading and while browsing files — instead of KOReader's native Home behaviour."),
+                text           = _("Home key opens Home Screen"),
+                help_text      = _("Makes the device's physical Home key open the SimpleUI Home Screen — while reading and while browsing files — instead of KOReader's native Home behaviour. The file browser title-bar home icon still goes to the home folder."),
                 checked_func   = function()
                     return SUISettings:isTrue("simpleui_home_key_opens_hs")
                 end,
@@ -3793,17 +3777,11 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                             local function _installPackAndNotify(zip_path)
                                 local pack_name, err = IP.installZip(zip_path)
                                 if pack_name then
-                                    UIManager:show(InfoMessage():new{
-                                        text    = string.format(
+                                    UI.Notify.toast(string.format(
                                             _("Pack \"%s\" installed.\nYou can now apply it from the list."),
-                                            pack_name),
-                                        timeout = 4,
-                                    })
+                                            pack_name), 4)
                                 else
-                                    UIManager:show(InfoMessage():new{
-                                        text    = _("Error installing pack:") .. "\n" .. tostring(err),
-                                        timeout = 5,
-                                    })
+                                    UI.Notify.toast(_("Error installing pack:") .. "\n" .. tostring(err), 5)
                                 end
                             end
 
@@ -3903,17 +3881,11 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                             local result, err = IP.applyPack(_pack.path)
                                             if result then
                                                 _reapplyAllPacks()
-                                                UIManager:show(InfoMessage():new{
-                                                    text    = string.format(
+                                                UI.Notify.toast(string.format(
                                                         _("Pack \"%s\" applied.\n%d icons replaced."),
-                                                        _pack.name, result.applied),
-                                                    timeout = 3,
-                                                })
+                                                        _pack.name, result.applied))
                                             else
-                                                UIManager:show(InfoMessage():new{
-                                                    text    = _("Error applying pack:") .. "\n" .. tostring(err),
-                                                    timeout = 5,
-                                                })
+                                                UI.Notify.toast(_("Error applying pack:") .. "\n" .. tostring(err), 5)
                                             end
                                         end,
                                     }
@@ -4024,10 +3996,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                             return true
                                         end, _reapplyAll)
                                         if not ok then
-                                            UIManager:show(InfoMessage():new{
-                                                text    = string.format(_("Preset \"%s\" not found."), _name),
-                                                timeout = 2,
-                                            })
+                                            UI.Notify.toast(string.format(_("Preset \"%s\" not found."), _name), 2)
                                         end
                                     end,
                                 }
@@ -4064,20 +4033,14 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                                     local name = dialog:getInputText()
                                                     name = name and name:match("^%s*(.-)%s*$") or ""
                                                     if name == "" then
-                                                        UIManager:show(InfoMessage():new{
-                                                            text    = _("Please enter a name for the preset."),
-                                                            timeout = 2,
-                                                        })
+                                                        UI.Notify.toast(_("Please enter a name for the preset."), 2)
                                                         return
                                                     end
                                                     local function _doSave()
                                                         IP.save(name)
                                                         SUISettings:set("simpleui_icon_active_preset", name)
                                                         UIManager:close(dialog)
-                                                        UIManager:show(InfoMessage():new{
-                                                            text    = string.format(_("Preset \"%s\" saved."), name),
-                                                            timeout = 2,
-                                                        })
+                                                        UI.Notify.toast(string.format(_("Preset \"%s\" saved."), name), 2)
                                                         UIManager:nextTick(function()
                                                             if ctx_menu and ctx_menu.refresh then ctx_menu.refresh() end
                                                         end)
@@ -4121,7 +4084,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                                                 if IP then
                                                                     IP.save(_name)
                                                                     SUISettings:set("simpleui_icon_active_preset", _name)
-                                                                    UIManager:show(InfoMessage():new{ text = string.format(_("Preset \"%s\" updated."), _name), timeout = 2 })
+                                                                    UI.Notify.toast(string.format(_("Preset \"%s\" updated."), _name), 2)
                                                                     UIManager:nextTick(function() if ctx_menu and ctx_menu.refresh then ctx_menu.refresh() end end)
                                                                 end
                                                             end,
@@ -4139,7 +4102,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                                                     new_name = new_name and new_name:match("^%s*(.-)%s*$") or ""
                                                                     if new_name == "" or new_name == _name then UIManager:close(dialog2); return end
                                                                     if IP and IP.exists(new_name) then
-                                                                        UIManager:show(InfoMessage():new{ text = string.format(_("A preset named \"%s\" already exists."), new_name), timeout = 2 })
+                                                                        UI.Notify.toast(string.format(_("A preset named \"%s\" already exists."), new_name), 2)
                                                                         return
                                                                     end
                                                                     if IP then
@@ -4224,7 +4187,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                                                                             new_name = new_name and new_name:match("^%s*(.-)%s*$") or ""
                                                                                             if new_name == "" or new_name == _name then UIManager:close(dialog2); return end
                                                                                             if IP and IP.exists(new_name) then
-                                                                                                UIManager:show(InfoMessage():new{ text = string.format(_("A preset named \"%s\" already exists."), new_name), timeout = 2 })
+                                                                                                UI.Notify.toast(string.format(_("A preset named \"%s\" already exists."), new_name), 2)
                                                                                                 return
                                                                                             end
                                                                                             if IP then
@@ -4250,7 +4213,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                                                                         if IP then
                                                                                             IP.save(_name)
                                                                                             SUISettings:set("simpleui_icon_active_preset", _name)
-                                                                                            UIManager:show(InfoMessage():new{ text = string.format(_("Preset \"%s\" updated."), _name), timeout = 2 })
+                                                                                            UI.Notify.toast(string.format(_("Preset \"%s\" updated."), _name), 2)
                                                                                             ctx2.repaint()
                                                                                             UIManager:nextTick(function() if ctx_menu and ctx_menu.refresh then ctx_menu.refresh() end end)
                                                                                         end
@@ -4295,18 +4258,12 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                                 callback = function()
                                                     local imported_name, err = IP.import(_f.path)
                                                     if imported_name then
-                                                        UIManager:show(InfoMessage():new{
-                                                            text = string.format(_("Preset \"%s\" imported."), imported_name),
-                                                            timeout = 3,
-                                                        })
+                                                        UI.Notify.toast(string.format(_("Preset \"%s\" imported."), imported_name))
                                                         UIManager:nextTick(function()
                                                             if ctx_menu and ctx_menu.refresh then ctx_menu.refresh() end
                                                         end)
                                                     else
-                                                        UIManager:show(InfoMessage():new{
-                                                            text = _("Error importing preset: ") .. tostring(err),
-                                                            timeout = 4,
-                                                        })
+                                                        UI.Notify.toast(_("Error importing preset: ") .. tostring(err), 4)
                                                     end
                                                 end,
                                             }
@@ -4331,15 +4288,9 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                                                     if not IP then return end
                                                     local filepath, err = IP.export(_name)
                                                     if filepath then
-                                                        UIManager:show(InfoMessage():new{
-                                                            text = string.format(_("Preset exported to:\n%s"), filepath),
-                                                            timeout = 4,
-                                                        })
+                                                        UI.Notify.toast(string.format(_("Preset exported to:\n%s"), filepath), 4)
                                                     else
-                                                        UIManager:show(InfoMessage():new{
-                                                            text = _("Error exporting preset: ") .. tostring(err),
-                                                            timeout = 4,
-                                                        })
+                                                        UI.Notify.toast(_("Error exporting preset: ") .. tostring(err), 4)
                                                     end
                                                 end,
                                             }
@@ -4575,12 +4526,7 @@ SimpleUIPlugin.addToMainMenu = function(self, menu_items)
                 callback  = function()
                     local ok_upd, Updater = pcall(require, "infra/sui_updater")
                     if not ok_upd then
-                        local UIM = ctx_menu and ctx_menu.UIManager or UIManager
-                        local InfoMsg = ctx_menu and ctx_menu.InfoMessage or InfoMessage()
-                        UIM:show(InfoMsg:new{
-                            text    = _("Updater module not found."),
-                            timeout = 4,
-                        })
+                        UI.Notify.toast(_("Updater module not found."), 4)
                         return
                     end
                     Updater.checkForUpdates()
