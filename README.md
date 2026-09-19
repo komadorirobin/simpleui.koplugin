@@ -4,7 +4,7 @@ A clean, distraction-free UI plugin for KOReader that transforms your reading ex
 
 ## This fork vs. upstream
 
-This repository tracks upstream SimpleUI and currently includes the upstream **2.0.0** changes, plus a few fork-specific additions and tweaks:
+The `beta` branch tracks upstream SimpleUI through **2.7.1** and the subsequent changes at `ade0df9`, plus the fork-specific additions below. Select the **beta** update channel to receive these updates.
 
 - **Hardcover module** — a Home Screen module that shows your active `hardcover.app` reading goal, with configurable layout and background refresh
 - **Image module** — a Home Screen module that displays images from a chosen folder, with configurable size and timed rotation
